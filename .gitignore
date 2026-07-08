@@ -1,0 +1,42 @@
+# Gradle files
+.gradle/
+build/
+app/build/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local configuration & Secrets
+local.properties
+app/local.properties
+*.keystore
+*.jks
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Optional: Agent configs (uncomment if you want to keep AI guidelines local)
+# .agents/
+
+# Temporary, Scratch & Local Debug files
+window_dump.xml
+test.json
+recent_commits.txt
+find_cams.py
+find_cameras.py
+cams_found.txt
+cameras_output.txt
+curl_mvyso.json
+curl_mvyso_user.json
+result.json
+old_repo.kt
+previous_photodetail.kt
+query_db.py

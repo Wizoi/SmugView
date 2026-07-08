@@ -1,0 +1,11 @@
+# Copy this file to 'local.properties' and fill in your details.
+# Do NOT check 'local.properties' into version control (git).
+
+# Your SmugMug API Key
+smugmug.api.key=YOUR_API_KEY_HERE
+
+# Your SmugMug Nickname
+smugmug.nickname=YOUR_NICKNAME_HERE
+
+# Location of your local Android SDK (Android Studio usually sets this automatically on first import)
+# sdk.dir=C\:\\Users\\YourUsername\\AppData\\Local\\Android\\Sdk
