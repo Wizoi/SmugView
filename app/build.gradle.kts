@@ -9,25 +9,25 @@ plugins {
 
 android {
     namespace = "com.smugview.app"
-    compileSdk = 34
+    compileSdk = 35
+
+    // Read local.properties
+    val localProperties = Properties()
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { localProperties.load(it) }
+    }
 
     defaultConfig {
         applicationId = "com.smugview.app"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        targetSdk = 35
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
-        }
-
-        // Read local.properties
-        val localProperties = Properties()
-        val localPropertiesFile = rootProject.file("local.properties")
-        if (localPropertiesFile.exists()) {
-            localPropertiesFile.inputStream().use { localProperties.load(it) }
         }
 
         val apiKey = localProperties.getProperty("smugmug.api.key") ?: "YOUR_API_KEY_HERE"
@@ -37,9 +37,26 @@ android {
         buildConfigField("String", "SMUGMUG_NICKNAME", "\"$nickname\"")
     }
 
+    signingConfigs {
+        val keystorePath = localProperties.getProperty("signing.storeFile")
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = localProperties.getProperty("signing.storePassword")
+                keyAlias = localProperties.getProperty("signing.keyAlias")
+                keyPassword = localProperties.getProperty("signing.keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            isCrunchPngs = false
+            val keystorePath = localProperties.getProperty("signing.storeFile")
+            if (keystorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
