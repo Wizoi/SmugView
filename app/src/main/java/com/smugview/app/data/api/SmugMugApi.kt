@@ -33,9 +33,16 @@ interface SmugMugApi {
         @Path("node_id") nodeId: String,
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
-        @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,PasswordHint,Uris,WebUri,ThumbnailUrl",
+        @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl",
         @Query("_verbosity") verbosity: Int = 1
     ): NodeListResponse
+
+    @GET("node/{node_id}")
+    suspend fun getNode(
+        @Path("node_id") nodeId: String,
+        @Query("APIKey") apiKey: String,
+        @Query("_verbosity") verbosity: Int = 1
+    ): SingleNodeResponse
 
     @GET("album/{album_key}")
     suspend fun getAlbum(
@@ -120,7 +127,7 @@ interface SmugMugApi {
         @Query("Text") text: String,
         @Query("Password") password: String? = null,
         @Query("_expand") expand: String = "HighlightImage",
-        @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,PasswordHint,Uris,WebUri,ThumbnailUrl",
+        @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl",
         @Query("_verbosity") verbosity: Int = 1
     ): NodeListResponse
 
@@ -164,7 +171,7 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("count") count: Int = 500,
         @Query("_expand") expand: String = "HighlightImage",
-        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,PasswordHint,ImageCount,Uris",
+        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris",
         @Query("_verbosity") verbosity: Int = 1
     ): UserAlbumsResponse
 
@@ -174,7 +181,7 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("count") count: Int = 500,
         @Query("_expand") expand: String = "HighlightImage",
-        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,PasswordHint,ImageCount,Uris",
+        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris",
         @Query("_verbosity") verbosity: Int = 1
     ): UserAlbumsResponse
 

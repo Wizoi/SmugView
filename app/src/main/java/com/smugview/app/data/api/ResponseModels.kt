@@ -70,6 +70,7 @@ data class NodeData(
     @SerializedName("Name") val name: String? = null,
     @SerializedName("Description") val description: String? = null,
     @SerializedName("SecurityType") val securityType: String? = null,
+    @SerializedName("Privacy") val privacy: String? = null,
     @SerializedName("PasswordHint") val passwordHint: String? = null,
     @SerializedName("WebUri") val webUri: String? = null,
     @SerializedName("Uris") val uris: NodeUris
@@ -77,7 +78,8 @@ data class NodeData(
 data class NodeUris(
     @SerializedName("ChildNodes") val childNodes: String? = null,
     @SerializedName("Album") val album: String? = null,
-    @SerializedName("HighlightImage") val highlightImage: String? = null
+    @SerializedName("HighlightImage") val highlightImage: String? = null,
+    @SerializedName("ParentNode") val parentNode: String? = null
 )
 
 // Album Images Response
@@ -242,5 +244,18 @@ data class UserTopKeywordsContainer(
 
 data class UpdateImageMetadataRequest(
     @SerializedName("Keywords") val keywords: String
+)
+
+data class AlbumPreview(
+    val title: String,
+    val thumbnailUrl: String?
+)
+
+data class SingleNodeResponse(
+    @SerializedName("Response") val response: SingleNodePayload
+)
+
+data class SingleNodePayload(
+    @SerializedName("Node") val node: NodeData
 )
 

@@ -2,13 +2,19 @@ package com.smugview.app.ui.detail
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -22,77 +28,48 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Forward
-import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Lens
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Iso
 import androidx.compose.material.icons.filled.ZoomIn
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material3.*
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import android.view.ViewGroup
-import android.content.res.Configuration
-import androidx.compose.ui.platform.LocalConfiguration
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.palette.graphics.Palette
-import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.smugview.app.data.api.AlbumImageData
-import com.smugview.app.ui.component.AddToCollectionsDialog
-import com.smugview.app.data.api.ExifData
 import com.smugview.app.data.api.isVideo
+import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.ui.theme.DeepDarkBackground
-import com.smugview.app.ui.theme.GlowGreen
 import com.smugview.app.ui.theme.NeonBlue
 import com.smugview.app.ui.theme.SurfaceDark
 import com.smugview.app.ui.theme.SurfaceGlass
@@ -100,58 +77,46 @@ import com.smugview.app.ui.viewmodel.SmugViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SearchPhotoDetailScreen(
+fun KeywordPhotoDetailScreen(
     targetImageKey: String,
     initialIndex: Int,
+    viewModel: SmugViewModel,
     onBackClick: () -> Unit,
-    onNavigateToPhotoDetail: (albumKey: String, imageKey: String) -> Unit,
-    onNavigateToGallery: (albumKey: String, imageKey: String) -> Unit,
-    viewModel: SmugViewModel = hiltViewModel()
+    onNavigateToKeywordImages: () -> Unit,
+    onNavigateToGallery: (albumKey: String, imageKey: String) -> Unit = { _, _ -> }
 ) {
-    val pagingFlow by viewModel.searchPhotosPagingFlow.collectAsState()
-    val searchPhotos = pagingFlow.collectAsLazyPagingItems()
-    val localCollections by viewModel.localCollections.collectAsState()
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val keywordPhotos by viewModel.tagFilteredPhotos.collectAsState()
+    val localCollections by viewModel.localCollections.collectAsState(initial = emptyList())
     val updatedKeywordsMap = remember { mutableStateMapOf<String, String>() }
 
-    if (searchPhotos.itemCount == 0) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("No search results to display", color = Color.White.copy(alpha = 0.5f))
-        }
-        return
-    }
-
+    // 1. Initial State Resolution
+    val totalCount = keywordPhotos.size
     val pagerState = rememberPagerState(
-        initialPage = initialIndex,
-        pageCount = { searchPhotos.itemCount }
+        initialPage = if (initialIndex in 0 until totalCount) initialIndex else 0,
+        pageCount = { totalCount }
     )
 
-    val currentPhoto = if (pagerState.currentPage < searchPhotos.itemCount) searchPhotos[pagerState.currentPage] else null
+    val currentPhoto = remember(keywordPhotos, pagerState.currentPage) {
+        if (pagerState.currentPage in keywordPhotos.indices) {
+            keywordPhotos[pagerState.currentPage]
+        } else null
+    }
 
-    // Preload next and previous images in the background when current page changes
-    LaunchedEffect(pagerState.currentPage, searchPhotos.itemCount) {
+    // 2. Fetch Large Image Details on demand and preload neighboring images
+    LaunchedEffect(pagerState.currentPage, keywordPhotos.size) {
         val imageLoader = context.imageLoader
         val prevIndex = pagerState.currentPage - 1
         val nextIndex = pagerState.currentPage + 1
         listOf(pagerState.currentPage, prevIndex, nextIndex).forEach { index ->
-            if (index in 0 until searchPhotos.itemCount) {
-                val photo = searchPhotos[index]
+            if (index in keywordPhotos.indices) {
+                val photo = keywordPhotos[index]
                 if (photo != null) {
-                    // Trigger background fetch of full metadata details
                     viewModel.getImageDetails(photo.imageKey)
 
                     val url = photo.thumbnailUrl?.replace("/Th/", "/L/")
@@ -170,31 +135,34 @@ fun SearchPhotoDetailScreen(
         }
     }
 
-    // Dynamic background color state extracted using Palette API
-    var dominantColor by remember { mutableStateOf(Color.Black) }
+    // 3. Adaptive Aesthetic Palette Background Generation
+    var dominantColor by remember { mutableStateOf(Color.DarkGray) }
     val animatedBgColor by animateColorAsState(
-        targetValue = dominantColor.copy(alpha = 0.85f),
-        animationSpec = tween(durationMillis = 500),
-        label = "bgColor"
+        targetValue = dominantColor.copy(alpha = 0.25f),
+        animationSpec = tween(durationMillis = 650),
+        label = "BgColorAnimation"
     )
 
-    // Trigger Palette extraction when current photo changes
-    LaunchedEffect(currentPhoto) {
+    LaunchedEffect(currentPhoto?.thumbnailUrl) {
         currentPhoto?.thumbnailUrl?.let { url ->
-            val loader = context.imageLoader
-            val req = ImageRequest.Builder(context)
-                .data(url)
-                .allowHardware(false)
-                .build()
-            val result = loader.execute(req)
-            if (result is SuccessResult) {
-                val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
-                if (bitmap != null) {
-                    withContext(Dispatchers.Default) {
-                        val palette = Palette.from(bitmap).generate()
-                        val dom = palette.getDominantColor(Color.Black.toArgb())
-                        dominantColor = Color(dom)
+            withContext(Dispatchers.IO) {
+                try {
+                    val loader = context.imageLoader
+                    val req = ImageRequest.Builder(context)
+                        .data(url)
+                        .allowHardware(false)
+                        .build()
+                    val result = loader.execute(req)
+                    if (result is SuccessResult) {
+                        val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+                        if (bitmap != null) {
+                            Palette.from(bitmap).generate().let { palette ->
+                                dominantColor = Color(palette.getDominantColor(Color.DarkGray.toArgb()))
+                            }
+                        }
                     }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
         }
@@ -210,7 +178,7 @@ fun SearchPhotoDetailScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Dynamic Radial Gradient Overlay matching the photo's dominant color
+        // Dynamic Radial Gradient Overlay
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -228,7 +196,7 @@ fun SearchPhotoDetailScreen(
             modifier = Modifier.fillMaxSize(),
             pageSpacing = 16.dp
         ) { page ->
-            val photo = if (page < searchPhotos.itemCount) searchPhotos[page] else null
+            val photo = if (page in keywordPhotos.indices) keywordPhotos[page] else null
             if (photo != null) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -316,7 +284,7 @@ fun SearchPhotoDetailScreen(
                 if (albumKey != null) {
                     Button(
                         onClick = {
-                            onNavigateToPhotoDetail(albumKey, currentPhoto.imageKey)
+                            onNavigateToGallery(albumKey, currentPhoto.imageKey)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = SurfaceGlass),
                         shape = RoundedCornerShape(16.dp),
@@ -448,51 +416,33 @@ fun SearchPhotoDetailScreen(
                             }
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Collections,
-                                contentDescription = "Go to Gallery",
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = "Jump to Album",
                                 tint = Color.White,
                                 modifier = Modifier.size(26.dp)
                             )
                         }
 
-                        IconButton(
-                            onClick = { showExifSheet = true }
-                        ) {
+                        IconButton(onClick = { showExifSheet = true }) {
                             Icon(
                                 imageVector = Icons.Default.Info,
-                                contentDescription = "Info Details",
+                                contentDescription = "Metadata Specs",
                                 tint = Color.White,
                                 modifier = Modifier.size(26.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    val footerTitle = currentPhoto.title ?: currentPhoto.caption ?: ""
-                    val footerText = if (footerTitle.trim().isNotEmpty()) {
-                        "Image ${pagerState.currentPage + 1} of ${searchPhotos.itemCount} • ${footerTitle.trim()} • Photo by ${nickname ?: "Owner"}"
-                    } else {
-                        "Image ${pagerState.currentPage + 1} of ${searchPhotos.itemCount} • Photo by ${nickname ?: "Owner"}"
-                    }
-                    Text(
-                        text = footerText,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
                     if (cameraDetails.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = cameraDetails,
-                            color = Color.White.copy(alpha = 0.6f),
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .padding(top = 10.dp)
+                                .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
                 }
@@ -582,6 +532,7 @@ fun SearchPhotoDetailScreen(
                                 onClick = {
                                     val photoAlbumKey = currentPhoto.uris?.album?.substringAfterLast("/") ?: ""
                                     if (photoAlbumKey.isNotEmpty()) {
+                                        showExifSheet = false
                                         onNavigateToGallery(photoAlbumKey, currentPhoto.imageKey)
                                     } else {
                                         Toast.makeText(context, "Loading photo details, please wait...", Toast.LENGTH_SHORT).show()
@@ -597,8 +548,7 @@ fun SearchPhotoDetailScreen(
                         }
                     }
 
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 12.dp))
 
                     Text(text = "EXIF Metadata", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -691,73 +641,89 @@ fun SearchPhotoDetailScreen(
                                             modifier = Modifier.weight(1f)
                                         )
                                     }
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        val fileName = currentPhoto.fileName ?: currentPhoto.title ?: "Unknown"
-                                        ExifCardItem(
-                                            icon = Icons.Default.InsertDriveFile,
-                                            label = "File Name",
-                                            value = fileName,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        val sizeBytes = currentPhoto.originalSize
-                                        val sizeStr = if (sizeBytes != null) {
-                                            if (sizeBytes > 1024 * 1024) String.format(java.util.Locale.US, "%.2f MB", sizeBytes / (1024.0 * 1024.0))
-                                            else String.format(java.util.Locale.US, "%.2f KB", sizeBytes / 1024.0)
-                                        } else "Unknown"
-                                        ExifCardItem(
-                                            icon = Icons.Default.DataUsage,
-                                            label = "File Size",
-                                            value = sizeStr,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = "Tags",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(alpha = 0.5f),
-                                        modifier = Modifier.padding(bottom = 8.dp)
-                                    )
-
-
-
-                                    val tags = remember(currentPhoto, updatedKeywordsMap[currentPhoto.imageKey]) {
-                                        val keywordsStr = updatedKeywordsMap[currentPhoto.imageKey] ?: currentPhoto.keywords ?: ""
-                                        keywordsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                                    }
-
-                                    if (tags.isNotEmpty()) {
-                                        com.smugview.app.ui.grid.OptInFlowRow(
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            tags.forEach { tag ->
-                                                Box(
-                                                    modifier = Modifier
-                                                        .padding(4.dp)
-                                                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-                                                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                                                ) {
-                                                    Text(text = tag, color = Color.White, fontSize = 11.sp)
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        Text(text = "No tags available.", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp)
-                                    }
-
-                                    // Add Tag section removed as requested
                                 }
                             }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Metadata details
+                    Text(
+                        text = "Metadata Specs",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val fileName = currentPhoto.fileName ?: currentPhoto.title ?: "Unknown"
+                        if (fileName.isNotEmpty()) {
+                            ExifCardItem(
+                                icon = Icons.Default.InsertDriveFile,
+                                label = "File Name",
+                                value = fileName,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val sizeBytes = currentPhoto.originalSize
+                            val sizeStr = if (sizeBytes != null) {
+                                if (sizeBytes > 1024 * 1024) String.format(java.util.Locale.US, "%.2f MB", sizeBytes / (1024.0 * 1024.0))
+                                else String.format(java.util.Locale.US, "%.2f KB", sizeBytes / 1024.0)
+                            } else "Unknown"
+                            ExifCardItem(
+                                icon = Icons.Default.DataUsage,
+                                label = "File Size",
+                                value = sizeStr,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Tags",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        val tags = remember(currentPhoto, updatedKeywordsMap[currentPhoto.imageKey]) {
+                            val keywordsStr = updatedKeywordsMap[currentPhoto.imageKey] ?: currentPhoto.keywords ?: ""
+                            keywordsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        }
+
+                        if (tags.isNotEmpty()) {
+                            com.smugview.app.ui.grid.OptInFlowRow(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                tags.forEach { tag ->
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(4.dp)
+                                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                                            .clickable {
+                                                // Clear selected tags, select ONLY this clicked tag, and navigate to keyword images search page
+                                                viewModel.selectSingleTag(tag)
+                                                showExifSheet = false
+                                                onNavigateToKeywordImages()
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(text = tag, color = Color.White, fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(text = "No tags available.", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp)
                         }
                     }
                 }

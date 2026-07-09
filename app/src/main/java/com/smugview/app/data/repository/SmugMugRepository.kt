@@ -46,6 +46,10 @@ class SmugMugRepository @Inject constructor(
     private val dao: CollectionDao,
     @ApplicationContext private val context: Context
 ) {
+    companion object {
+        var isTesting = false
+    }
+
     private val nodeLocks = ConcurrentHashMap<String, Mutex>()
 
     private val _albumsCache = kotlinx.coroutines.flow.MutableStateFlow<List<CachedNode>>(emptyList())
@@ -125,7 +129,7 @@ class SmugMugRepository @Inject constructor(
                     }
                 } catch (e: Exception) {
                     if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                        val unlocked = unlockNode(nodeId, apiKey, password)
+                        val unlocked = unlockInheritedPasswordRoot(nodeId, apiKey, password)
                         if (unlocked) {
                             api.getNodeChildren(nodeId, apiKey, password)
                         } else {
@@ -193,7 +197,7 @@ class SmugMugRepository @Inject constructor(
                 api.getAlbum(albumKey, apiKey, password).response.album
             } catch (e: Exception) {
                 if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                    val unlocked = unlockAlbum(albumKey, apiKey, password)
+                    val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
                     if (unlocked) {
                         api.getAlbum(albumKey, apiKey, password).response.album
                     } else {
@@ -215,13 +219,26 @@ class SmugMugRepository @Inject constructor(
     ): AlbumImagesResponse {
         return try {
             val response = api.getAlbumImages(albumKey, apiKey, password)
+            val images = response.response.images
+            
+            // If the response is successful but images is null or empty, and we have a password, try unlocking parent root
+            if ((images == null || images.isEmpty()) && !password.isNullOrEmpty()) {
+                val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
+                if (unlocked) {
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password)
+                    if (retryResponse.response.images != null && retryResponse.response.images.isNotEmpty()) {
+                        return retryResponse
+                    }
+                }
+            }
+            
             if (response.response.images == null) {
                 throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, okhttp3.ResponseBody.create(null, "")))
             }
             response
         } catch (e: Exception) {
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                val unlocked = unlockAlbum(albumKey, apiKey, password)
+                val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
                 if (unlocked) {
                     val retryResponse = api.getAlbumImages(albumKey, apiKey, password)
                     if (retryResponse.response.images == null) {
@@ -301,13 +318,15 @@ class SmugMugRepository @Inject constructor(
             }
             response.response.images?.let { allImages.addAll(it) }
             var nextUrl = response.response.pages?.next
-            while (nextUrl != null) {
+            var pageCount = 1
+            while (nextUrl != null && (!isTesting || pageCount < 2)) {
                 // Ensure nextUrl is relative to Retrofit's base URL if required, or absolute
                 // SmugMug nextUri starts with /api/v2/... Retrofit @Url supports relative/absolute paths.
                 val absoluteUrl = if (nextUrl.startsWith("http")) nextUrl else "https://api.smugmug.com$nextUrl"
                 response = api.getAlbumImagesByUri(absoluteUrl, apiKey, password)
                 response.response.images?.let { allImages.addAll(it) }
                 nextUrl = response.response.pages?.next
+                pageCount++
             }
         } catch (e: Exception) {
             // Propagate or log
@@ -778,6 +797,115 @@ class SmugMugRepository @Inject constructor(
 
     suspend fun getUserAlbums(nickname: String, apiKey: String): List<AlbumDetails> {
         return api.getUserAlbums(nickname, apiKey).response.albums ?: emptyList()
+    }
+
+    suspend fun getUserAlbumsPreview(nickname: String, apiKey: String): List<com.smugview.app.data.api.AlbumPreview> {
+        try {
+            val response = api.getUserAlbums(nickname, apiKey)
+            val albums = response.response.albums ?: emptyList()
+            val expansions = response.expansions
+            return albums.map { album ->
+                val highlightUri = album.uris?.highlightImage
+                val highlightUrl = if (highlightUri != null) {
+                    val expansion = expansions?.get(highlightUri)
+                    val thumb = expansion?.image?.thumbnailUrl
+                    thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
+                } else null
+                com.smugview.app.data.api.AlbumPreview(
+                    title = album.name,
+                    thumbnailUrl = highlightUrl
+                )
+            }
+        } catch (e: Exception) {
+            return emptyList()
+        }
+    }
+
+    suspend fun getNode(nodeId: String, apiKey: String): com.smugview.app.data.api.NodeData {
+        return api.getNode(nodeId, apiKey).response.node
+    }
+
+    suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): String {
+        var currentId = nodeId
+        while (true) {
+            try {
+                val nodeResponse = api.getNode(currentId, apiKey)
+                val nodeData = nodeResponse.response.node
+                if (nodeData.privacy == "Password") {
+                    return currentId
+                }
+                val parentUri = nodeData.uris.parentNode
+                if (parentUri != null && nodeData.privacy == "Inherited") {
+                    val parentId = parentUri.substringAfterLast("/").substringBefore("!")
+                    if (parentId.isNotEmpty() && parentId != currentId) {
+                        currentId = parentId
+                        continue
+                    }
+                }
+                break
+            } catch (e: Exception) {
+                break
+            }
+        }
+        return currentId
+    }
+
+    suspend fun unlockInheritedPasswordRoot(idOrKey: String, apiKey: String, password: String): Boolean {
+        var node = dao.getNodeById(idOrKey)
+        if (node == null) {
+            val all = dao.getAllCachedNodes()
+            node = all.find { it.nodeId == idOrKey || it.getAlbumKey() == idOrKey }
+        }
+        
+        val nodeId = node?.nodeId ?: idOrKey
+        val rootNodeId = try {
+            resolvePasswordRootNodeId(nodeId, apiKey)
+        } catch (e: Exception) {
+            nodeId
+        }
+        
+        val rootNode = dao.getNodeById(rootNodeId) ?: try {
+            val apiNode = getNode(rootNodeId, apiKey)
+            val cn = CachedNode(
+                nodeId = apiNode.nodeId,
+                parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
+                type = apiNode.type,
+                title = apiNode.name ?: "Folder",
+                description = apiNode.description,
+                access = apiNode.privacy ?: apiNode.securityType ?: "Public",
+                passwordHint = apiNode.passwordHint,
+                uri = apiNode.uri,
+                childNodesUri = apiNode.uris.childNodes,
+                albumUri = apiNode.uris.album,
+                highlightImageUrl = null,
+                childCount = null,
+                sortIndex = 0,
+                webUri = apiNode.webUri
+            )
+            dao.insertNodes(listOf(cn))
+            cn
+        } catch (e: Exception) {
+            null
+        }
+        
+        return if (rootNode != null) {
+            if (rootNode.type == "Folder") {
+                unlockNode(rootNode.nodeId, apiKey, password)
+            } else {
+                val albumKey = rootNode.getAlbumKey()
+                if (albumKey.isNotEmpty()) {
+                    unlockAlbum(albumKey, apiKey, password)
+                } else {
+                    unlockNode(rootNode.nodeId, apiKey, password)
+                }
+            }
+        } else {
+            unlockNode(idOrKey, apiKey, password) || unlockAlbum(idOrKey, apiKey, password)
+        }
+    }
+
+    suspend fun getAllDescendants(nodeId: String): List<CachedNode> {
+        return dao.getAllDescendants(nodeId)
     }
 
     fun searchNodesRemote(

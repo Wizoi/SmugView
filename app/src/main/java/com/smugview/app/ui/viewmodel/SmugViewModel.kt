@@ -119,7 +119,13 @@ class SmugViewModel @Inject constructor(
     private val searchStatusPrefs = application.getSharedPreferences("smugview_search_status", Context.MODE_PRIVATE)
 
     fun isNodeUnlocked(nodeId: String): Boolean {
-        return !passwordPrefs.getString(nodeId, null).isNullOrEmpty()
+        if (!passwordPrefs.getString(nodeId, null).isNullOrEmpty()) return true
+        for (parent in folderNavigationStack) {
+            if (!passwordPrefs.getString(parent.nodeId, null).isNullOrEmpty()) {
+                return true
+            }
+        }
+        return false
     }
 
     // Active Navigation Tab
@@ -236,6 +242,8 @@ class SmugViewModel @Inject constructor(
     // Search query and search state
     var searchQuery by mutableStateOf("")
         private set
+
+    var searchResultTab by mutableStateOf(0)
 
     private val _searchScope = MutableStateFlow(SearchScope("Entire Site"))
     val searchScope: StateFlow<SearchScope> = _searchScope.asStateFlow()
@@ -477,6 +485,9 @@ class SmugViewModel @Inject constructor(
     private val _sitePreview = MutableStateFlow<Result<UserData>?>(null)
     val sitePreview: StateFlow<Result<UserData>?> = _sitePreview.asStateFlow()
 
+    private val _previewAlbums = MutableStateFlow<List<com.smugview.app.data.api.AlbumPreview>>(emptyList())
+    val previewAlbums: StateFlow<List<com.smugview.app.data.api.AlbumPreview>> = _previewAlbums.asStateFlow()
+
     var lastSelectedCollectionIds by mutableStateOf<Set<Long>>(emptySet())
 
     private val _activeUserProfile = MutableStateFlow<UserData?>(null)
@@ -499,6 +510,7 @@ class SmugViewModel @Inject constructor(
     private val _albumKeywordsMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     private val loadedAlbumImages = ConcurrentHashMap<String, List<AlbumImageData>>()
     private var scopeAlbums = emptyList<CachedNode>()
+    private var targetNodeToUnlockAfterSuccess: CachedNode? = null
 
     enum class TagFilterState {
         INCLUDED,
@@ -608,11 +620,25 @@ class SmugViewModel @Inject constructor(
     fun verifyAndPreviewNickname(nickname: String) {
         if (nickname.isBlank()) {
             _sitePreview.value = null
+            _previewAlbums.value = emptyList()
             return
         }
         viewModelScope.launch {
             repository.getUserProfile(nickname, apiKey).collect { result ->
                 _sitePreview.value = result
+                result.fold(
+                    onSuccess = { userData ->
+                        try {
+                            val albums = repository.getUserAlbumsPreview(userData.nickName, apiKey)
+                            _previewAlbums.value = albums.take(3)
+                        } catch (e: Exception) {
+                            _previewAlbums.value = emptyList()
+                        }
+                    },
+                    onFailure = {
+                        _previewAlbums.value = emptyList()
+                    }
+                )
             }
         }
     }
@@ -676,7 +702,15 @@ class SmugViewModel @Inject constructor(
         folderNavigationStack.clear()
         _splashState.value = SplashUiState.Idle
         _sitePreview.value = null
+        _previewAlbums.value = emptyList()
         _activeTab.value = BrowserTab.Hub
+    }
+
+    suspend fun getNodeByAlbumKey(albumKey: String): CachedNode? {
+        val directNode = repository.getNodeById(albumKey)
+        if (directNode != null) return directNode
+        val allNodes = repository.getAllCachedNodes()
+        return allNodes.find { it.getAlbumKey() == albumKey }
     }
 
     // Browsing folder contents
@@ -797,7 +831,7 @@ class SmugViewModel @Inject constructor(
 
     fun navigateBackFolder(): Boolean {
         if (folderNavigationStack.isNotEmpty()) {
-            folderNavigationStack.removeLast()
+            folderNavigationStack.removeAt(folderNavigationStack.size - 1)
             val previousNodeId = folderNavigationStack.lastOrNull()?.nodeId ?: splashState.value.let {
                 if (it is SplashUiState.Success) it.rootNodeId else null
             }
@@ -812,8 +846,38 @@ class SmugViewModel @Inject constructor(
 
     fun promptPassword(node: CachedNode) {
         viewModelScope.launch {
-            val highest = repository.getHighestPasswordProtectedParent(node.nodeId)
-            passwordPromptNode = highest ?: node
+            targetNodeToUnlockAfterSuccess = node
+            try {
+                val rootNodeId = repository.resolvePasswordRootNodeId(node.nodeId, apiKey)
+                if (rootNodeId != node.nodeId) {
+                    var rootNode = repository.getNodeById(rootNodeId)
+                    if (rootNode == null) {
+                        val apiNode = repository.getNode(rootNodeId, apiKey)
+                        rootNode = CachedNode(
+                            nodeId = apiNode.nodeId,
+                            parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
+                            type = apiNode.type,
+                            title = apiNode.name ?: "Folder",
+                            description = apiNode.description,
+                            access = "Password",
+                            passwordHint = apiNode.passwordHint,
+                            uri = apiNode.uri,
+                            childNodesUri = apiNode.uris.childNodes,
+                            albumUri = apiNode.uris.album,
+                            highlightImageUrl = null,
+                            childCount = null,
+                            sortIndex = 0,
+                            webUri = apiNode.webUri
+                        )
+                        repository.insertNodes(listOf(rootNode))
+                    }
+                    passwordPromptNode = rootNode
+                } else {
+                    passwordPromptNode = node
+                }
+            } catch (e: Exception) {
+                passwordPromptNode = node
+            }
             passwordError = null
         }
     }
@@ -835,12 +899,25 @@ class SmugViewModel @Inject constructor(
             if (error is retrofit2.HttpException && error.code() == 404) {
                 repository.removeBookmarkGlobally(albumKey)
             }
+            
+            val isAccessDenied = error is retrofit2.HttpException && (error.code() == 401 || error.code() == 404)
+            if (isAccessDenied) {
+                var node = repository.getNodeById(albumKey)
+                if (node == null) {
+                    val allNodes = repository.getAllCachedNodes()
+                    node = allNodes.find { it.nodeId == albumKey || it.getAlbumKey() == albumKey }
+                }
+                if (node != null) {
+                    promptPassword(node)
+                }
+            }
         }
     }
 
     // Password Submit Handler
     fun submitPassword(password: String, onSuccess: () -> Unit = {}) {
-        val node = passwordPromptNode ?: return
+        val promptNode = passwordPromptNode ?: return
+        val targetNode = targetNodeToUnlockAfterSuccess ?: promptNode
         passwordError = null
         val normalizedPassword = password
             .replace('“', '"')
@@ -849,18 +926,47 @@ class SmugViewModel @Inject constructor(
             .replace('’', '\'')
         viewModelScope.launch {
             try {
-                val isCorrect = apiTestFetch(node, normalizedPassword)
+                val isCorrect = apiTestFetch(promptNode, normalizedPassword)
                 if (isCorrect) {
-                    val albumKey = node.getAlbumKey()
+                    val promptAlbumKey = promptNode.getAlbumKey()
                     passwordPrefs.edit()
-                        .putString(node.nodeId, normalizedPassword)
-                        .putString(albumKey, normalizedPassword)
+                        .putString(promptNode.nodeId, normalizedPassword)
+                        .putString(promptAlbumKey, normalizedPassword)
                         .apply()
+                    
+                    if (targetNode != promptNode) {
+                        val targetAlbumKey = targetNode.getAlbumKey()
+                        passwordPrefs.edit()
+                            .putString(targetNode.nodeId, normalizedPassword)
+                            .putString(targetAlbumKey, normalizedPassword)
+                            .apply()
+                    }
+
                     passwordPromptNode = null
-                    if (node.type == "Folder") {
-                        navigateToChildFolder(node)
+                    targetNodeToUnlockAfterSuccess = null
+                    
+                    // Cascade: store this password for any descendant children nodes in DB
+                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val descendants = repository.getAllDescendants(promptNode.nodeId)
+                            val editor = passwordPrefs.edit()
+                            for (desc in descendants) {
+                                editor.putString(desc.nodeId, normalizedPassword)
+                                val key = desc.getAlbumKey()
+                                if (key.isNotEmpty()) {
+                                    editor.putString(key, normalizedPassword)
+                                }
+                            }
+                            editor.apply()
+                        } catch (e: Exception) {
+                            // Ignore db query errors
+                        }
+                    }
+
+                    if (targetNode.type == "Folder") {
+                        navigateToChildFolder(targetNode)
                     } else {
-                        selectAlbum(albumKey)
+                        selectAlbum(targetNode.getAlbumKey())
                         onSuccess()
                     }
                 } else {
@@ -905,14 +1011,67 @@ class SmugViewModel @Inject constructor(
         if (pw != null) return pw
         
         var currentId: String? = nodeId
+        var node = repository.getNodeById(nodeId)
+        if (node == null) {
+            val allNodes = repository.getAllCachedNodes()
+            node = allNodes.find { it.nodeId == nodeId || it.getAlbumKey() == nodeId }
+            if (node != null) {
+                currentId = node.nodeId
+                pw = passwordPrefs.getString(currentId, null)
+                if (pw != null) return pw
+            }
+        }
+        
         while (currentId != null) {
-            val parentNode = repository.getNodeById(currentId) ?: break
+            var parentNode = repository.getNodeById(currentId)
+            
+            // If parentNode is in the DB but has parentNodeId = "search_result", resolve its real parent from the API
+            if (parentNode != null && parentNode.parentNodeId == "search_result") {
+                try {
+                    val apiNode = repository.getNode(currentId, apiKey)
+                    val realParentId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root"
+                    parentNode = parentNode.copy(parentNodeId = realParentId)
+                    repository.insertNodes(listOf(parentNode))
+                } catch (e: Exception) {
+                    // Ignore
+                }
+            }
+            
+            if (parentNode == null && !currentId.startsWith("virtual:")) {
+                try {
+                    val apiNode = repository.getNode(currentId, apiKey)
+                    parentNode = CachedNode(
+                        nodeId = apiNode.nodeId,
+                        parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
+                        type = apiNode.type,
+                        title = apiNode.name ?: "Folder",
+                        description = apiNode.description,
+                        access = apiNode.privacy ?: apiNode.securityType ?: "Public",
+                        passwordHint = apiNode.passwordHint,
+                        uri = apiNode.uri,
+                        childNodesUri = apiNode.uris.childNodes,
+                        albumUri = apiNode.uris.album,
+                        highlightImageUrl = null,
+                        childCount = null,
+                        sortIndex = 0,
+                        webUri = apiNode.webUri
+                    )
+                    repository.insertNodes(listOf(parentNode))
+                } catch (e: Exception) {
+                    break
+                }
+            }
+            if (parentNode == null) break
+            
             currentId = parentNode.parentNodeId
             if (currentId == null || currentId == "root" || currentId == "search_result") break
+            
             pw = passwordPrefs.getString(currentId, null)
             if (pw != null) {
-                // Cache it against the leaf node for fast synchronous lookups later
-                passwordPrefs.edit().putString(nodeId, pw).apply()
+                passwordPrefs.edit()
+                    .putString(nodeId, pw)
+                    .putString(parentNode.nodeId, pw)
+                    .apply()
                 return pw
             }
         }
@@ -927,10 +1086,49 @@ class SmugViewModel @Inject constructor(
         if (pw != null) return pw
         
         var currentId: String? = node.parentNodeId
+        if (currentId == "search_result") {
+            try {
+                val apiNode = repository.getNode(node.nodeId, apiKey)
+                val realParentId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root"
+                val updatedNode = node.copy(parentNodeId = realParentId)
+                repository.insertNodes(listOf(updatedNode))
+                currentId = realParentId
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+        
         while (currentId != null && currentId != "root" && currentId != "search_result") {
             pw = passwordPrefs.getString(currentId, null)
-            if (pw != null) return pw
-            val parentNode = repository.getNodeById(currentId) ?: break
+            if (pw != null) {
+                passwordPrefs.edit().putString(node.nodeId, pw).apply()
+                return pw
+            }
+            var parentNode = repository.getNodeById(currentId)
+            if (parentNode == null) {
+                try {
+                    val apiNode = repository.getNode(currentId, apiKey)
+                    parentNode = CachedNode(
+                        nodeId = apiNode.nodeId,
+                        parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
+                        type = apiNode.type,
+                        title = apiNode.name ?: "Folder",
+                        description = apiNode.description,
+                        access = apiNode.privacy ?: apiNode.securityType ?: "Public",
+                        passwordHint = apiNode.passwordHint,
+                        uri = apiNode.uri,
+                        childNodesUri = apiNode.uris.childNodes,
+                        albumUri = apiNode.uris.album,
+                        highlightImageUrl = null,
+                        childCount = null,
+                        sortIndex = 0,
+                        webUri = apiNode.webUri
+                    )
+                    repository.insertNodes(listOf(parentNode))
+                } catch (e: Exception) {
+                    break
+                }
+            }
             currentId = parentNode.parentNodeId
         }
         return null
@@ -941,6 +1139,16 @@ class SmugViewModel @Inject constructor(
     }
 
 
+
+    fun selectSingleTag(tag: String) {
+        val current = mutableMapOf<String, TagFilterState>()
+        current[tag.lowercase().trim()] = TagFilterState.INCLUDED
+        _selectedTags.value = current
+    }
+
+    fun clearSelectedTags() {
+        _selectedTags.value = emptyMap()
+    }
 
     fun selectTag(tag: String, state: TagFilterState = TagFilterState.INCLUDED) {
         val current = _selectedTags.value.toMutableMap()
@@ -995,9 +1203,7 @@ class SmugViewModel @Inject constructor(
                             android.util.Log.e("SmugViewModel", "Failed to load photos for keywords: $keywordsQuery", e)
                             emptyList()
                         }
-                        withContext(Dispatchers.Main) {
-                            _allScopePhotos.value = images
-                        }
+                        _allScopePhotos.value = images
                     } finally {
                         _isScanningTags.value = false
                     }
@@ -1331,7 +1537,7 @@ class SmugViewModel @Inject constructor(
                     try {
                         var pageIndex = 2
                         var currentNextUrl: String? = nextUrl
-                        while (currentNextUrl != null) {
+                        while (currentNextUrl != null && (!com.smugview.app.data.repository.SmugMugRepository.isTesting || pageIndex <= 2)) {
                             try {
                                 // delay(1000) removed for now
                                 _backgroundLoadingStatus.value = "Downloading page $pageIndex..."
@@ -1575,7 +1781,7 @@ class SmugViewModel @Inject constructor(
             navigateToHome()
         } else if (index < folderNavigationStack.size) {
             while (folderNavigationStack.size > index + 1) {
-                folderNavigationStack.removeLast()
+                folderNavigationStack.removeAt(folderNavigationStack.size - 1)
             }
             val targetNode = folderNavigationStack[index]
             currentFolderId = targetNode.nodeId

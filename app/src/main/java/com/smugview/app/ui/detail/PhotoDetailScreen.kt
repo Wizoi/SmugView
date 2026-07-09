@@ -116,6 +116,7 @@ fun PhotoDetailScreen(
     onBackClick: () -> Unit,
     onNavigateToFolder: () -> Unit,
     onNavigateToGallery: (albumKey: String, albumTitle: String) -> Unit,
+    onNavigateToKeywordImages: () -> Unit,
     viewModel: SmugViewModel = hiltViewModel()
 ) {
     LaunchedEffect(albumKey, targetImageKey) {
@@ -740,9 +741,6 @@ fun PhotoDetailScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
 
-                    var showAddTagDialog by remember { mutableStateOf(false) }
-                    var newTagInput by remember { mutableStateOf("") }
-                    var isSavingTag by remember { mutableStateOf(false) }
 
                     val tags = remember(currentPhoto, updatedKeywordsMap[currentPhoto.imageKey]) {
                         val keywordsStr = updatedKeywordsMap[currentPhoto.imageKey] ?: currentPhoto.keywords ?: ""
@@ -758,6 +756,11 @@ fun PhotoDetailScreen(
                                     modifier = Modifier
                                         .padding(4.dp)
                                         .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                                        .clickable {
+                                            viewModel.selectSingleTag(tag)
+                                            showExifSheet = false
+                                            onNavigateToKeywordImages()
+                                        }
                                         .padding(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text(text = tag, color = Color.White, fontSize = 11.sp)
@@ -768,74 +771,7 @@ fun PhotoDetailScreen(
                         Text(text = "No tags available.", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp)
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = { showAddTagDialog = true },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                            contentColor = MaterialTheme.colorScheme.primary
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.height(36.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add Tag", modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "Add Tag", fontSize = 12.sp)
-                    }
-
-                    if (showAddTagDialog) {
-                        AlertDialog(
-                            onDismissRequest = { if (!isSavingTag) showAddTagDialog = false },
-                            title = { Text(text = "Add Tag to Photo") },
-                            text = {
-                                OutlinedTextField(
-                                    value = newTagInput,
-                                    onValueChange = { newTagInput = it },
-                                    label = { Text("Tag Name") },
-                                    singleLine = true,
-                                    enabled = !isSavingTag,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        if (newTagInput.trim().isNotEmpty()) {
-                                            isSavingTag = true
-                                            viewModel.addKeywordToImage(currentPhoto.imageKey, newTagInput) { success ->
-                                                isSavingTag = false
-                                                if (success) {
-                                                    val currentKeywordsStr = updatedKeywordsMap[currentPhoto.imageKey] ?: currentPhoto.keywords ?: ""
-                                                    val currentKeywords = currentKeywordsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
-                                                    currentKeywords.add(newTagInput.trim())
-                                                    updatedKeywordsMap[currentPhoto.imageKey] = currentKeywords.joinToString(", ")
-                                                    showAddTagDialog = false
-                                                    newTagInput = ""
-                                                } else {
-                                                    Toast.makeText(context, "Failed to update tags on SmugMug", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                        }
-                                    },
-                                    enabled = !isSavingTag && newTagInput.trim().isNotEmpty()
-                                ) {
-                                    if (isSavingTag) {
-                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
-                                    } else {
-                                        Text("Add")
-                                    }
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(
-                                    onClick = { showAddTagDialog = false },
-                                    enabled = !isSavingTag
-                                ) {
-                                    Text("Cancel")
-                                }
-                            }
-                        )
-                    }
+                    // Add Tag section removed as requested
 
                     Spacer(modifier = Modifier.height(24.dp))
                 }

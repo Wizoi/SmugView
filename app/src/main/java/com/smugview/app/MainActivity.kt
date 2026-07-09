@@ -34,6 +34,8 @@ import com.smugview.app.ui.browser.BrowserScreen
 import com.smugview.app.ui.detail.PhotoDetailScreen
 import com.smugview.app.ui.detail.SearchPhotoDetailScreen
 import com.smugview.app.ui.grid.PhotoGridScreen
+import com.smugview.app.ui.explorer.KeywordImagesScreen
+import com.smugview.app.ui.detail.KeywordPhotoDetailScreen
 import com.smugview.app.ui.theme.SmugViewTheme
 import coil.imageLoader
 import dagger.hilt.android.AndroidEntryPoint
@@ -93,6 +95,42 @@ fun SmugViewNavigation() {
                     },
                     onNavigateToPhotoDetail = { albumKey, imageKey ->
                         navController.navigate("photo_detail/$albumKey/$imageKey")
+                    },
+                    onNavigateToKeywordImages = {
+                        navController.navigate("keyword_images")
+                    }
+                )
+            }
+            composable("keyword_images") {
+                KeywordImagesScreen(
+                    viewModel = viewModel,
+                    onBackClick = { navController.navigateUp() },
+                    onNavigateToPhotoDetail = { imageKey, index ->
+                        navController.navigate("keyword_photo_detail/$imageKey?index=$index")
+                    }
+                )
+            }
+            composable(
+                route = "keyword_photo_detail/{imageKey}?index={index}",
+                arguments = listOf(
+                    navArgument("imageKey") { type = NavType.StringType },
+                    navArgument("index") { type = NavType.IntType; defaultValue = 0 }
+                )
+            ) { backStackEntry ->
+                val imageKey = backStackEntry.arguments?.getString("imageKey") ?: ""
+                val index = backStackEntry.arguments?.getInt("index") ?: 0
+                KeywordPhotoDetailScreen(
+                    targetImageKey = imageKey,
+                    initialIndex = index,
+                    viewModel = viewModel,
+                    onBackClick = {
+                        navController.navigateUp()
+                    },
+                    onNavigateToKeywordImages = {
+                        navController.navigateUp()
+                    },
+                    onNavigateToGallery = { key, targetKey ->
+                        navController.navigate("photo_detail/$key/$targetKey")
                     }
                 )
             }
@@ -140,7 +178,12 @@ fun SmugViewNavigation() {
                     onNavigateToGallery = { key, title ->
                         navController.navigate("photo_grid/$key/$title") {
                             popUpTo("browser") { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
+                    },
+                    onNavigateToKeywordImages = {
+                        navController.navigate("keyword_images")
                     }
                 )
             }

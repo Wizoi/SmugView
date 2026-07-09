@@ -36,6 +36,9 @@ import com.smugview.app.ui.theme.SurfaceGlass
 import com.smugview.app.ui.viewmodel.SplashUiState
 import com.smugview.app.ui.viewmodel.SmugViewModel
 import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.text.style.TextOverflow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +49,8 @@ fun SiteExplorerScreen(
     val uiState by viewModel.splashState.collectAsState()
     val recentSites by viewModel.recentSites.collectAsState()
     val sitePreview by viewModel.sitePreview.collectAsState()
+    val previewAlbums by viewModel.previewAlbums.collectAsState()
+    val focusManager = LocalFocusManager.current
 
     var nicknameQuery by remember { mutableStateOf("") }
 
@@ -70,6 +75,12 @@ fun SiteExplorerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(DeepDarkBackground)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                focusManager.clearFocus()
+            }
     ) {
         // Aesthetic Top Radial Gradient
         Box(
@@ -201,6 +212,7 @@ fun SiteExplorerScreen(
                     onSuccess = { userData ->
                         ProfilePreviewCard(
                             userData = userData,
+                            previewAlbums = previewAlbums,
                             isLoading = uiState is SplashUiState.Loading,
                             onClickEnter = { viewModel.selectSite(userData.nickName) }
                         )
@@ -230,73 +242,9 @@ fun SiteExplorerScreen(
 }
 
 @Composable
-fun ProfileAvatar(
-    nickname: String,
-    name: String,
-    bioImageKey: String?,
-    modifier: Modifier = Modifier,
-    textColor: Color = NeonBlue,
-    fontSize: TextUnit = 28.sp
-) {
-    var loadStep by remember(nickname, bioImageKey) {
-        mutableStateOf(if (bioImageKey != null) 0 else 1)
-    }
-
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(SurfaceDark),
-        contentAlignment = Alignment.Center
-    ) {
-        when (loadStep) {
-            0 -> {
-                AsyncImage(
-                    model = "https://photos.smugmug.com/photos/i-${bioImageKey}/0/M/i-${bioImageKey}-M.jpg",
-                    contentDescription = "BioImage API",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    onError = {
-                        loadStep = 1
-                    }
-                )
-            }
-            1 -> {
-                AsyncImage(
-                    model = "https://${nickname}.smugmug.com/bioimage",
-                    contentDescription = "BioImage Redirect",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    onError = {
-                        loadStep = 2
-                    }
-                )
-            }
-            2 -> {
-                AsyncImage(
-                    model = "https://secure.smugmug.com/users/${nickname}-avatar.jpg",
-                    contentDescription = "Avatar",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    onError = {
-                        loadStep = 3
-                    }
-                )
-            }
-            else -> {
-                Text(
-                    text = name.take(1).uppercase(),
-                    color = textColor,
-                    fontSize = fontSize,
-                    fontWeight = FontWeight.Black
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun ProfilePreviewCard(
     userData: UserData,
+    previewAlbums: List<com.smugview.app.data.api.AlbumPreview> = emptyList(),
     isLoading: Boolean,
     onClickEnter: () -> Unit
 ) {
@@ -315,7 +263,9 @@ fun ProfilePreviewCard(
                 nickname = userData.nickName,
                 name = userData.name,
                 bioImageKey = userData.bioImageKey,
-                modifier = Modifier.size(80.dp)
+                modifier = Modifier.size(80.dp),
+                shape = CircleShape,
+                contentScale = ContentScale.Crop
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -332,6 +282,79 @@ fun ProfilePreviewCard(
                 fontSize = 13.sp,
                 color = Color.White.copy(alpha = 0.5f)
             )
+
+            if (previewAlbums.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(20.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Public Galleries Preview",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                    
+                    TextButton(
+                        onClick = onClickEnter,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.height(28.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = NeonBlue)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("Browse", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = "Browse",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(previewAlbums) { album ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.width(80.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(SurfaceDark)
+                            ) {
+                                AsyncImage(
+                                    model = album.thumbnailUrl ?: "https://secure.smugmug.com/users/${userData.nickName}-avatar.jpg",
+                                    contentDescription = album.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = album.title ?: "",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -367,6 +390,78 @@ fun ProfilePreviewCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProfileAvatar(
+    nickname: String,
+    name: String,
+    bioImageKey: String?,
+    modifier: Modifier = Modifier,
+    textColor: Color = NeonBlue,
+    fontSize: TextUnit = 28.sp,
+    shape: androidx.compose.ui.graphics.Shape = CircleShape,
+    contentScale: ContentScale = ContentScale.Crop
+) {
+    // Prioritize loading the square avatar (loadStep = 0)
+    // 0: secure.smugmug.com/users/{nickname}-avatar.jpg
+    // 1: photos.smugmug.com/photos/i-{bioImageKey}-M.jpg (BioImage)
+    // 2: nickname.smugmug.com/bioimage redirect
+    // 3: Text fallback
+    var loadStep by remember(nickname, bioImageKey) {
+        mutableStateOf(0)
+    }
+
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(SurfaceDark),
+        contentAlignment = Alignment.Center
+    ) {
+        when (loadStep) {
+            0 -> {
+                AsyncImage(
+                    model = "https://secure.smugmug.com/users/${nickname}-avatar.jpg",
+                    contentDescription = "Avatar",
+                    contentScale = contentScale,
+                    modifier = Modifier.fillMaxSize(),
+                    onError = {
+                        loadStep = if (bioImageKey != null) 1 else 2
+                    }
+                )
+            }
+            1 -> {
+                AsyncImage(
+                    model = "https://photos.smugmug.com/photos/i-${bioImageKey}/0/M/i-${bioImageKey}-M.jpg",
+                    contentDescription = "BioImage API",
+                    contentScale = contentScale,
+                    modifier = Modifier.fillMaxSize(),
+                    onError = {
+                        loadStep = 2
+                    }
+                )
+            }
+            2 -> {
+                AsyncImage(
+                    model = "https://${nickname}.smugmug.com/bioimage",
+                    contentDescription = "BioImage Redirect",
+                    contentScale = contentScale,
+                    modifier = Modifier.fillMaxSize(),
+                    onError = {
+                        loadStep = 3
+                    }
+                )
+            }
+            else -> {
+                Text(
+                    text = name.take(1).uppercase(),
+                    color = textColor,
+                    fontSize = fontSize,
+                    fontWeight = FontWeight.Black
+                )
             }
         }
     }

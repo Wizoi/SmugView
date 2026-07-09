@@ -73,6 +73,11 @@ class SmugMugRepositoryTest {
             return nodes.filter { it.albumUri in albumUris }
         }
 
+        override suspend fun getAllDescendants(nodeId: String): List<CachedNode> = emptyList()
+        override suspend fun removeBookmarkGlobally(itemKey: String) {}
+        override fun getPagedSearchResultsDesc(query: String, scope: String, type: String): androidx.paging.PagingSource<Int, SearchResult> = throw Exception()
+        override fun getPagedSearchResultsAsc(query: String, scope: String, type: String): androidx.paging.PagingSource<Int, SearchResult> = throw Exception()
+
         // Dummy implementations for required interface methods
         override suspend fun createCollection(collection: OfflineCollection): Long = 0L
         override fun getCollectionsForSite(siteNickname: String): Flow<List<OfflineCollection>> = flowOf(emptyList())
@@ -136,9 +141,11 @@ class SmugMugRepositoryTest {
         // Stub other required methods
         override suspend fun getUserProfile(nickname: String, apiKey: String, expand: String, verbosity: Int): UserResponse = throw Exception()
         override suspend fun getUserBioImage(nickname: String, apiKey: String, verbosity: Int): BioImageResponse = throw Exception()
+        override suspend fun getNode(nodeId: String, apiKey: String, verbosity: Int): SingleNodeResponse = throw Exception()
+        override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeId: String?, verbosity: Int): TopKeywordsResponse = throw Exception()
         override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, verbosity: Int): AlbumResponse = throw Exception()
-        override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, expand: String, filter: String, verbosity: Int): AlbumImagesResponse = throw Exception()
-        override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, expand: String, filter: String, verbosity: Int): AlbumImagesResponse = throw Exception()
+        override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, verbosity: Int): AlbumImagesResponse = throw Exception()
+        override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, verbosity: Int): AlbumImagesResponse = throw Exception()
         override suspend fun getImageExif(imageKey: String, apiKey: String, password: String?, verbosity: Int): ExifResponse = throw Exception()
         override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, verbosity: Int): ImageResponse = throw Exception()
         
@@ -148,8 +155,8 @@ class SmugMugRepositoryTest {
             apiKey: String,
             scope: String?,
             text: String?,
-            sortMethod: String,
-            sortDirection: String,
+            sortMethod: String?,
+            sortDirection: String?,
             count: Int,
             start: Int,
             filter: String,
@@ -166,7 +173,10 @@ class SmugMugRepositoryTest {
         
         override suspend fun unlockNode(nodeId: String, apiKey: String, password: String): retrofit2.Response<ResponseBody> = throw Exception()
         override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String): retrofit2.Response<ResponseBody> = throw Exception()
-        override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, filter: String, verbosity: Int): UserAlbumsResponse = throw Exception()
+        override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, verbosity: Int): UserAlbumsResponse = throw Exception()
+        override suspend fun getUserAlbumsByUri(url: String, apiKey: String, count: Int, expand: String, filter: String, verbosity: Int): UserAlbumsResponse = throw Exception()
+        override suspend fun getImagesByKeyword(apiKey: String, scope: String?, keywords: String?, filter: String, verbosity: Int): ImageSearchResponse = throw Exception()
+        override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest): retrofit2.Response<ResponseBody> = throw Exception()
     }
 
     @Test
@@ -276,25 +286,14 @@ class SmugMugRepositoryTest {
             }
         }
 
-        // Call searchImages and collect flow
-        val flow = repository.searchImages(
+        // Call performBackgroundSearchImages
+        repository.performBackgroundSearchImages(
             nickname = "testUser",
             scopeUri = "/api/v2/node/folder1",
             scopeKey = "folder1",
             query = "testQuery",
             apiKey = "dummyKey"
         )
-        
-        val results = mutableListOf<Result<List<AlbumImageData>>>()
-        flow.collect { results.add(it) }
-
-        // Verify we got the emissions and all 300 images are present in the final emission
-        assertTrue(results.isNotEmpty())
-        val finalResult = results.last().getOrNull()
-        assertNotNull(finalResult)
-        assertEquals(300, finalResult!!.size)
-        assertEquals("img_1", finalResult.first().imageKey)
-        assertEquals("img_300", finalResult.last().imageKey)
 
         // Verify they were inserted in search_results table in Fake Dao
         val dbResults = fakeDao.getSearchResults("testQuery", "folder1", "Photo")

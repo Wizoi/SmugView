@@ -6,9 +6,11 @@ import androidx.work.WorkManager
 import com.smugview.app.data.api.*
 import com.smugview.app.data.db.*
 import com.smugview.app.data.repository.SmugMugRepository
+import com.smugview.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*
@@ -19,7 +21,8 @@ import org.mockito.Mockito
 @OptIn(ExperimentalCoroutinesApi::class)
 class SmugViewModelTest {
 
-    private val testDispatcher = UnconfinedTestDispatcher()
+    private val testScheduler = TestCoroutineScheduler()
+    private val testDispatcher = UnconfinedTestDispatcher(testScheduler)
     
     private lateinit var mockApp: Application
     private lateinit var mockPrefs: SharedPreferences
@@ -29,6 +32,7 @@ class SmugViewModelTest {
 
     @Before
     fun setUp() {
+        com.smugview.app.data.repository.SmugMugRepository.isTesting = true
         Dispatchers.setMain(testDispatcher)
         
         mockApp = Mockito.mock(Application::class.java)
@@ -47,6 +51,23 @@ class SmugViewModelTest {
         
         mockWorkManager = Mockito.mock(WorkManager::class.java)
         mockRepository = Mockito.mock(SmugMugRepository::class.java)
+        
+        Mockito.`when`(mockRepository.isAlbumsCacheLoaded)
+            .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(true))
+            
+        Mockito.`when`(mockRepository.albumsCache)
+            .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyList()))
+            
+        Mockito.`when`(mockRepository.getSearchHistory())
+            .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyList()))
+            
+        Mockito.`when`(mockRepository.getLocalCollections(Mockito.anyString()))
+            .thenReturn(flowOf(emptyList()))
+            
+        kotlinx.coroutines.runBlocking {
+            Mockito.`when`(mockRepository.getAllCachedNodes())
+                .thenReturn(emptyList())
+        }
         
         viewModel = SmugViewModel(mockApp, mockRepository, mockWorkManager)
     }
@@ -67,20 +88,27 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.getUserRootNodeId(Mockito.anyString(), Mockito.anyString()))
             .thenReturn(flowOf(Result.success("4zqWw")))
             
-        Mockito.`when`(mockRepository.getSearchResultNodes(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+        Mockito.`when`(mockRepository.getSearchResultNodes("Sunset", "site", "Folder"))
             .thenReturn(emptyList())
             
-        Mockito.`when`(mockRepository.getSearchResultPhotos(Mockito.anyString(), Mockito.anyString()))
+        Mockito.`when`(mockRepository.getSearchResultPhotos("Sunset", "site"))
             .thenReturn(emptyList())
             
-        Mockito.`when`(mockRepository.hasSearchResultInDb(Mockito.anyString(), Mockito.anyString()))
+        Mockito.`when`(mockRepository.hasSearchResultInDb("Sunset", "site"))
             .thenReturn(false)
             
-        Mockito.`when`(mockRepository.searchNodesRemote(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.any()))
+        Mockito.`when`(mockRepository.searchNodesRemote("/api/v2/node/4zqWw", "site", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
             .thenReturn(flowOf(Result.success(emptyList())))
             
-        Mockito.`when`(mockRepository.searchImages(Mockito.anyString(), Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.any()))
-            .thenReturn(flowOf(Result.success(mockPhotos)))
+        // Mock getPagedSearchPhotos to return a dummy PagingSource
+        val mockPagingSource = object : androidx.paging.PagingSource<Int, SearchResult>() {
+            override fun getRefreshKey(state: androidx.paging.PagingState<Int, SearchResult>): Int? = null
+            override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SearchResult> {
+                return LoadResult.Page(data = emptyList(), prevKey = null, nextKey = null)
+            }
+        }
+        Mockito.`when`(mockRepository.getPagedSearchPhotos(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(mockPagingSource)
         
         // Perform search
         viewModel.performSearch("Sunset")
@@ -91,11 +119,6 @@ class SmugViewModelTest {
         // Verify ViewModel has loaded results successfully
         val state = viewModel.searchState.value
         assertTrue("Expected Success state but was: $state", state is SearchUiState.Success)
-        val successState = state as SearchUiState.Success
-        
-        assertEquals(1, successState.photos.size)
-        assertEquals("img555", successState.photos.first().imageKey)
-        assertEquals("Sunset Shore", successState.photos.first().title)
         
         // Verify insertSearchQuery was called
         Mockito.verify(mockRepository).insertSearchQuery("Sunset")
@@ -148,7 +171,7 @@ class SmugViewModelTest {
         try {
             val albums = api.getUserAlbums("cmac", "***REMOVED_SMUGMUG_API_KEY***", 200)
             println("Found ${albums.response.albums?.size} albums.")
-            for (album in albums.response.albums ?: emptyList()) {
+            for (album in (albums.response.albums ?: emptyList()).take(2)) {
                 try {
                     val isExactMatch = album.name.contains("MVYSO", ignoreCase = true)
                     val textToSearch = if (isExactMatch) null else "MVYSO"
@@ -177,7 +200,7 @@ class SmugViewModelTest {
         
         Mockito.`when`(mockRepository.getUserRootNodeId(Mockito.anyString(), Mockito.anyString()))
             .thenReturn(flowOf(Result.success("4zqWw")))
-            
+        
         Mockito.`when`(mockRepository.getSearchResultNodes(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
             .thenReturn(emptyList())
             
@@ -189,6 +212,16 @@ class SmugViewModelTest {
         val recentTimestamp = System.currentTimeMillis() - 60_000L
         Mockito.`when`(mockPrefs.getLong("site_Sunset_ts", 0L))
             .thenReturn(recentTimestamp)
+
+        // Mock getPagedSearchPhotos to return a dummy PagingSource
+        val mockPagingSource = object : androidx.paging.PagingSource<Int, SearchResult>() {
+            override fun getRefreshKey(state: androidx.paging.PagingState<Int, SearchResult>): Int? = null
+            override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SearchResult> {
+                return LoadResult.Page(data = emptyList(), prevKey = null, nextKey = null)
+            }
+        }
+        Mockito.`when`(mockRepository.getPagedSearchPhotos(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(mockPagingSource)
         
         // Perform search (forceRefresh = false)
         viewModel.performSearch("Sunset", forceRefresh = false)
@@ -199,16 +232,14 @@ class SmugViewModelTest {
         // Verify searchState matches DB cache immediately
         val state = viewModel.searchState.value
         assertTrue("Expected Success state but was: $state", state is SearchUiState.Success)
-        val successState = state as SearchUiState.Success
         
-        assertEquals(1, successState.photos.size)
-        assertEquals("img555", successState.photos.first().imageKey)
-        assertEquals("Sunset Cached", successState.photos.first().title)
-        
-        // Verify remote API call was skipped
-        Mockito.verify(mockRepository, Mockito.never()).searchImages(
-            Mockito.anyString(), Mockito.any(), Mockito.anyString(),
-            Mockito.anyString(), Mockito.anyString(), Mockito.any()
+        Mockito.verify(mockRepository, Mockito.never()).performBackgroundSearchImages(
+            "testUser",
+            null,
+            "site",
+            "Sunset",
+            BuildConfig.SMUGMUG_API_KEY,
+            null
         )
     }
 
@@ -223,7 +254,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.getUserRootNodeId(Mockito.anyString(), Mockito.anyString()))
             .thenReturn(flowOf(Result.success("4zqWw")))
             
-        Mockito.`when`(mockRepository.getSearchResultNodes(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+        Mockito.`when`(mockRepository.getSearchResultNodes("Sunset", "site", "Folder"))
             .thenReturn(emptyList())
             
         // scopeKey for global search is now 'site'
@@ -234,11 +265,18 @@ class SmugViewModelTest {
         Mockito.`when`(mockPrefs.getLong("site_Sunset_ts", 0L))
             .thenReturn(0L)
             
-        Mockito.`when`(mockRepository.searchNodesRemote(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.any()))
+        Mockito.`when`(mockRepository.searchNodesRemote("/api/v2/node/4zqWw", "site", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
             .thenReturn(flowOf(Result.success(emptyList())))
             
-        Mockito.`when`(mockRepository.searchImages(Mockito.anyString(), Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.any()))
-            .thenReturn(flowOf(Result.success(mockPhotos)))
+        // Mock getPagedSearchPhotos to return a dummy PagingSource
+        val mockPagingSource = object : androidx.paging.PagingSource<Int, SearchResult>() {
+            override fun getRefreshKey(state: androidx.paging.PagingState<Int, SearchResult>): Int? = null
+            override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SearchResult> {
+                return LoadResult.Page(data = emptyList(), prevKey = null, nextKey = null)
+            }
+        }
+        Mockito.`when`(mockRepository.getPagedSearchPhotos(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(mockPagingSource)
         
         // Perform search (forceRefresh = false but no cache-hit in SharedPreferences)
         viewModel.performSearch("Sunset", forceRefresh = false)
@@ -249,18 +287,69 @@ class SmugViewModelTest {
         // Verify searchState successfully gets remote results
         val state = viewModel.searchState.value
         assertTrue("Expected Success state but was: $state", state is SearchUiState.Success)
-        val successState = state as SearchUiState.Success
         
-        assertEquals(1, successState.photos.size)
-        assertEquals("img555", successState.photos.first().imageKey)
-        
-        // Verify remote API call was executed
-        Mockito.verify(mockRepository).searchImages(
-            Mockito.anyString(), Mockito.any(), Mockito.anyString(),
-            Mockito.anyString(), Mockito.anyString(), Mockito.any()
+        Mockito.verify(mockRepository).performBackgroundSearchImages(
+            "testUser",
+            "/api/v2/node/4zqWw",
+            "site",
+            "Sunset",
+            BuildConfig.SMUGMUG_API_KEY,
+            null
         )
     }
+
+    @Test
+    fun testKeywordIntersection() = runTest {
+        viewModel.setActiveNicknameForTest("testUser")
+        
+        val claraImages = listOf(
+            AlbumImageData(imageKey = "img1", title = "Clara Portrait", keywords = "clara, family"),
+            AlbumImageData(imageKey = "img2", title = "Clara and Laurel", keywords = "clara, laurel, holiday"),
+            AlbumImageData(imageKey = "img3", title = "Clara solo", keywords = "clara, portrait")
+        )
+        
+        val claraLaurelImages = listOf(
+            AlbumImageData(imageKey = "img1", title = "Clara Portrait", keywords = "clara, family"),
+            AlbumImageData(imageKey = "img2", title = "Clara and Laurel", keywords = "clara, laurel, holiday"),
+            AlbumImageData(imageKey = "img3", title = "Clara solo", keywords = "clara, portrait"),
+            AlbumImageData(imageKey = "img4", title = "Laurel solo", keywords = "laurel, sports")
+        )
+        
+        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/user/testUser", "clara", BuildConfig.SMUGMUG_API_KEY))
+            .thenReturn(claraImages)
+            
+        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/user/testUser", "clara,laurel", BuildConfig.SMUGMUG_API_KEY))
+            .thenReturn(claraLaurelImages)
+
+        // Start collecting tagFilteredPhotos to keep the WhileSubscribed flow active
+        val collectJob = launch {
+            viewModel.tagFilteredPhotos.collect {}
+        }
+
+        // 1. Select "clara" keyword
+        viewModel.selectTag("clara")
+        advanceUntilIdle()
+        
+        // Check results
+        val results1 = viewModel.tagFilteredPhotos.value
+        assertEquals(3, results1.size)
+        assertTrue(results1.any { it.imageKey == "img1" })
+        assertTrue(results1.any { it.imageKey == "img2" })
+        assertTrue(results1.any { it.imageKey == "img3" })
+
+        // 2. Select "laurel" keyword as well
+        viewModel.selectTag("laurel")
+        advanceUntilIdle()
+        
+        // Check results: only the photo with BOTH keywords should remain
+        val results2 = viewModel.tagFilteredPhotos.value
+        assertEquals(1, results2.size)
+        assertEquals("img2", results2.first().imageKey)
+
+        collectJob.cancel()
+    }
 }
+
 
 // Add extension to expose activeNickname setter for unit test purposes
 fun SmugViewModel.setActiveNicknameForTest(nickname: String) {

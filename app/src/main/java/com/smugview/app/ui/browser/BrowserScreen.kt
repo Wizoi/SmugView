@@ -112,6 +112,7 @@ fun BrowserScreen(
     onNavigateToExplorer: () -> Unit,
     onNavigateToSearchPhotoDetail: (imageKey: String, index: Int) -> Unit,
     onNavigateToPhotoDetail: (albumKey: String, imageKey: String) -> Unit,
+    onNavigateToKeywordImages: () -> Unit,
     viewModel: SmugViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.browserState.collectAsState()
@@ -178,8 +179,8 @@ fun BrowserScreen(
                 tonalElevation = 8.dp
             ) {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                    label = { Text("Home") },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Home", modifier = Modifier.size(20.dp)) },
+                    label = { Text("Home", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Folders,
                     enabled = isSiteLoaded,
                     colors = NavigationBarItemDefaults.colors(
@@ -198,8 +199,8 @@ fun BrowserScreen(
                     }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                    label = { Text("Search") },
+                    icon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(20.dp)) },
+                    label = { Text("Search", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Search,
                     enabled = isSiteLoaded,
                     colors = NavigationBarItemDefaults.colors(
@@ -212,8 +213,8 @@ fun BrowserScreen(
                     onClick = { viewModel.setActiveTab(BrowserTab.Search) }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.LocalOffer, contentDescription = "Tag Search") },
-                    label = { Text("Tags") },
+                    icon = { Icon(Icons.Default.LocalOffer, contentDescription = "Tag Search", modifier = Modifier.size(20.dp)) },
+                    label = { Text("Tags", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.TagSearch,
                     enabled = isSiteLoaded,
                     colors = NavigationBarItemDefaults.colors(
@@ -226,8 +227,8 @@ fun BrowserScreen(
                     onClick = { viewModel.setActiveTab(BrowserTab.TagSearch) }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.PhotoAlbum, contentDescription = "Collections") },
-                    label = { Text("Collections") },
+                    icon = { Icon(Icons.Default.PhotoAlbum, contentDescription = "Collections", modifier = Modifier.size(20.dp)) },
+                    label = { Text("Collections", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Collections,
                     enabled = isSiteLoaded,
                     colors = NavigationBarItemDefaults.colors(
@@ -246,12 +247,12 @@ fun BrowserScreen(
                                 nickname = nickname!!,
                                 name = nickname!!,
                                 bioImageKey = activeUserProfile?.bioImageKey,
-                                modifier = Modifier.size(24.dp),
+                                modifier = Modifier.size(20.dp),
                                 textColor = Color.White,
-                                fontSize = 11.sp
+                                fontSize = 9.sp
                             )
                         } else {
-                            Icon(Icons.Default.Hub, contentDescription = "Hub")
+                            Icon(Icons.Default.Hub, contentDescription = "Hub", modifier = Modifier.size(20.dp))
                         }
                     },
                     label = {
@@ -260,7 +261,10 @@ fun BrowserScreen(
                                 nickname!!.replaceFirstChar { it.uppercase() }
                             } else {
                                 "Hub"
-                            }
+                            },
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     },
                     selected = activeTab == BrowserTab.Hub,
@@ -325,7 +329,7 @@ fun BrowserScreen(
                     BrowserTab.TagSearch -> {
                         TagSearchTabView(
                             viewModel = viewModel,
-                            onImageClick = { index, image -> onNavigateToSearchPhotoDetail(image.imageKey, index) }
+                            onNavigateToKeywordImages = onNavigateToKeywordImages
                         )
                     }
                 }
@@ -516,7 +520,7 @@ fun BrowserNodeItem(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    if (node.access == "Password") {
+                    if (node.access == "Password" || node.access == "Inherited") {
                         val lockIcon = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock
                         val lockColor = if (isUnlocked) Color(0xFF00E5FF) else Color(0xFFFFB800)
                         Icon(
@@ -768,7 +772,7 @@ fun FoldersTabView(
                                 node = node,
                                 isUnlocked = isUnlocked,
                                 onClick = {
-                                    if (node.access == "Password" && !isUnlocked) {
+                                    if ((node.access == "Password" || node.access == "Inherited") && !isUnlocked) {
                                         viewModel.promptPassword(node)
                                     } else {
                                         if (node.type == "Folder") {
@@ -998,6 +1002,8 @@ fun HomeTabView(
 ) {
     val nickname by viewModel.activeNickname.collectAsState()
     val activeUserProfile by viewModel.activeUserProfile.collectAsState()
+    val previewAlbums by viewModel.previewAlbums.collectAsState()
+    val focusManager = LocalFocusManager.current
     
     if (nickname.isNullOrEmpty()) {
         // --- SEARCH SITE SEARCHBOX VIEW ---
@@ -1020,6 +1026,12 @@ fun HomeTabView(
             modifier = Modifier
                 .fillMaxSize()
                 .background(DeepDarkBackground)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    focusManager.clearFocus()
+                }
         ) {
             // Aesthetic Top Radial Gradient
             Box(
@@ -1087,21 +1099,6 @@ fun HomeTabView(
                         )
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        if (nicknameQuery.isNotBlank()) {
-                            viewModel.selectSite(nicknameQuery.trim())
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonBlue),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Browse Site", fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
                 Spacer(modifier = Modifier.height(20.dp))
 
                 // Recently Explored Sites list
@@ -1164,6 +1161,7 @@ fun HomeTabView(
                         onSuccess = { userData ->
                             ProfilePreviewCard(
                                 userData = userData,
+                                previewAlbums = previewAlbums,
                                 isLoading = uiState is SplashUiState.Loading,
                                 onClickEnter = { viewModel.selectSite(userData.nickName) }
                             )
@@ -1359,7 +1357,7 @@ fun SearchTabView(
     val activeScope by viewModel.searchScope.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
     var searchInput by remember { mutableStateOf(viewModel.searchQuery) }
-    var selectedResultTab by remember { mutableStateOf(0) }
+    val selectedResultTab = viewModel.searchResultTab
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     var isFocused by remember { mutableStateOf(false) }
@@ -1540,8 +1538,8 @@ fun SearchTabView(
                             modifier = Modifier.fillMaxSize()
                         ) {
                             Text(
-                                text = "No items matched your search",
-                                color = Color.White.copy(alpha = 0.5f),
+                                text = "Enter a word or phrase to search",
+                                color = Color.White.copy(alpha = 0.4f),
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -1569,7 +1567,7 @@ fun SearchTabView(
                                 tabs.forEachIndexed { index, title ->
                                     Tab(
                                         selected = selectedResultTab == index,
-                                        onClick = { selectedResultTab = index },
+                                        onClick = { viewModel.searchResultTab = index },
                                         text = { Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
                                     )
                                 }
@@ -1583,7 +1581,7 @@ fun SearchTabView(
                                         if (searchPhotosPagingItems.itemCount == 0) {
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                                 Text(
-                                                    text = state.photosError ?: "No photos found",
+                                                    text = state.photosError ?: "Enter a word or phrase to search",
                                                     color = if (state.photosError != null) MaterialTheme.colorScheme.error else Color.White.copy(alpha = 0.4f),
                                                     textAlign = TextAlign.Center,
                                                     modifier = Modifier.padding(16.dp)
@@ -1711,7 +1709,7 @@ fun SearchTabView(
                                                             node = gallery,
                                                             isUnlocked = isUnlocked,
                                                             onClick = {
-                                                                if (gallery.access == "Password" && !isUnlocked) {
+                                                                if ((gallery.access == "Password" || gallery.access == "Inherited") && !isUnlocked) {
                                                                     viewModel.promptPassword(gallery)
                                                                 } else {
                                                                     val albumKey = gallery.albumUri?.substringAfterLast("/") ?: gallery.nodeId
@@ -1743,7 +1741,7 @@ fun SearchTabView(
                                                         node = folder,
                                                         isUnlocked = isUnlocked,
                                                         onClick = {
-                                                            if (folder.access == "Password" && !isUnlocked) {
+                                                            if ((folder.access == "Password" || folder.access == "Inherited") && !isUnlocked) {
                                                                 viewModel.promptPassword(folder)
                                                             } else {
                                                                 viewModel.navigateToFolderFromSearch(folder)
@@ -2479,7 +2477,7 @@ fun CollectionsTabView(
 @Composable
 fun TagSearchTabView(
     viewModel: SmugViewModel,
-    onImageClick: (Int, AlbumImageData) -> Unit
+    onNavigateToKeywordImages: () -> Unit
 ) {
     val activeScope by viewModel.searchScope.collectAsState()
     val isScanning by viewModel.isScanningTags.collectAsState()
@@ -2826,88 +2824,20 @@ fun TagSearchTabView(
                     }
                 }
 
-                // 4. Photo Results Grid
+                // 4. Search Button
                 if (selectedTags.isNotEmpty()) {
-                    if (filteredPhotos.isEmpty()) {
-                        item {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 32.dp)
-                            ) {
-                                Text(
-                                    text = "No photos match your current tag combination",
-                                    color = Color.White.copy(alpha = 0.5f),
-                                    fontSize = 14.sp,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(
-                                    onClick = { viewModel.removeTag(selectedTags.keys.last()) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = NeonBlue)
-                                ) {
-                                    Text("Reset Last Filter")
-                                }
-                            }
-                        }
-                    } else {
-                        item {
-                            Text(
-                                text = "Filtered Results (${filteredPhotos.size}):",
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                        }
-                        
-                        val rows = filteredPhotos.chunked(3)
-                        items(rows) { rowImages ->
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 8.dp)
-                            ) {
-                                rowImages.forEach { image ->
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { onImageClick(filteredPhotos.indexOf(image), image) }
-                                    ) {
-                                        AsyncImage(
-                                            model = image.thumbnailUrl,
-                                            contentDescription = image.title ?: image.caption,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                        if (image.isVideo) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .padding(6.dp)
-                                                    .size(20.dp)
-                                                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(10.dp)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.PlayArrow,
-                                                    contentDescription = "Video",
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                val emptyCount = 3 - rowImages.size
-                                repeat(emptyCount) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
+                    item {
+                        Button(
+                            onClick = onNavigateToKeywordImages,
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonBlue),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp)
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Search Images for Tag(s)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     }
                 } else if (allTags.isEmpty()) {

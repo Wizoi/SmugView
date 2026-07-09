@@ -60,6 +60,18 @@ interface CollectionDao {
     """)
     suspend fun searchNodesGlobal(query: String, type: String): List<CachedNode>
 
+    @Query("""
+        WITH RECURSIVE descendants(nodeId) AS (
+            SELECT :nodeId
+            UNION ALL
+            SELECT n.nodeId FROM cached_nodes n
+            JOIN descendants d ON n.parentNodeId = d.nodeId
+        )
+        SELECT * FROM cached_nodes
+        WHERE nodeId IN descendants AND nodeId != :nodeId
+    """)
+    suspend fun getAllDescendants(nodeId: String): List<CachedNode>
+
     @Query("SELECT * FROM cached_nodes")
     suspend fun getAllCachedNodes(): List<CachedNode>
 

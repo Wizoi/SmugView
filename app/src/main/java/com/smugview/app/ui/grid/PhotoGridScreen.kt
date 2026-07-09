@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.smugview.app.data.api.isVideo
+import com.smugview.app.data.db.CachedNode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalConfiguration
@@ -89,6 +90,11 @@ fun PhotoGridScreen(
     val staggeredGridState = rememberLazyStaggeredGridState()
     val gridState = rememberLazyGridState()
 
+    LaunchedEffect(sortBy, filterType) {
+        staggeredGridState.scrollToItem(0)
+        gridState.scrollToItem(0)
+    }
+
     val styleClean = currentAlbumStyle?.lowercase()?.replace(" ", "") ?: ""
     val isStaggered = remember(styleClean) {
         when {
@@ -125,9 +131,14 @@ fun PhotoGridScreen(
     Scaffold(
         containerColor = DeepDarkBackground
     ) { paddingValues ->
-        // Retrieve the first image of the album as the cover URL (if available)
-        val coverUrl = remember(lazyPhotos.itemCount) {
-            if (lazyPhotos.itemCount > 0) lazyPhotos[0]?.thumbnailUrl else null
+        var coverUrl by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(albumKey, lazyPhotos.itemCount) {
+            val node = viewModel.getNodeByAlbumKey(albumKey)
+            if (node?.highlightImageUrl != null) {
+                coverUrl = node.highlightImageUrl
+            } else if (lazyPhotos.itemCount > 0) {
+                coverUrl = lazyPhotos[0]?.thumbnailUrl
+            }
         }
 
         val scrollOffset = remember(isStaggered) {
@@ -213,8 +224,11 @@ fun PhotoGridScreen(
                 // Main Grid or Loading/Empty States
                 when {
                 lazyPhotos.itemCount == 0 && bgError == null && (isBgLoading || lazyPhotos.loadState.refresh is LoadState.Loading) -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = NeonBlue)
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                        CircularProgressIndicator(
+                            color = NeonBlue,
+                            modifier = Modifier.padding(top = 220.dp)
+                        )
                     }
                 }
                 bgError != null || lazyPhotos.loadState.refresh is LoadState.Error -> {
@@ -365,46 +379,6 @@ fun PhotoGridScreen(
                 }
             }
 
-            if (isBgLoading) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = SurfaceDark.copy(alpha = 0.95f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
-                    shadowElevation = 8.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color = NeonBlue,
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = bgStatus ?: "Streaming photos...",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            LinearProgressIndicator(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = NeonBlue,
-                                trackColor = Color.White.copy(alpha = 0.1f)
-                            )
-                        }
-                    }
-                }
-            }
 
             // Tag Filtering Bottom Sheet
             if (showFilterSheet) {
