@@ -1010,9 +1010,11 @@ class SmugViewModel @Inject constructor(
     }
 
     suspend fun getUnlockedPassword(nodeId: String): String? {
+        // 1. Try direct lookup by nodeId or albumKey
         var pw = passwordPrefs.getString(nodeId, null)
         if (pw != null) return pw
         
+        // 2. If nodeId is an album key, find the corresponding cached node to get its nodeId
         var currentId: String? = nodeId
         var node = repository.getNodeById(nodeId)
         if (node == null) {
@@ -1023,8 +1025,16 @@ class SmugViewModel @Inject constructor(
                 pw = passwordPrefs.getString(currentId, null)
                 if (pw != null) return pw
             }
+        } else {
+            // If we found the node by nodeId, check if we have a password under its album key
+            val albumKey = node.getAlbumKey()
+            if (albumKey != nodeId) {
+                pw = passwordPrefs.getString(albumKey, null)
+                if (pw != null) return pw
+            }
         }
         
+        // 3. Traverse parent nodes to check for inherited passwords
         while (currentId != null) {
             var parentNode = repository.getNodeById(currentId)
             
@@ -1036,7 +1046,7 @@ class SmugViewModel @Inject constructor(
                     parentNode = parentNode.copy(parentNodeId = realParentId)
                     repository.insertNodes(listOf(parentNode))
                 } catch (e: Exception) {
-                    // Ignore
+                    // Ignore API errors
                 }
             }
             
@@ -1064,19 +1074,40 @@ class SmugViewModel @Inject constructor(
                     break
                 }
             }
+            
             if (parentNode == null) break
             
-            currentId = parentNode.parentNodeId
-            if (currentId == null || currentId == "root" || currentId == "search_result") break
+            // Check the parent node itself (both its nodeId and its albumKey)
+            val parentId = parentNode.parentNodeId
+            if (parentId == null || parentId == "root" || parentId == "search_result") break
             
-            pw = passwordPrefs.getString(currentId, null)
+            pw = passwordPrefs.getString(parentId, null)
             if (pw != null) {
+                // Cache it for quick future lookup
                 passwordPrefs.edit()
                     .putString(nodeId, pw)
                     .putString(parentNode.nodeId, pw)
                     .apply()
                 return pw
             }
+            
+            // Also check by the parent's album key if applicable
+            val parentNodeObj = repository.getNodeById(parentId)
+            if (parentNodeObj != null) {
+                val parentAlbumKey = parentNodeObj.getAlbumKey()
+                if (parentAlbumKey != parentId) {
+                    pw = passwordPrefs.getString(parentAlbumKey, null)
+                    if (pw != null) {
+                        passwordPrefs.edit()
+                            .putString(nodeId, pw)
+                            .putString(parentNode.nodeId, pw)
+                            .apply()
+                        return pw
+                    }
+                }
+            }
+            
+            currentId = parentId
         }
         return null
     }
@@ -1371,7 +1402,9 @@ class SmugViewModel @Inject constructor(
 
     fun selectAlbum(albumKey: String, targetImageKey: String? = null) {
         if (albumKey == _currentAlbumKey.value && _rawPhotos.value.isNotEmpty()) {
-            return
+            if (targetImageKey == null || _rawPhotos.value.any { it.imageKey == targetImageKey }) {
+                return
+            }
         }
         _currentAlbumKey.value = albumKey
         _includedTags.value = emptySet()
@@ -1454,14 +1487,19 @@ class SmugViewModel @Inject constructor(
 
                         if (placeholder != null) {
                             _rawPhotos.value = listOf(placeholder)
-                        } else {
-                            val password = getUnlockedPassword(albumKey)
-                            repository.getImage(targetImageKey, apiKey, password).collect { result ->
-                                result.getOrNull()?.let { apiImg ->
-                                    if (_rawPhotos.value.isEmpty()) {
-                                        _rawPhotos.value = listOf(apiImg)
-                                    }
+                        }
+
+                        val password = getUnlockedPassword(albumKey)
+                        repository.getImage(targetImageKey, apiKey, password).collect { result ->
+                            result.getOrNull()?.let { apiImg ->
+                                val currentList = _rawPhotos.value.toMutableList()
+                                val index = currentList.indexOfFirst { it.imageKey == targetImageKey }
+                                if (index >= 0) {
+                                    currentList[index] = apiImg
+                                } else {
+                                    currentList.add(apiImg)
                                 }
+                                _rawPhotos.value = currentList
                             }
                         }
                     } catch (e: Exception) {
@@ -1557,28 +1595,42 @@ class SmugViewModel @Inject constructor(
                     try {
                         var pageIndex = 2
                         var currentNextUrl: String? = nextUrl
+                        val accumulatedImages = _rawPhotos.value.toMutableList()
+                        var tagsUpdated = false
                         while (currentNextUrl != null && (!com.smugview.app.data.repository.SmugMugRepository.isTesting || pageIndex <= 2)) {
                             try {
-                                // delay(1000) removed for now
                                 _backgroundLoadingStatus.value = "Downloading page $pageIndex..."
                                 val nextPageResponse = repository.getAlbumImagesPageByUri(currentNextUrl, apiKey, password)
                                 val nextPageImages = nextPageResponse.response.images ?: emptyList()
                                 if (nextPageImages.isNotEmpty()) {
                                     val nextPageExpansions = nextPageResponse.expansions
                                     imagesUrlUpdate(nextPageImages, nextPageExpansions)
-                                    _rawPhotos.value = (_rawPhotos.value + nextPageImages).distinctBy { it.imageKey }
+                                    accumulatedImages.addAll(nextPageImages)
                                     val newTags = nextPageImages.flatMap { item ->
                                         item.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
                                     }.filter { it.isNotEmpty() }
                                     tagsSet = tagsSet + newTags
-                                    _availableTags.value = tagsSet
+                                    tagsUpdated = true
                                 }
                                 pageIndex++
                                 currentNextUrl = nextPageResponse.response.pages?.next
+                                
+                                // Batch updates to prevent main thread recomposition storms
+                                if (pageIndex % 3 == 0 || currentNextUrl == null) {
+                                    _rawPhotos.value = accumulatedImages.distinctBy { it.imageKey }
+                                    if (tagsUpdated) {
+                                        _availableTags.value = tagsSet
+                                        tagsUpdated = false
+                                    }
+                                }
+                                delay(150)
                             } catch (e: Exception) {
                                 currentNextUrl = null
                             }
                         }
+                        // Final safety updates
+                        _rawPhotos.value = accumulatedImages.distinctBy { it.imageKey }
+                        _availableTags.value = tagsSet
                     } finally {
                         _isBackgroundLoading.value = false
                         _backgroundLoadingStatus.value = null

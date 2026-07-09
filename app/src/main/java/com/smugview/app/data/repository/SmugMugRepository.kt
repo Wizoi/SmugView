@@ -423,54 +423,56 @@ class SmugMugRepository @Inject constructor(
     }
 
     suspend fun buildInMemoryGalleryCache(nickname: String, apiKey: String) {
-        _isAlbumsCacheLoaded.value = false
-        val allAlbums = mutableListOf<CachedNode>()
-        try {
-            var response = api.getUserAlbums(nickname, apiKey)
-            
-            while (true) {
-                val albums = response.response.albums ?: emptyList()
-                val expansions = response.expansions
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            _isAlbumsCacheLoaded.value = false
+            val allAlbums = mutableListOf<CachedNode>()
+            try {
+                var response = api.getUserAlbums(nickname, apiKey)
                 
-                val parsedNodes = albums.mapIndexed { index, album ->
-                    val highlightUri = album.uris?.highlightImage
-                    val highlightUrl = if (highlightUri != null) {
-                        val expansion = expansions?.get(highlightUri)
-                        val thumb = expansion?.image?.thumbnailUrl
-                        thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
-                    } else null
+                while (true) {
+                    val albums = response.response.albums ?: emptyList()
+                    val expansions = response.expansions
                     
-                    val actualNodeId = album.nodeId ?: album.albumKey
-                    CachedNode(
-                        nodeId = actualNodeId,
-                        parentNodeId = "root",
-                        type = "Album",
-                        title = album.name,
-                        description = null,
-                        access = album.securityType ?: "Public",
-                        passwordHint = album.passwordHint,
-                        uri = album.uri ?: "",
-                        childNodesUri = null,
-                        albumUri = album.uri,
-                        highlightImageUrl = highlightUrl,
-                        childCount = album.imageCount,
-                        sortIndex = allAlbums.size + index,
-                        webUri = album.webUri
-                    )
+                    val parsedNodes = albums.mapIndexed { index, album ->
+                        val highlightUri = album.uris?.highlightImage
+                        val highlightUrl = if (highlightUri != null) {
+                            val expansion = expansions?.get(highlightUri)
+                            val thumb = expansion?.image?.thumbnailUrl
+                            thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
+                        } else null
+                        
+                        val actualNodeId = album.nodeId ?: album.albumKey
+                        CachedNode(
+                            nodeId = actualNodeId,
+                            parentNodeId = "root",
+                            type = "Album",
+                            title = album.name,
+                            description = null,
+                            access = album.securityType ?: "Public",
+                            passwordHint = album.passwordHint,
+                            uri = album.uri ?: "",
+                            childNodesUri = null,
+                            albumUri = album.uri,
+                            highlightImageUrl = highlightUrl,
+                            childCount = album.imageCount,
+                            sortIndex = allAlbums.size + index,
+                            webUri = album.webUri
+                        )
+                    }
+                    allAlbums.addAll(parsedNodes)
+                    
+                    val nextUrl = response.response.pages?.next
+                    if (nextUrl == null) break
+                    
+                    response = api.getUserAlbumsByUri(nextUrl, apiKey)
+                    kotlinx.coroutines.delay(100)
                 }
-                allAlbums.addAll(parsedNodes)
-                
-                val nextUrl = response.response.pages?.next
-                if (nextUrl == null) break
-                
-                response = api.getUserAlbumsByUri(nextUrl, apiKey)
-                kotlinx.coroutines.delay(100)
+                _albumsCache.value = allAlbums
+            } catch (e: Exception) {
+                android.util.Log.e("SmugMugRepository", "Failed to build in-memory gallery cache", e)
+            } finally {
+                _isAlbumsCacheLoaded.value = true
             }
-            _albumsCache.value = allAlbums
-        } catch (e: Exception) {
-            android.util.Log.e("SmugMugRepository", "Failed to build in-memory gallery cache", e)
-        } finally {
-            _isAlbumsCacheLoaded.value = true
         }
     }
 
@@ -706,7 +708,24 @@ class SmugMugRepository @Inject constructor(
 
     suspend fun getNodeById(nodeId: String): CachedNode? = dao.getNodeById(nodeId)
 
-    suspend fun insertNodes(nodes: List<CachedNode>) = dao.insertNodes(nodes)
+    suspend fun insertNodes(nodes: List<CachedNode>) {
+        val safeNodes = nodes.map { node ->
+            val existing = dao.getNodeById(node.nodeId)
+            if (existing != null && 
+                !existing.parentNodeId.isNullOrEmpty() && 
+                existing.parentNodeId != "search_result" && 
+                node.parentNodeId == "search_result"
+            ) {
+                node.copy(
+                    parentNodeId = existing.parentNodeId,
+                    sortIndex = existing.sortIndex
+                )
+            } else {
+                node
+            }
+        }
+        dao.insertNodes(safeNodes)
+    }
 
     suspend fun getBookmarkByItemKey(itemKey: String): CollectionBookmark? = dao.getBookmarkByItemKey(itemKey)
 

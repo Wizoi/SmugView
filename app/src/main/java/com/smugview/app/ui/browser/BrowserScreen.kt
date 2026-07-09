@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Check
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import com.smugview.app.data.api.isVideo
 import androidx.compose.animation.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.History
 import com.smugview.app.ui.explorer.ProfilePreviewCard
@@ -1361,6 +1363,9 @@ fun SearchTabView(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     var isFocused by remember { mutableStateOf(false) }
+    val photosLazyGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    val galleriesLazyGridState = androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState()
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -1606,6 +1611,18 @@ fun SearchTabView(
                                                         onClick = {
                                                             val newOrder = if (viewModel.searchPhotosSortOrder == "Ascending") "Descending" else "Ascending"
                                                             viewModel.updateSearchPhotosSortOrder(newOrder)
+                                                            scope.launch {
+                                                                try {
+                                                                    if (newOrder == "Ascending") {
+                                                                        val lastIndex = (searchPhotosPagingItems.itemCount - 1).coerceAtLeast(0)
+                                                                        photosLazyGridState.scrollToItem(lastIndex)
+                                                                    } else {
+                                                                        photosLazyGridState.scrollToItem(0)
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    e.printStackTrace()
+                                                                }
+                                                            }
                                                         },
                                                         modifier = Modifier.size(24.dp)
                                                     ) {
@@ -1619,6 +1636,7 @@ fun SearchTabView(
                                                 }
 
                                                 LazyVerticalGrid(
+                                                    state = photosLazyGridState,
                                                     columns = GridCells.Fixed(3),
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1685,6 +1703,18 @@ fun SearchTabView(
                                                         onClick = {
                                                             val newOrder = if (viewModel.searchGallerySortOrder == "Ascending") "Descending" else "Ascending"
                                                             viewModel.updateSearchGallerySortOrder(newOrder)
+                                                            scope.launch {
+                                                                try {
+                                                                    if (newOrder == "Ascending") {
+                                                                        val lastIndex = (state.galleries.size - 1).coerceAtLeast(0)
+                                                                        galleriesLazyGridState.scrollToItem(lastIndex)
+                                                                    } else {
+                                                                        galleriesLazyGridState.scrollToItem(0)
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    e.printStackTrace()
+                                                                }
+                                                            }
                                                         },
                                                         modifier = Modifier.size(24.dp)
                                                     ) {
@@ -1698,6 +1728,7 @@ fun SearchTabView(
                                                 }
                                                 // Render using standard lazy staggered vertical grid
                                                 androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid(
+                                                    state = galleriesLazyGridState,
                                                     columns = androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells.Fixed(2),
                                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                                     verticalItemSpacing = 12.dp,
@@ -2312,6 +2343,40 @@ fun CollectionsTabView(
                                                             Icon(
                                                                 imageVector = Icons.Default.Share,
                                                                 contentDescription = "Share",
+                                                                tint = Color.White.copy(alpha = 0.7f),
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                        IconButton(
+                                                            onClick = {
+                                                                val detailItem = AlbumImageData(
+                                                                    imageKey = img.itemKey,
+                                                                    title = img.title,
+                                                                    caption = img.title,
+                                                                    thumbnailUrl = img.thumbnailUrl,
+                                                                    archivedUri = img.extraData ?: img.thumbnailUrl,
+                                                                    date = null,
+                                                                    dateTime = null,
+                                                                    keywords = null,
+                                                                    webUri = null,
+                                                                    originalWidth = null,
+                                                                    originalHeight = null,
+                                                                    format = "JPG",
+                                                                    videoUrl = null
+                                                                )
+                                                                scope.launch {
+                                                                    try {
+                                                                        com.smugview.app.ui.detail.downloadPhotoToGallery(context, detailItem, viewModel)
+                                                                    } catch (e: Exception) {
+                                                                        Toast.makeText(context, "Download failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                }
+                                                            },
+                                                            modifier = Modifier.size(24.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Download,
+                                                                contentDescription = "Download",
                                                                 tint = Color.White.copy(alpha = 0.7f),
                                                                 modifier = Modifier.size(14.dp)
                                                             )
