@@ -276,8 +276,9 @@ class SmugMugRepository @Inject constructor(
         return api.getUserTopKeywords(nickname, apiKey, nodeId)
     }
 
-    suspend fun getImagesByKeyword(scope: String?, keywords: String, apiKey: String): List<AlbumImageData> {
-        return api.getImagesByKeyword(apiKey, scope, keywords).response.images ?: emptyList()
+    suspend fun getImagesByKeyword(scope: String?, keywords: String, apiKey: String, count: Int = 500, start: Int = 1): List<AlbumImageData> {
+        val spaceSeparatedText = keywords.replace(",", " ")
+        return api.getImagesByKeyword(apiKey, scope, spaceSeparatedText, count, start).response.images ?: emptyList()
     }
 
     suspend fun updateImageMetadata(imageKey: String, apiKey: String, keywords: String): Boolean {

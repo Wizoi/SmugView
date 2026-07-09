@@ -732,7 +732,7 @@ fun SearchPhotoDetailScreen(
 
 
                                     val tags = remember(currentPhoto, updatedKeywordsMap[currentPhoto.imageKey]) {
-                                        val keywordsStr = updatedKeywordsMap[currentPhoto.imageKey] ?: currentPhoto.keywords ?: ""
+                                        val keywordsStr = updatedKeywordsMap[currentPhoto.imageKey] ?: currentPhoto.keywordsString ?: ""
                                         keywordsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                                     }
 

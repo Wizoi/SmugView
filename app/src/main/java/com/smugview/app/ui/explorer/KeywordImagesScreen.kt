@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -53,7 +54,7 @@ fun KeywordImagesScreen(
     val selectedTags by viewModel.selectedTags.collectAsState()
     val allTags by viewModel.allScopeTags.collectAsState()
     val filteredPhotos by viewModel.tagFilteredPhotos.collectAsState()
-    val isScanning by viewModel.isScanningTags.collectAsState()
+    val isLoadingPhotos by viewModel.isLoadingPhotos.collectAsState()
 
     var tagInput by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
@@ -66,7 +67,7 @@ fun KeywordImagesScreen(
             emptyList()
         } else {
             allTags.keys.filter {
-                it.contains(query) && !selectedTags.containsKey(it)
+                it.lowercase().contains(query) && !selectedTags.containsKey(it)
             }.take(5)
         }
     }
@@ -92,7 +93,7 @@ fun KeywordImagesScreen(
                 .padding(horizontal = 16.dp)
         ) {
             // Autocomplete Textbox
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onFocusChanged { isFocused = it.isFocused }
@@ -142,37 +143,43 @@ fun KeywordImagesScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Autocomplete Popup Card
+                // Inline Autocomplete Card
                 if (isFocused && suggestions.isNotEmpty()) {
-                    Popup(
-                        alignment = Alignment.BottomStart,
-                        onDismissRequest = { isFocused = false }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
                     ) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
-                            modifier = Modifier
-                                .width(300.dp)
-                                .padding(top = 4.dp)
-                                .heightIn(max = 200.dp)
-                        ) {
-                            LazyColumn {
-                                items(suggestions.size) { index ->
-                                    val suggestion = suggestions[index]
+                        LazyColumn {
+                            items(suggestions) { suggestion ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.selectTag(suggestion)
+                                            tagInput = ""
+                                            focusManager.clearFocus()
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LocalOffer,
+                                        contentDescription = null,
+                                        tint = NeonBlue.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
                                     Text(
                                         text = suggestion,
                                         color = Color.White,
-                                        fontSize = 14.sp,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                viewModel.selectTag(suggestion)
-                                                tagInput = ""
-                                                focusManager.clearFocus()
-                                            }
-                                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                                        fontSize = 14.sp
                                     )
                                 }
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
                             }
                         }
                     }
@@ -234,7 +241,7 @@ fun KeywordImagesScreen(
             }
 
             // Loader or Results Grid
-            if (isScanning) {
+            if (isLoadingPhotos) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

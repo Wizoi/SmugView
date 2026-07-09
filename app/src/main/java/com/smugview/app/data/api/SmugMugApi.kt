@@ -207,8 +207,10 @@ interface SmugMugApi {
     suspend fun getImagesByKeyword(
         @Query("APIKey") apiKey: String,
         @Query("Scope") scope: String? = null,
-        @Query("Keywords") keywords: String? = null,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,WebUri,Uris,Keywords",
+        @Query("Text") text: String? = null,
+        @Query("count") count: Int = 10,
+        @Query("start") start: Int = 1,
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,WebUri,Uris,Keywords,KeywordArray",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 

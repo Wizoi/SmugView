@@ -101,6 +101,7 @@ data class AlbumImageData(
     @SerializedName("DateTime") val dateTime: String? = null,
     @SerializedName("FileName") val fileName: String? = null,
     @SerializedName("Keywords") val keywords: String? = null,
+    @SerializedName("KeywordArray") val keywordArray: List<String>? = null,
     @SerializedName("WebUri") val webUri: String? = null,
     @SerializedName("OriginalWidth") val originalWidth: Int? = null,
     @SerializedName("OriginalHeight") val originalHeight: Int? = null,
@@ -108,7 +109,18 @@ data class AlbumImageData(
     @SerializedName("Format") val format: String? = null,
     @SerializedName("Uris") val uris: AlbumImageUris? = null,
     var videoUrl: String? = null
-)
+) {
+    val keywordsString: String?
+        get() {
+            if (!keywordArray.isNullOrEmpty()) {
+                return keywordArray.joinToString(", ")
+            }
+            if (keywords != null && !keywords.startsWith("/api/v2/")) {
+                return keywords.replace(";", ",")
+            }
+            return null
+        }
+}
 
 data class AlbumImageUris(
     @SerializedName("LargestVideo") val largestVideo: String? = null,

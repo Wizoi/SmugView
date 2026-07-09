@@ -256,5 +256,67 @@ We implemented a set of deep optimizations to protect the SmugMug API and CDN re
     *   **Get Image**: Requests only `ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,Format,OriginalWidth,OriginalHeight,Uris,WebUri`.
     *   **Get Album Images**: Requests `Keywords` alongside basic metadata to ensure tag-filtering lists are fully populated.
 
+---
+
+## 📂 Core Data Layer API Specifications & System Configurations
+
+This section provides a structured guide to all Retrofit endpoint definitions, query parameters, configurations, and enums used in the data layer.
+
+### 1. Data Layer API Methods (`SmugMugApi`)
+
+| HTTP Method | API Endpoint / Path | Kotlin Function | Purpose & Parameters |
+|:---|:---|:---|:---|
+| **GET** | `user/{nickname}` | `getUserProfile` | Fetches the user profile details. Resolves root node and bio avatar image.<br>• *Params*: `nickname`, `apiKey`, `expand = "BioImage"`, `verbosity = 1` |
+| **GET** | `user/{nickname}!bioimage` | `getUserBioImage` | Retrieves user profile bio image reference if not expanded in profile.<br>• *Params*: `nickname`, `apiKey`, `verbosity = 1` |
+| **GET** | `node/{node_id}!children` | `getNodeChildren` | Lists folders, albums, and children subnodes.<br>• *Params*: `nodeId`, `apiKey`, `password` (optional), `filter`, `verbosity = 1` |
+| **GET** | `node/{node_id}` | `getNode` | Fetches metadata for a single node.<br>• *Params*: `nodeId`, `apiKey`, `verbosity = 1` |
+| **GET** | `album/{album_key}` | `getAlbum` | Fetches details (title, security hint, key) for a gallery.<br>• *Params*: `albumKey`, `apiKey`, `password` (optional), `verbosity = 1` |
+| **GET** | `album/{album_key}!images` | `getAlbumImages` | Retrieves paginated images in a gallery (up to 500/request).<br>• *Params*: `albumKey`, `apiKey`, `password` (optional), `count = 500`, `expand = "LargestVideo"`, `filter`, `verbosity = 1` |
+| **GET** | *(Dynamic Url)* | `getAlbumImagesByUri` | Recursively traverses next page links for gallery images.<br>• *Params*: `url`, `apiKey`, `password` (optional), `count = 500`, `expand`, `filter`, `verbosity = 1` |
+| **GET** | `image!search` | `searchImages` | Performs global public image search (scoped or unscoped).<br>• *Params*: `apiKey`, `scope`, `text` (search term), `sortMethod`, `sortDirection`, `count = 500`, `start = 1`, `filter`, `expand`, `verbosity = 1` |
+| **GET** | *(Dynamic Url)* | `searchImagesByUri` | Follows next page links for global image search results.<br>• *Params*: `url`, `apiKey`, `verbosity = 1` |
+| **GET** | `user/{nickname}!imagesearch` | `searchImagesUser` | Searches for images restricted to a specific user account.<br>• *Params*: `nickname`, `apiKey`, `text`, `scope`, `password` (optional), `count = 250`, `start = 1`, `expand`, `filter`, `verbosity = 1` |
+| **GET** | *(Dynamic Url)* | `searchImagesUserByUri` | Follows next page links for user-scoped image searches.<br>• *Params*: `url`, `apiKey`, `password` (optional), `expand`, `filter`, `verbosity = 1` |
+| **GET** | `node!search` | `searchNodes` | Finds folders and galleries matching a keyword.<br>• *Params*: `apiKey`, `scope`, `text`, `password` (optional), `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
+| **GET** | `image/{image_key}` | `getImage` | Fetches details and metadata for a single photo.<br>• *Params*: `imageKey`, `apiKey`, `password` (optional), `expand`, `filter`, `verbosity = 1` |
+| **GET** | `image/{image_key}!metadata` | `getImageExif` | Fetches EXIF/camera metadata for a photo.<br>• *Params*: `imageKey`, `apiKey`, `password` (optional), `verbosity = 1` |
+| **POST** | `node/{node_id}!unlock` | `unlockNode` | Submits folder/node password for authentication session.<br>• *Params*: `nodeId`, `apiKey`, `@Field("Password") password` |
+| **POST** | `album/{album_key}!unlock` | `unlockAlbum` | Submits gallery/album password for authentication session.<br>• *Params*: `albumKey`, `apiKey`, `@Field("Password") password` |
+| **PATCH** | `image/{image_key}` | `updateImageMetadata` | Modifies keywords/tags list for a photo.<br>• *Params*: `imageKey`, `apiKey`, `@Body body: UpdateImageMetadataRequest` |
+| **GET** | `user/{nickname}!albums` | `getUserAlbums` | Lists all galleries/albums in the user account.<br>• *Params*: `nickname`, `apiKey`, `count = 500`, `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
+| **GET** | *(Dynamic Url)* | `getUserAlbumsByUri` | Traverses subsequent pages of all user albums.<br>• *Params*: `url`, `apiKey`, `count = 500`, `expand`, `filter`, `verbosity = 1` |
+| **GET** | `album/{album_keys}` | `getAlbumKeywords` | Fetches keywords for one or more galleries (comma-separated keys).<br>• *Params*: `albumKeys`, `apiKey`, `password` (optional), `expand = "AlbumKeywords"`, `filter = "Uri"`, `verbosity = 1` |
+| **GET** | `user/{nickname}!topkeywords` | `getUserTopKeywords` | Aggregates most used keywords/tags in user profile or folder node.<br>• *Params*: `nickname`, `apiKey`, `nodeId` (optional), `verbosity = 1` |
+| **GET** | `image!search` | `getImagesByKeyword` | Specifically optimized query for keyword tags searching.<br>• *Params*: `apiKey`, `scope`, `text` (space-separated tag query), `count = 10`, `start = 1`, `filter`, `verbosity = 1` |
+
+### 2. Core Application Enums
+
+#### A. `BrowserTab` (defined in `SmugViewModel.kt`)
+Represents the main navigation scopes of the SmugView browsing interface:
+*   `Folders`: Tree traversal of user directories and galleries.
+*   `Search`: Text search screen for photos, galleries, and folders.
+*   `TagSearch`: Explore view showing top keyword tag clouds, autocomplete, and filters.
+*   `Hub`: Entry dashboard with profile statistics, shortcuts, and navigation links.
+*   `Collections`: Bookmark tabs or custom user groups.
+
+#### B. `GalleryFilterType` (defined in `SmugViewModel.kt`)
+Determines photo grid display filtering by media type:
+*   `ALL`: Render both photos and video files.
+*   `IMAGES`: Filter out videos, displaying only photos.
+*   `VIDEOS`: Filter out photos, displaying only video items (with overlay play badge).
+
+#### C. `TagFilterState` (defined in `SmugViewModel.kt`)
+Defines the inclusion state of a tag pill filter:
+*   `INCLUDED`: Images matching this tag are selected (forces logical OR/AND intersection).
+*   `EXCLUDED`: Images containing this tag are explicitly discarded from results.
+
+### 3. API Invocation Guidelines (Avoid Basic Mistakes)
+
+*   **Pacing & Rate Limiting (429)**: Standard calls should be rate-limited or paced. For scoped searches or batch requests, maintain at least a `250ms` delay between sequential calls.
+*   **Searchable Index Exclusions**: The global `node!search` or `image!search` endpoints omit unsearchable nodes. Combine network searches with local database lookups on `cached_nodes` using `title LIKE %query%`.
+*   **Case Sensitivity**: Autocomplete queries must compare tags case-insensitively (`it.lowercase().contains(query)`).
+*   **Stripping Key Suffixes**: Album key mapping for expanded resources requires removing the trailing action suffix (e.g. splitting `/api/v2/album/{key}!keywords` at `!`).
+
+
 
 

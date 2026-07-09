@@ -1494,7 +1494,7 @@ fun SearchTabView(
         
         // 3. Results Box
         Box(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             contentAlignment = Alignment.Center
         ) {
             when (val state = searchState) {
@@ -2492,14 +2492,13 @@ fun TagSearchTabView(
     var isFocused by remember { mutableStateOf(false) }
 
     val keyboardController = LocalSoftwareKeyboardController.current
-
     val suggestions = remember(tagSearchInput, allTags, selectedTags) {
         val query = tagSearchInput.trim().lowercase()
         if (query.isEmpty()) {
             emptyList()
         } else {
             allTags.keys.filter {
-                it.contains(query) && !selectedTags.containsKey(it)
+                it.lowercase().contains(query) && !selectedTags.containsKey(it)
             }.take(5)
         }
     }
@@ -2570,42 +2569,6 @@ fun TagSearchTabView(
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
-
-                // Autocomplete Popup
-                if (isFocused && suggestions.isNotEmpty()) {
-                    Popup(
-                        alignment = Alignment.BottomStart,
-                        onDismissRequest = { isFocused = false }
-                    ) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
-                            modifier = Modifier
-                                .width(300.dp)
-                                .padding(top = 4.dp)
-                                .heightIn(max = 200.dp)
-                        ) {
-                            LazyColumn {
-                                items(suggestions) { suggestion ->
-                                    Text(
-                                        text = suggestion,
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                viewModel.selectTag(suggestion)
-                                                tagSearchInput = ""
-                                                viewModel.tagSearchQuery = ""
-                                                focusManager.clearFocus()
-                                            }
-                                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -2618,9 +2581,53 @@ fun TagSearchTabView(
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Scan/Refresh",
+                    contentDescription = "Scan Tags",
                     tint = NeonBlue
                 )
+            }
+        }
+
+        // Inline Autocomplete Card
+        if (isFocused && suggestions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 56.dp)
+                    .heightIn(max = 200.dp)
+            ) {
+                LazyColumn {
+                    items(suggestions) { suggestion ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.selectTag(suggestion)
+                                    tagSearchInput = ""
+                                    viewModel.tagSearchQuery = ""
+                                    focusManager.clearFocus()
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocalOffer,
+                                contentDescription = null,
+                                tint = NeonBlue.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = suggestion,
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
+                        }
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                    }
+                }
             }
         }
 
@@ -2748,11 +2755,11 @@ fun TagSearchTabView(
                                 fontWeight = FontWeight.Bold
                             )
                             
-                            // Top 10 / 25 / 50 selector
+                            // Top 25 / 50 / 100 / 250 selector
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                listOf(10, 25, 50).forEach { limit ->
+                                listOf(25, 50, 100, 250).forEach { limit ->
                                     val isSelected = viewModel.tagCloudLimit == limit
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),

@@ -175,7 +175,10 @@ class SmugMugRepositoryTest {
         override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String): retrofit2.Response<ResponseBody> = throw Exception()
         override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, verbosity: Int): UserAlbumsResponse = throw Exception()
         override suspend fun getUserAlbumsByUri(url: String, apiKey: String, count: Int, expand: String, filter: String, verbosity: Int): UserAlbumsResponse = throw Exception()
-        override suspend fun getImagesByKeyword(apiKey: String, scope: String?, keywords: String?, filter: String, verbosity: Int): ImageSearchResponse = throw Exception()
+        var getImagesByKeywordMock: ((apiKey: String, scope: String?, text: String?, count: Int, start: Int) -> ImageSearchResponse)? = null
+        override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, verbosity: Int): ImageSearchResponse {
+            return getImagesByKeywordMock?.invoke(apiKey, scope, text, count, start) ?: throw Exception("Mock not configured")
+        }
         override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest): retrofit2.Response<ResponseBody> = throw Exception()
     }
 
@@ -299,5 +302,45 @@ class SmugMugRepositoryTest {
         val dbResults = fakeDao.getSearchResults("testQuery", "folder1", "Photo")
         assertEquals(300, dbResults.size)
         assertEquals("img_1", dbResults.first().itemKey)
+    }
+
+    @Test
+    fun testGetImagesByKeywordRepositoryMapping() = runBlocking {
+        val fakeDao = FakeCollectionDao()
+        val fakeApi = FakeSmugMugApi()
+        val repository = SmugMugRepository(fakeApi, fakeDao, mockContext())
+
+        var apiScope: String? = null
+        var apiText: String? = null
+        var apiCount = 0
+        var apiStart = 0
+
+        fakeApi.getImagesByKeywordMock = { apiKey, scope, text, count, start ->
+            apiScope = scope
+            apiText = text
+            apiCount = count
+            apiStart = start
+            ImageSearchResponse(
+                response = ImageSearchPayload(
+                    images = listOf(AlbumImageData(imageKey = "res1", title = "Result Image")),
+                    pages = PagesData(start = 1, count = 1, total = 1)
+                )
+            )
+        }
+
+        val result = repository.getImagesByKeyword(
+            scope = "/api/v2/user/testUser",
+            keywords = "clara,idzi",
+            apiKey = "dummyKey",
+            count = 100,
+            start = 5
+        )
+
+        assertEquals(1, result.size)
+        assertEquals("res1", result[0].imageKey)
+        assertEquals("/api/v2/user/testUser", apiScope)
+        assertEquals("clara idzi", apiText) // Verify comma is replaced with space
+        assertEquals(100, apiCount)
+        assertEquals(5, apiStart)
     }
 }

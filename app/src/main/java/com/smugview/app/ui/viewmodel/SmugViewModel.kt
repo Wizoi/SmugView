@@ -497,6 +497,9 @@ class SmugViewModel @Inject constructor(
     private val _isScanningTags = MutableStateFlow(false)
     val isScanningTags: StateFlow<Boolean> = _isScanningTags.asStateFlow()
 
+    private val _isLoadingPhotos = MutableStateFlow(false)
+    val isLoadingPhotos: StateFlow<Boolean> = _isLoadingPhotos.asStateFlow()
+
     private val _scanProgress = MutableStateFlow("")
     val scanProgress: StateFlow<String> = _scanProgress.asStateFlow()
 
@@ -547,7 +550,7 @@ class SmugViewModel @Inject constructor(
             val included = selected.filter { it.value == TagFilterState.INCLUDED }.keys
             val excluded = selected.filter { it.value == TagFilterState.EXCLUDED }.keys
             photos.filter { photo ->
-                val keywords = photo.keywords?.split(",")?.map { it.trim().lowercase() } ?: emptyList()
+                val keywords = photo.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList()
                 val hasFirst = if (included.isNotEmpty()) keywords.contains(included.first()) else true
                 val hasAllIncluded = included.all { keywords.contains(it) }
                 val hasNoExcluded = excluded.none { keywords.contains(it) }
@@ -1190,22 +1193,39 @@ class SmugViewModel @Inject constructor(
                 }
 
                 imageLoadJob?.cancel()
-                _isScanningTags.value = true
+                _isLoadingPhotos.value = true
                 _scanProgress.value = "Loading photos for selected tags..."
                 imageLoadJob = viewModelScope.launch(Dispatchers.IO) imageSearchLaunch@{
                     try {
                         val nickname = _activeNickname.value ?: return@imageSearchLaunch
                         val scopeUri = "/api/v2/user/$nickname"
                         val keywordsQuery = included.joinToString(",")
-                        val images = try {
-                            repository.getImagesByKeyword(scopeUri, keywordsQuery, apiKey)
-                        } catch (e: Exception) {
-                            android.util.Log.e("SmugViewModel", "Failed to load photos for keywords: $keywordsQuery", e)
-                            emptyList()
+                        
+                        _allScopePhotos.value = emptyList()
+                        val allImages = mutableListOf<AlbumImageData>()
+                        var start = 1
+                        var hasMore = true
+                        
+                        while (hasMore && allImages.size < 1500) {
+                            val pageResponse = try {
+                                repository.getImagesByKeyword(scopeUri, keywordsQuery, apiKey, count = 500, start = start)
+                            } catch (e: Exception) {
+                                android.util.Log.e("SmugViewModel", "Failed to load photos for keywords: $keywordsQuery at start: $start", e)
+                                emptyList()
+                            }
+                            if (pageResponse.isEmpty()) {
+                                break
+                            }
+                            allImages.addAll(pageResponse)
+                            _allScopePhotos.value = allImages.toList()
+                            
+                            start += pageResponse.size
+                            if (pageResponse.size < 500) {
+                                hasMore = false
+                            }
                         }
-                        _allScopePhotos.value = images
                     } finally {
-                        _isScanningTags.value = false
+                        _isLoadingPhotos.value = false
                     }
                 }
             }
@@ -1321,7 +1341,7 @@ class SmugViewModel @Inject constructor(
 
         // 2. Filter by tags
         val filtered = typeFiltered.filter { item ->
-            val keywords = item.keywords?.split(",")?.map { it.trim().lowercase() }?.toSet() ?: emptySet()
+            val keywords = item.keywordsString?.split(",")?.map { it.trim().lowercase() }?.toSet() ?: emptySet()
             val isIncluded = inc.isEmpty() || keywords.any { it in inc }
             val isExcluded = exc.isNotEmpty() && keywords.any { it in exc }
             isIncluded && !isExcluded
@@ -1479,7 +1499,7 @@ class SmugViewModel @Inject constructor(
                     }
                     _rawPhotos.value = images
                     val tagsSet = images.flatMap { item ->
-                        item.keywords?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
+                        item.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
                     }.filter { it.isNotEmpty() }.toSet()
                     _availableTags.value = tagsSet
                     _isBackgroundLoading.value = false
@@ -1521,7 +1541,7 @@ class SmugViewModel @Inject constructor(
                 _rawPhotos.value = merged
 
                 var tagsSet = firstPageImages.flatMap { item ->
-                    item.keywords?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
+                    item.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
                 }.filter { it.isNotEmpty() }.toSet()
                 _availableTags.value = tagsSet
 
@@ -1548,7 +1568,7 @@ class SmugViewModel @Inject constructor(
                                     imagesUrlUpdate(nextPageImages, nextPageExpansions)
                                     _rawPhotos.value = (_rawPhotos.value + nextPageImages).distinctBy { it.imageKey }
                                     val newTags = nextPageImages.flatMap { item ->
-                                        item.keywords?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
+                                        item.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
                                     }.filter { it.isNotEmpty() }
                                     tagsSet = tagsSet + newTags
                                     _availableTags.value = tagsSet

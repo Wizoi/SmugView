@@ -9,6 +9,7 @@ import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
@@ -17,6 +18,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mockito
+import androidx.paging.PagingData
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SmugViewModelTest {
@@ -299,7 +301,7 @@ class SmugViewModelTest {
     }
 
     @Test
-    fun testKeywordIntersection() = runTest {
+    fun testKeywordIntersection() = kotlinx.coroutines.runBlocking {
         viewModel.setActiveNicknameForTest("testUser")
         
         val claraImages = listOf(
@@ -315,10 +317,10 @@ class SmugViewModelTest {
             AlbumImageData(imageKey = "img4", title = "Laurel solo", keywords = "laurel, sports")
         )
         
-        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/user/testUser", "clara", BuildConfig.SMUGMUG_API_KEY))
+        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/user/testUser", "clara", BuildConfig.SMUGMUG_API_KEY, 500, 1))
             .thenReturn(claraImages)
             
-        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/user/testUser", "clara,laurel", BuildConfig.SMUGMUG_API_KEY))
+        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/user/testUser", "clara,laurel", BuildConfig.SMUGMUG_API_KEY, 500, 1))
             .thenReturn(claraLaurelImages)
 
         // Start collecting tagFilteredPhotos to keep the WhileSubscribed flow active
@@ -328,10 +330,15 @@ class SmugViewModelTest {
 
         // 1. Select "clara" keyword
         viewModel.selectTag("clara")
-        advanceUntilIdle()
         
-        // Check results
-        val results1 = viewModel.tagFilteredPhotos.value
+        var results1 = emptyList<AlbumImageData>()
+        kotlinx.coroutines.withTimeout(3000) {
+            while (results1.size != 3) {
+                kotlinx.coroutines.delay(20)
+                results1 = viewModel.tagFilteredPhotos.value
+            }
+        }
+        
         assertEquals(3, results1.size)
         assertTrue(results1.any { it.imageKey == "img1" })
         assertTrue(results1.any { it.imageKey == "img2" })
@@ -339,14 +346,154 @@ class SmugViewModelTest {
 
         // 2. Select "laurel" keyword as well
         viewModel.selectTag("laurel")
+        
+        var results2 = emptyList<AlbumImageData>()
+        kotlinx.coroutines.withTimeout(3000) {
+            while (results2.size != 1) {
+                kotlinx.coroutines.delay(20)
+                results2 = viewModel.tagFilteredPhotos.value
+            }
+        }
+        
+        collectJob.cancel()
+    }
+
+    @Test
+    fun testPhotoGallerySortingAndFiltering() = runTest {
+        val photos = listOf(
+            AlbumImageData(imageKey = "img1", title = "A Video", format = "MP4", date = "2026-07-01"),
+            AlbumImageData(imageKey = "img2", title = "Latest JPG", format = "JPG", date = "2026-07-09"),
+            AlbumImageData(imageKey = "img3", title = "Middle JPG", format = "JPG", date = "2026-07-05")
+        )
+        viewModel.setRawPhotosForTest(photos)
+
+        suspend fun collectPagingData(flow: Flow<PagingData<AlbumImageData>>): List<AlbumImageData> {
+            val differ = androidx.paging.AsyncPagingDataDiffer(
+                diffCallback = object : androidx.recyclerview.widget.DiffUtil.ItemCallback<AlbumImageData>() {
+                    override fun areItemsTheSame(oldItem: AlbumImageData, newItem: AlbumImageData) = oldItem.imageKey == newItem.imageKey
+                    override fun areContentsTheSame(oldItem: AlbumImageData, newItem: AlbumImageData) = oldItem == newItem
+                },
+                updateCallback = object : androidx.recyclerview.widget.ListUpdateCallback {
+                    override fun onInserted(position: Int, count: Int) {}
+                    override fun onRemoved(position: Int, count: Int) {}
+                    override fun onMoved(fromPosition: Int, toPosition: Int) {}
+                    override fun onChanged(position: Int, count: Int, payload: Any?) {}
+                },
+                mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+                workerDispatcher = kotlinx.coroutines.Dispatchers.Unconfined
+            )
+            val job = launch {
+                flow.collect { differ.submitData(it) }
+            }
+            kotlinx.coroutines.yield()
+            job.cancel()
+            return differ.snapshot().items
+        }
+
+        // 1. Default Sort & Filter
+        val defaultList = collectPagingData(viewModel.photosFlow)
+        assertEquals(3, defaultList.size)
+
+        // 2. Sort by date_asc (Older to Newer)
+        viewModel.updateSort("date_asc")
+        val ascList = collectPagingData(viewModel.photosFlow)
+        assertEquals(3, ascList.size)
+        assertEquals("img1", ascList[0].imageKey) // 2026-07-01
+        assertEquals("img3", ascList[1].imageKey) // 2026-07-05
+        assertEquals("img2", ascList[2].imageKey) // 2026-07-09
+
+        // 3. Sort by date_desc (Newer to Older)
+        viewModel.updateSort("date_desc")
+        val descList = collectPagingData(viewModel.photosFlow)
+        assertEquals(3, descList.size)
+        assertEquals("img2", descList[0].imageKey) // 2026-07-09
+        assertEquals("img3", descList[1].imageKey) // 2026-07-05
+        assertEquals("img1", descList[2].imageKey) // 2026-07-01
+
+        // 4. Filter IMAGES (Filters out MP4)
+        viewModel.updateFilterType(GalleryFilterType.IMAGES)
+        val imagesList = collectPagingData(viewModel.photosFlow)
+        assertEquals(2, imagesList.size)
+        assertTrue(imagesList.any { it.imageKey == "img2" })
+        assertTrue(imagesList.any { it.imageKey == "img3" })
+        assertFalse(imagesList.any { it.imageKey == "img1" })
+
+        // 5. Filter VIDEOS (Only returns MP4)
+        viewModel.updateFilterType(GalleryFilterType.VIDEOS)
+        val videosList = collectPagingData(viewModel.photosFlow)
+        assertEquals(1, videosList.size)
+        assertEquals("img1", videosList.first().imageKey)
+    }
+
+    @Test
+    fun testFolderNavigationAndStateMapping() = runTest {
+        viewModel.setActiveNicknameForTest("testUser")
+        
+        val childNode = createTestNode(nodeId = "folder1", parentNodeId = "root", type = "Folder", title = "Subfolder 1")
+        val grandChildren = listOf(
+            createTestNode(nodeId = "album1", parentNodeId = "folder1", type = "Album", title = "Album 1")
+        )
+        
+        Mockito.`when`(mockRepository.getNodeChildren("folder1", BuildConfig.SMUGMUG_API_KEY, false, null))
+            .thenReturn(flowOf(Result.success(grandChildren)))
+            
+        viewModel.navigateToChildFolder(childNode)
         advanceUntilIdle()
         
-        // Check results: only the photo with BOTH keywords should remain
-        val results2 = viewModel.tagFilteredPhotos.value
-        assertEquals(1, results2.size)
-        assertEquals("img2", results2.first().imageKey)
+        assertEquals("folder1", viewModel.currentFolderId)
+        assertEquals(1, viewModel.folderNavigationStack.size)
+        assertEquals("folder1", viewModel.folderNavigationStack.first().nodeId)
+        
+        val state = viewModel.browserState.value
+        assertTrue(state is BrowserUiState.Success)
+        val successNodes = (state as BrowserUiState.Success).nodes
+        assertEquals(1, successNodes.size)
+        assertEquals("album1", successNodes[0].nodeId)
+    }
 
-        collectJob.cancel()
+    @Test
+    fun testSearchScreenDataMapping() = runTest {
+        viewModel.setActiveNicknameForTest("testUser")
+        
+        val matchedFolders = listOf(
+            createTestNode(nodeId = "folderSunset", type = "Folder", title = "Sunset Folder")
+        )
+        val matchedGalleries = listOf(
+            createTestNode(nodeId = "albumSunset", type = "Album", title = "Sunset Album")
+        )
+        
+        Mockito.`when`(mockRepository.getUserRootNodeId(Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(flowOf(Result.success("4zqWw")))
+        
+        Mockito.`when`(mockPrefs.getLong("site_Sunset_ts", 0L))
+            .thenReturn(System.currentTimeMillis() - 60_000L)
+            
+        Mockito.`when`(mockRepository.getSearchResultNodes("Sunset", "site", "Folder"))
+            .thenReturn(matchedFolders)
+            
+        Mockito.`when`(mockRepository.albumsCache)
+            .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(matchedGalleries))
+            
+        val mockPagingSource = object : androidx.paging.PagingSource<Int, SearchResult>() {
+            override fun getRefreshKey(state: androidx.paging.PagingState<Int, SearchResult>): Int? = null
+            override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SearchResult> {
+                return LoadResult.Page(data = emptyList(), prevKey = null, nextKey = null)
+            }
+        }
+        Mockito.`when`(mockRepository.getPagedSearchPhotos(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(mockPagingSource)
+
+        viewModel.performSearch("Sunset")
+        advanceUntilIdle()
+        
+        val state = viewModel.searchState.value
+        assertTrue(state is SearchUiState.Success)
+        val successState = state as SearchUiState.Success
+        assertEquals(1, successState.folders.size)
+        assertEquals("folderSunset", successState.folders.first().nodeId)
+        assertEquals(1, successState.galleries.size)
+        assertEquals("albumSunset", successState.galleries.first().nodeId)
+        assertTrue(successState.photos.isEmpty()) // Replaced by Pager in Success payload
     }
 }
 
@@ -357,4 +504,32 @@ fun SmugViewModel.setActiveNicknameForTest(nickname: String) {
     activeNicknameField.isAccessible = true
     val stateFlow = activeNicknameField.get(this) as kotlinx.coroutines.flow.MutableStateFlow<String?>
     stateFlow.value = nickname
+}
+
+fun SmugViewModel.setRawPhotosForTest(photos: List<AlbumImageData>) {
+    val rawPhotosField = SmugViewModel::class.java.getDeclaredField("_rawPhotos")
+    rawPhotosField.isAccessible = true
+    val stateFlow = rawPhotosField.get(this) as kotlinx.coroutines.flow.MutableStateFlow<List<AlbumImageData>>
+    stateFlow.value = photos
+}
+
+fun createTestNode(
+    nodeId: String,
+    parentNodeId: String? = null,
+    type: String = "Folder",
+    title: String = "Test Node",
+    uri: String = "/api/v2/node/$nodeId"
+): CachedNode {
+    return CachedNode(
+        nodeId = nodeId,
+        parentNodeId = parentNodeId,
+        type = type,
+        title = title,
+        description = null,
+        access = "Public",
+        passwordHint = null,
+        uri = uri,
+        childNodesUri = null,
+        albumUri = null
+    )
 }
