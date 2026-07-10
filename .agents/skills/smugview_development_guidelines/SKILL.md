@@ -109,6 +109,11 @@ The following compile-time and Gradle sync issues were discovered during initial
 *   **Root Cause**: Android's static `Log` class is part of the Android SDK platform, which is not available/mocked on standard JVM unit test execution runs by default.
 *   **Mitigation**: Add `testOptions { unitTests { isReturnDefaultValues = true } }` inside `app/build.gradle.kts` to allow Android classes to return default values instead of throwing stub exceptions.
 
+### 11. Redundant Navigational URIs in Search/List Payloads (High Bandwidth / Performance Overhead)
+*   **Problem**: Outgoing search or list responses (e.g., `image!search`, `user!imagesearch`, `getAlbumKeywords`) return a massive dictionary of navigation URIs (`Uris`) for every single asset, inflating payload size and slowing down JSON parsing.
+*   **Root Cause**: In SmugMug API v2, standard `_filter` parameters only filter regular properties; the navigation `Uris` block is treated as a separate navigational entity and remains in the output unless explicitly suppressed.
+*   **Mitigation**: Append `_filteruri=` (empty value query parameter) to the request URL. In Retrofit, define this as `@Query("_filteruri") filterUri: String = ""` to instruct the SmugMug backend to suppress the `Uris` block completely.
+
 ---
 
 ## 💻 Kotlin & Compose Compilation Rules
@@ -239,5 +244,7 @@ The following technical skills and architectural learnings were established duri
 14. **Main Thread Dispatcher JVM Test Mitigations**: Android's `Looper.getMainLooper()` is not available during local JVM unit tests. Wrapping StateFlow or state updates in `withContext(Dispatchers.Main)` inside ViewModels causes test runner crashes. Since updates to Kotlin's `MutableStateFlow` and Compose state flows are thread-safe, direct assignment on background threads is fully supported and preferred in coroutine contexts.
 15. **WhileSubscribed flow testing**: When testing hot StateFlows that use the `SharingStarted.WhileSubscribed(...)` sharing strategy, calling `.value` inside unit tests will return the default initial value if there are no active subscribers. Launch a background flow collector (`val job = launch { flow.collect {} }`) during the test run to satisfy subscription requirements and trigger proper flow execution.
 16. **Paging loop limits in tests**: To optimize local test feedback loop times and avoid network rate limits, use an `isTesting` flag on a global Repository singleton to cap pagination loops (e.g. at most 2 pages) during test execution runs.
-
-
+17. **Album Key Helper Consistency (`getAlbumKey`)**: Always use the helper method `node.getAlbumKey()` instead of inline calculations like `node.albumUri?.substringAfterLast("/") ?: node.nodeId`. The helper method handles stripping sub-resource suffixes (e.g. `!keys` or `!images`), avoiding key mismatches in downstream database lookups or API calls. Avoid writing inline substring logic to prevent parallel agent refactoring thrashing.
+18. **Payload Optimization & URI Suppression (`_filteruri`)**: To suppress the massive `Uris` navigational block on list or search endpoints (such as `image!search`, `user!imagesearch`, `getAlbumKeywords`, and keyword tag queries), append the query parameter `_filteruri` with an empty string value (`_filteruri=`). Standard field filtering (`_filter`) does not affect the navigation `Uris` block as the backend treats it as a separate navigational entity, so explicit suppression is required to avoid large, unneeded payloads.
+19. **Evidence-Based Bug Resolution**: Before making any code changes to fix a bug, always gather logcat logs, database states, and raw API query outputs to construct a clear diagnostic report with recommendations, presenting it to the user for review.
+20. **Stage-by-Stage Verification & Raw Payload Inspection**: When analyzing API discrepancies (e.g. between a browser request and the mobile client), never rely solely on parsed application models or memory state objects, which assume successful serialization. Write lightweight scripts to fetch and inspect the raw HTTP response payloads anonymously (simulating the client) and check for visibility toggles (such as `"ShowKeywords": false`) or server-side redactions that explain the behavior.

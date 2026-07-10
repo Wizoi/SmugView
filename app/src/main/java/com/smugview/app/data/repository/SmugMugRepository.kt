@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
+import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
@@ -100,11 +101,18 @@ class SmugMugRepository @Inject constructor(
         nodeId: String,
         apiKey: String,
         forceRefresh: Boolean = false,
-        password: String? = null
+        password: String? = null,
+        ignoreErrors: String? = null
     ): Flow<Result<List<CachedNode>>> = flow<Result<List<CachedNode>>> {
+        if (com.smugview.app.BuildConfig.DEBUG) {
+            android.util.Log.d("SmugMugRepository", "getNodeChildren started: nodeId=$nodeId, forceRefresh=$forceRefresh, hasPassword=${!password.isNullOrEmpty()}")
+        }
         // First emit Room cached value
         val cached = dao.getCachedNodesByParent(nodeId).first()
         if (cached.isNotEmpty() && !forceRefresh) {
+            if (com.smugview.app.BuildConfig.DEBUG) {
+                android.util.Log.d("SmugMugRepository", "getNodeChildren cached hit: found ${cached.size} children for nodeId=$nodeId")
+            }
             emit(Result.success(cached))
             return@flow
         }
@@ -114,8 +122,14 @@ class SmugMugRepository @Inject constructor(
             // Re-check cache after acquiring the lock in case another coroutine populated it
             val cachedPostLock = dao.getCachedNodesByParent(nodeId).first()
             if (cachedPostLock.isNotEmpty() && !forceRefresh) {
+                if (com.smugview.app.BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugMugRepository", "getNodeChildren cached hit post-lock: found ${cachedPostLock.size} children for nodeId=$nodeId")
+                }
                 emit(Result.success(cachedPostLock))
                 return@withLock
+            }
+            if (com.smugview.app.BuildConfig.DEBUG) {
+                android.util.Log.d("SmugMugRepository", "getNodeChildren cache miss: fetching from remote API for nodeId=$nodeId")
             }
 
             try {
@@ -125,13 +139,13 @@ class SmugMugRepository @Inject constructor(
                             com.smugview.app.data.api.NodeListPayload(emptyList())
                         )
                     } else {
-                        api.getNodeChildren(nodeId, apiKey, password)
+                        api.getNodeChildren(nodeId, apiKey, password, ignoreErrors = ignoreErrors)
                     }
                 } catch (e: Exception) {
                     if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                         val unlocked = unlockInheritedPasswordRoot(nodeId, apiKey, password)
                         if (unlocked) {
-                            api.getNodeChildren(nodeId, apiKey, password)
+                            api.getNodeChildren(nodeId, apiKey, password, ignoreErrors = ignoreErrors)
                         } else {
                             throw e
                         }
@@ -212,6 +226,42 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
+    private fun overrideUrlCount(url: String, newCount: Int = 500): String {
+        val countOverridden = if (url.contains("count=")) {
+            url.replace(Regex("count=\\d+"), "count=$newCount")
+        } else {
+            val separator = if (url.contains("?")) "&" else "?"
+            "$url${separator}count=$newCount"
+        }
+        return if (countOverridden.contains("_verbosity=")) {
+            countOverridden.replace(Regex("_verbosity=\\d+"), "_verbosity=1")
+        } else {
+            val separator = if (countOverridden.contains("?")) "&" else "?"
+            "$countOverridden${separator}_verbosity=1"
+        }
+    }
+
+    private fun overrideUrlCountAndStart(url: String, newCount: Int = 500, newStart: Int): String {
+        val countOverridden = if (url.contains("count=")) {
+            url.replace(Regex("count=\\d+"), "count=$newCount")
+        } else {
+            val separator = if (url.contains("?")) "&" else "?"
+            "$url${separator}count=$newCount"
+        }
+        val startOverridden = if (countOverridden.contains("start=")) {
+            countOverridden.replace(Regex("start=\\d+"), "start=$newStart")
+        } else {
+            val separator = if (countOverridden.contains("?")) "&" else "?"
+            "$countOverridden${separator}start=$newStart"
+        }
+        return if (startOverridden.contains("_verbosity=")) {
+            startOverridden.replace(Regex("_verbosity=\\d+"), "_verbosity=1")
+        } else {
+            val separator = if (startOverridden.contains("?")) "&" else "?"
+            "$startOverridden${separator}_verbosity=1"
+        }
+    }
+
     suspend fun getAlbumImagesPage(
         albumKey: String,
         apiKey: String,
@@ -233,7 +283,7 @@ class SmugMugRepository @Inject constructor(
             }
             
             if (response.response.images == null) {
-                throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, okhttp3.ResponseBody.create(null, "")))
+                throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
             }
             response
         } catch (e: Exception) {
@@ -259,7 +309,8 @@ class SmugMugRepository @Inject constructor(
         apiKey: String,
         password: String? = null
     ): AlbumImagesResponse {
-        val absoluteUrl = if (nextUrl.startsWith("http")) nextUrl else "https://api.smugmug.com$nextUrl"
+        val overriddenUrl = overrideUrlCount(nextUrl, 500)
+        val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
         return api.getAlbumImagesByUri(absoluteUrl, apiKey, password)
     }
 
@@ -276,9 +327,46 @@ class SmugMugRepository @Inject constructor(
         return api.getUserTopKeywords(nickname, apiKey, nodeId)
     }
 
-    suspend fun getImagesByKeyword(scope: String?, keywords: String, apiKey: String, count: Int = 500, start: Int = 1): List<AlbumImageData> {
+    suspend fun getImagesByKeyword(
+        scope: String?,
+        keywords: String,
+        apiKey: String,
+        count: Int = 500,
+        start: Int = 1
+    ): List<AlbumImageData> {
         val spaceSeparatedText = keywords.replace(",", " ")
-        return api.getImagesByKeyword(apiKey, scope, spaceSeparatedText, count, start).response.images ?: emptyList()
+        val allImages = mutableListOf<AlbumImageData>()
+        try {
+            var response = api.getImagesByKeyword(
+                apiKey = apiKey,
+                scope = scope,
+                text = spaceSeparatedText,
+                count = count,
+                start = start
+            )
+            response.response.images?.let { allImages.addAll(elements = it) }
+            
+            var nextUrl = response.response.pages?.next
+            var pageCount = 1
+            var nextStart = start + (response.response.images?.size ?: 0)
+            while (nextUrl != null && (!isTesting || pageCount < 2)) {
+                val overriddenUrl = overrideUrlCountAndStart(nextUrl, 500, nextStart)
+                val absoluteUrl = if (overriddenUrl.startsWith(prefix = "http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
+                response = api.searchImagesByUri(
+                    url = absoluteUrl,
+                    apiKey = apiKey
+                )
+                val pageImages = response.response.images ?: emptyList()
+                pageImages.let { allImages.addAll(elements = it) }
+                nextUrl = response.response.pages?.next
+                nextStart += pageImages.size
+                pageCount++
+                kotlinx.coroutines.delay(100)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SmugMugRepository", "Failed to getImagesByKeyword", e)
+        }
+        return allImages
     }
 
     suspend fun updateImageMetadata(imageKey: String, apiKey: String, keywords: String): Boolean {
@@ -298,7 +386,7 @@ class SmugMugRepository @Inject constructor(
             var response = try {
                 val res = api.getAlbumImages(albumKey, apiKey, password)
                 if (res.response.images == null) {
-                    throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, okhttp3.ResponseBody.create(null, "")))
+                    throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
                 }
                 res
             } catch (e: Exception) {
@@ -323,11 +411,13 @@ class SmugMugRepository @Inject constructor(
             while (nextUrl != null && (!isTesting || pageCount < 2)) {
                 // Ensure nextUrl is relative to Retrofit's base URL if required, or absolute
                 // SmugMug nextUri starts with /api/v2/... Retrofit @Url supports relative/absolute paths.
-                val absoluteUrl = if (nextUrl.startsWith("http")) nextUrl else "https://api.smugmug.com$nextUrl"
+                val overriddenUrl = overrideUrlCount(nextUrl, 500)
+                val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
                 response = api.getAlbumImagesByUri(absoluteUrl, apiKey, password)
                 response.response.images?.let { allImages.addAll(it) }
                 nextUrl = response.response.pages?.next
                 pageCount++
+                kotlinx.coroutines.delay(100)
             }
         } catch (e: Exception) {
             // Propagate or log
@@ -403,9 +493,9 @@ class SmugMugRepository @Inject constructor(
                     description = existing?.description,
                     access = album.securityType ?: existing?.access ?: "Public",
                     passwordHint = album.passwordHint ?: existing?.passwordHint,
-                    uri = album.uri ?: existing?.uri ?: "",
+                    uri = album.uri,
                     childNodesUri = existing?.childNodesUri,
-                    albumUri = album.uri ?: existing?.albumUri,
+                    albumUri = album.uri,
                     highlightImageUrl = existing?.highlightImageUrl,
                     childCount = album.imageCount ?: existing?.childCount,
                     sortIndex = existing?.sortIndex ?: 0,
@@ -423,6 +513,9 @@ class SmugMugRepository @Inject constructor(
     }
 
     suspend fun buildInMemoryGalleryCache(nickname: String, apiKey: String) {
+        if (com.smugview.app.BuildConfig.DEBUG) {
+            android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache starting for user=$nickname")
+        }
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             _isAlbumsCacheLoaded.value = false
             val allAlbums = mutableListOf<CachedNode>()
@@ -431,6 +524,9 @@ class SmugMugRepository @Inject constructor(
                 
                 while (true) {
                     val albums = response.response.albums ?: emptyList()
+                    if (com.smugview.app.BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache page fetched ${albums.size} albums")
+                    }
                     val expansions = response.expansions
                     
                     val parsedNodes = albums.mapIndexed { index, album ->
@@ -450,7 +546,7 @@ class SmugMugRepository @Inject constructor(
                             description = null,
                             access = album.securityType ?: "Public",
                             passwordHint = album.passwordHint,
-                            uri = album.uri ?: "",
+                            uri = album.uri,
                             childNodesUri = null,
                             albumUri = album.uri,
                             highlightImageUrl = highlightUrl,
@@ -463,17 +559,33 @@ class SmugMugRepository @Inject constructor(
                     
                     val nextUrl = response.response.pages?.next
                     if (nextUrl == null) break
-                    
-                    response = api.getUserAlbumsByUri(nextUrl, apiKey)
                     kotlinx.coroutines.delay(100)
+                    val overriddenUrl = overrideUrlCount(nextUrl, 100)
+                    response = api.getUserAlbumsByUri(overriddenUrl, apiKey)
                 }
                 _albumsCache.value = allAlbums
+                if (com.smugview.app.BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache completed: total cached albums = ${allAlbums.size}")
+                }
+                Unit
             } catch (e: Exception) {
                 android.util.Log.e("SmugMugRepository", "Failed to build in-memory gallery cache", e)
             } finally {
                 _isAlbumsCacheLoaded.value = true
             }
         }
+    }
+
+    fun getSavedPasswordForNode(node: CachedNode): String? {
+        val passwordPrefs = context.getSharedPreferences("smugview_passwords", Context.MODE_PRIVATE)
+        val albumKey = node.getAlbumKey()
+        var saved = passwordPrefs.getString(albumKey, null)
+        if (!saved.isNullOrEmpty()) return saved
+        saved = passwordPrefs.getString(node.nodeId, null)
+        if (!saved.isNullOrEmpty()) return saved
+        saved = passwordPrefs.getString(node.parentNodeId, null)
+        if (!saved.isNullOrEmpty()) return saved
+        return null
     }
 
     suspend fun performBackgroundSearchImages(
@@ -484,61 +596,103 @@ class SmugMugRepository @Inject constructor(
         apiKey: String,
         password: String? = null
     ) {
+        if (com.smugview.app.BuildConfig.DEBUG) {
+            android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages starting: user=$nickname, scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query")
+        }
         try {
-            var startIdx = 1
-            var pageCount = 0
-            val allImages = mutableListOf<AlbumImageData>()
+            dao.deleteSearchResultsForQueryAndType(query = query, scope = scopeKey, type = "Photo")
 
-            while (true) {
-                val response = try {
-                    api.searchImages(
-                        apiKey = apiKey,
-                        scope = scopeUri,
-                        text = query,
-                        start = startIdx,
-                        count = 500
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.e("SmugMugRepository", "API searchImages failed", e)
-                    null
+            val targetScope = scopeUri ?: "/api/v2/node/4zqWw"
+            if (com.smugview.app.BuildConfig.DEBUG) {
+                android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages calling searchImages with scope=$targetScope")
+            }
+            val response = api.searchImages(
+                apiKey = apiKey,
+                scope = targetScope,
+                text = query,
+                start = 1,
+                count = 500
+            )
+
+            var insertedCount = 0
+            val insertedKeys = mutableSetOf<String>()
+
+            var nextUrl = response.response.pages?.next
+            val pageImages = response.response.images ?: emptyList()
+            if (com.smugview.app.BuildConfig.DEBUG) {
+                android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages page 1 returned ${pageImages.size} images")
+            }
+            val pageExpansions = response.expansions
+            if (pageExpansions != null) {
+                pageImages.forEach { img ->
+                    if (img.isVideo) {
+                        val largestVideoUri = img.uris?.largestVideo
+                        if (largestVideoUri != null) {
+                            img.videoUrl = pageExpansions[largestVideoUri]?.largestVideo?.url
+                        }
+                    }
                 }
+            }
+            
+            val filteredPageImages = pageImages.filter { img -> insertedKeys.add(img.imageKey) }
+            if (filteredPageImages.isNotEmpty()) {
+                dao.insertSearchResults(
+                    results = filteredPageImages.mapIndexed { index, img ->
+                        img.toSearchResult(query = query, scope = scopeKey, index = insertedCount + index)
+                    }
+                )
+                insertedCount += filteredPageImages.size
+            }
 
-                if (response == null) break
-
-                pageCount++
-                val pageImages = response.response.images ?: emptyList()
-                val pageExpansions = response.expansions
-                if (pageExpansions != null) {
-                    pageImages.forEach { img ->
+            var pageCount = 1
+            var nextStart = 1 + pageImages.size
+            while (nextUrl != null && (!isTesting || pageCount < 2)) {
+                val overriddenUrl = overrideUrlCountAndStart(nextUrl, 500, nextStart)
+                val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
+                if (com.smugview.app.BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages calling searchImagesUserByUri: page ${pageCount + 1}")
+                }
+                val nextPageResponse = api.searchImagesUserByUri(
+                    url = absoluteUrl,
+                    apiKey = apiKey,
+                    password = password
+                )
+                val nextPageImages = nextPageResponse.response.images ?: emptyList()
+                if (com.smugview.app.BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages page ${pageCount + 1} returned ${nextPageImages.size} images")
+                }
+                val nextPageExpansions = nextPageResponse.expansions
+                if (nextPageExpansions != null) {
+                    nextPageImages.forEach { img ->
                         if (img.isVideo) {
                             val largestVideoUri = img.uris?.largestVideo
                             if (largestVideoUri != null) {
-                                img.videoUrl = pageExpansions[largestVideoUri]?.largestVideo?.url
+                                img.videoUrl = nextPageExpansions[largestVideoUri]?.largestVideo?.url
                             }
                         }
                     }
                 }
                 
-                allImages.addAll(pageImages)
-                
-                val uniqueImages = allImages.distinctBy { it.imageKey }
-                dao.deleteSearchResultsForQueryAndType(query, scopeKey, "Photo")
-                if (uniqueImages.isNotEmpty()) {
-                    dao.insertSearchResults(uniqueImages.mapIndexed { index, img ->
-                        img.toSearchResult(query, scopeKey, index)
-                    })
+                val filteredNextPageImages = nextPageImages.filter { img -> insertedKeys.add(img.imageKey) }
+                if (filteredNextPageImages.isNotEmpty()) {
+                    dao.insertSearchResults(
+                        results = filteredNextPageImages.mapIndexed { index, img ->
+                            img.toSearchResult(query = query, scope = scopeKey, index = insertedCount + index)
+                        }
+                    )
+                    insertedCount += filteredNextPageImages.size
                 }
-
-                val total = response.response.pages?.total ?: 0
-                if (startIdx + pageImages.size > total || pageImages.isEmpty()) {
-                    break
-                }
-                
-                startIdx += pageImages.size
-                kotlinx.coroutines.delay(100) // gentle pacing (approx 4-5 req/sec with network overhead)
+                nextUrl = nextPageResponse.response.pages?.next
+                nextStart += nextPageImages.size
+                pageCount++
+                kotlinx.coroutines.delay(100)
+            }
+            if (com.smugview.app.BuildConfig.DEBUG) {
+                android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages completed: total inserted = $insertedCount")
             }
         } catch (e: Exception) {
-            android.util.Log.e("SmugMugRepository", "performBackgroundSearchImages error", e)
+            android.util.Log.e("SmugMugRepository", "Failed performBackgroundSearchImages", e)
+            throw e
         }
     }
 
@@ -588,7 +742,7 @@ class SmugMugRepository @Inject constructor(
             val (currentNodeId, nodePassword) = queue.removeFirst()
             foldersScanned++
             try {
-                val response = api.getNodeChildren(currentNodeId, apiKey, nodePassword)
+                val response = api.getNodeChildren(currentNodeId, apiKey, nodePassword, ignoreErrors = "true")
                 val nodes = response.response.nodes ?: emptyList<NodeData>()
                 val dbNodes = nodes.mapIndexed { index, node ->
                     val highlightUri = node.uris.highlightImage
@@ -626,7 +780,6 @@ class SmugMugRepository @Inject constructor(
                         albums.add(node)
                     }
                 }
-                kotlinx.coroutines.delay(100)
             } catch (e: Exception) {
                 // Ignore and proceed to next node
             }
@@ -652,7 +805,7 @@ class SmugMugRepository @Inject constructor(
 
     suspend fun unlockNode(nodeId: String, apiKey: String, password: String): Boolean {
         return try {
-            val response = api.unlockNode(nodeId, apiKey, password)
+            val response = api.unlockNode(nodeId, apiKey, password, "true")
             response.isSuccessful
         } catch (e: Exception) {
             false
@@ -661,7 +814,7 @@ class SmugMugRepository @Inject constructor(
 
     suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String): Boolean {
         return try {
-            val response = api.unlockAlbum(albumKey, apiKey, password)
+            val response = api.unlockAlbum(albumKey, apiKey, password, "true")
             response.isSuccessful
         } catch (e: Exception) {
             false
@@ -841,15 +994,15 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
-    suspend fun getNode(nodeId: String, apiKey: String): com.smugview.app.data.api.NodeData {
-        return api.getNode(nodeId, apiKey).response.node
+    suspend fun getNode(nodeId: String, apiKey: String, ignoreErrors: String? = null): com.smugview.app.data.api.NodeData {
+        return api.getNode(nodeId, apiKey, ignoreErrors = ignoreErrors).response.node
     }
 
     suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): String {
         var currentId = nodeId
         while (true) {
             try {
-                val nodeResponse = api.getNode(currentId, apiKey)
+                val nodeResponse = api.getNode(currentId, apiKey, ignoreErrors = "true")
                 val nodeData = nodeResponse.response.node
                 if (nodeData.privacy == "Password") {
                     return currentId
@@ -871,12 +1024,7 @@ class SmugMugRepository @Inject constructor(
     }
 
     suspend fun unlockInheritedPasswordRoot(idOrKey: String, apiKey: String, password: String): Boolean {
-        var node = dao.getNodeById(idOrKey)
-        if (node == null) {
-            val all = dao.getAllCachedNodes()
-            node = all.find { it.nodeId == idOrKey || it.getAlbumKey() == idOrKey }
-        }
-        
+        val node = dao.getNodeByIdOrKey(idOrKey)
         val nodeId = node?.nodeId ?: idOrKey
         val rootNodeId = try {
             resolvePasswordRootNodeId(nodeId, apiKey)
@@ -885,7 +1033,7 @@ class SmugMugRepository @Inject constructor(
         }
         
         val rootNode = dao.getNodeById(rootNodeId) ?: try {
-            val apiNode = getNode(rootNodeId, apiKey)
+            val apiNode = getNode(rootNodeId, apiKey, ignoreErrors = "true")
             val cn = CachedNode(
                 nodeId = apiNode.nodeId,
                 parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
@@ -1023,6 +1171,10 @@ class SmugMugRepository @Inject constructor(
         return dao.getSearchResults(query, scope, "Folder").isNotEmpty() ||
                dao.getSearchResults(query, scope, "Album").isNotEmpty() ||
                dao.getSearchResults(query, scope, "Photo").isNotEmpty()
+    }
+
+    suspend fun hasSearchPhotosInDb(query: String, scope: String): Boolean {
+        return dao.getSearchResults(query, scope, "Photo").isNotEmpty()
     }
 
     suspend fun getHighestPasswordProtectedParent(nodeId: String): CachedNode? {

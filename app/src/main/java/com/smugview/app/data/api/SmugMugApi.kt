@@ -8,6 +8,7 @@ import retrofit2.http.Headers
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.Url
+import retrofit2.http.Header
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.Field
 
@@ -34,14 +35,19 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl",
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage,ParentNode",
+        @Query("_verbosity") verbosity: Int = 1,
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): NodeListResponse
 
     @GET("node/{node_id}")
     suspend fun getNode(
         @Path("node_id") nodeId: String,
         @Query("APIKey") apiKey: String,
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl",
+        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage,ParentNode",
+        @Query("_verbosity") verbosity: Int = 1,
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): SingleNodeResponse
 
     @GET("album/{album_key}")
@@ -49,7 +55,10 @@ interface SmugMugApi {
         @Path("album_key") albumKey: String,
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris",
+        @Query("_filteruri") filterUri: String = "HighlightImage",
+        @Query("_verbosity") verbosity: Int = 1,
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): AlbumResponse
 
     @GET("album/{album_key}!images")
@@ -60,7 +69,9 @@ interface SmugMugApi {
         @Query("count") count: Int = 500,
         @Query("_expand") expand: String = "LargestVideo",
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,Uris",
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("_filteruri") filterUri: String = "LargestVideo,Album",
+        @Query("_verbosity") verbosity: Int = 1,
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): AlbumImagesResponse
 
     // Used by Paging 3 to fetch pages relative to base URL
@@ -69,10 +80,7 @@ interface SmugMugApi {
         @Url url: String,
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
-        @Query("count") count: Int = 500,
-        @Query("_expand") expand: String = "LargestVideo",
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,Uris",
-        @Query("_verbosity") verbosity: Int = 1
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): AlbumImagesResponse
 
     @GET("image!search")
@@ -84,16 +92,16 @@ interface SmugMugApi {
         @Query("SortDirection") sortDirection: String? = null,
         @Query("count") count: Int = 500,
         @Query("start") start: Int = 1,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,WebUri,Uris",
-        @Query("_expand") expand: String = "LargestVideo",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format",
+        @Query("_filteruri") filterUri: String = "",
+        @Query("_expand") expand: String? = null,
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 
     @GET
     suspend fun searchImagesByUri(
         @Url url: String,
-        @Query("APIKey") apiKey: String,
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("APIKey") apiKey: String
     ): ImageSearchResponse
 
     @GET("user/{nickname}!imagesearch")
@@ -105,8 +113,9 @@ interface SmugMugApi {
         @Query("Password") password: String? = null,
         @Query("count") count: Int = 250,
         @Query("start") start: Int = 1,
-        @Query("_expand") expand: String = "LargestVideo",
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,WebUri,Uris",
+        @Query("_expand") expand: String? = null,
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format",
+        @Query("_filteruri") filterUri: String = "",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 
@@ -114,10 +123,7 @@ interface SmugMugApi {
     suspend fun searchImagesUserByUri(
         @Url url: String,
         @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
-        @Query("_expand") expand: String = "LargestVideo",
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,WebUri,Uris",
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("Password") password: String? = null
     ): ImageSearchResponse
 
     @GET("node!search")
@@ -128,6 +134,7 @@ interface SmugMugApi {
         @Query("Password") password: String? = null,
         @Query("_expand") expand: String = "HighlightImage",
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl",
+        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage,ParentNode",
         @Query("_verbosity") verbosity: Int = 1
     ): NodeListResponse
 
@@ -138,6 +145,7 @@ interface SmugMugApi {
         @Query("Password") password: String? = null,
         @Query("_expand") expand: String = "LargestVideo",
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Uris,WebUri",
+        @Query("_filteruri") filterUri: String = "LargestVideo,Album",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageResponse
 
@@ -154,7 +162,8 @@ interface SmugMugApi {
     suspend fun unlockNode(
         @Path("node_id") nodeId: String,
         @Query("APIKey") apiKey: String,
-        @Field("Password") password: String
+        @Field("Password") password: String,
+        @Header("X-Ignore-Errors") ignoreErrors: String?
     ): retrofit2.Response<okhttp3.ResponseBody>
 
     @FormUrlEncoded
@@ -162,27 +171,25 @@ interface SmugMugApi {
     suspend fun unlockAlbum(
         @Path("album_key") albumKey: String,
         @Query("APIKey") apiKey: String,
-        @Field("Password") password: String
+        @Field("Password") password: String,
+        @Header("X-Ignore-Errors") ignoreErrors: String?
     ): retrofit2.Response<okhttp3.ResponseBody>
 
     @GET("user/{nickname}!albums")
     suspend fun getUserAlbums(
         @Path("nickname") nickname: String,
         @Query("APIKey") apiKey: String,
-        @Query("count") count: Int = 500,
+        @Query("count") count: Int = 100,
         @Query("_expand") expand: String = "HighlightImage",
         @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris",
+        @Query("_filteruri") filterUri: String = "HighlightImage",
         @Query("_verbosity") verbosity: Int = 1
     ): UserAlbumsResponse
 
     @GET
     suspend fun getUserAlbumsByUri(
         @Url url: String,
-        @Query("APIKey") apiKey: String,
-        @Query("count") count: Int = 500,
-        @Query("_expand") expand: String = "HighlightImage",
-        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris",
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("APIKey") apiKey: String
     ): UserAlbumsResponse
 
     @GET("album/{album_keys}")
@@ -192,6 +199,7 @@ interface SmugMugApi {
         @Query("Password") password: String? = null,
         @Query("_expand") expand: String = "AlbumKeywords",
         @Query("_filter") filter: String = "Uri",
+        @Query("_filteruri") filterUri: String = "",
         @Query("_verbosity") verbosity: Int = 1
     ): AlbumKeywordsResponse
 
@@ -208,9 +216,10 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("Scope") scope: String? = null,
         @Query("Text") text: String? = null,
-        @Query("count") count: Int = 10,
+        @Query("count") count: Int = 500,
         @Query("start") start: Int = 1,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,WebUri,Uris,Keywords,KeywordArray",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format,Keywords,KeywordArray",
+        @Query("_filteruri") filterUri: String = "",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 

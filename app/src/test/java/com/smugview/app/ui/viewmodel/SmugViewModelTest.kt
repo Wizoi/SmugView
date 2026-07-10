@@ -317,10 +317,13 @@ class SmugViewModelTest {
             AlbumImageData(imageKey = "img4", title = "Laurel solo", keywords = "laurel, sports")
         )
         
-        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/user/testUser", "clara", BuildConfig.SMUGMUG_API_KEY, 500, 1))
+        Mockito.`when`(mockRepository.getUserRootNodeId("testUser", BuildConfig.SMUGMUG_API_KEY))
+            .thenReturn(flowOf(Result.success("4zqWw")))
+
+        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/node/4zqWw", "clara", BuildConfig.SMUGMUG_API_KEY, 500, 1))
             .thenReturn(claraImages)
             
-        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/user/testUser", "clara,laurel", BuildConfig.SMUGMUG_API_KEY, 500, 1))
+        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/node/4zqWw", "clara,laurel", BuildConfig.SMUGMUG_API_KEY, 500, 1))
             .thenReturn(claraLaurelImages)
 
         // Start collecting tagFilteredPhotos to keep the WhileSubscribed flow active

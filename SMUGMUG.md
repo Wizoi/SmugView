@@ -119,20 +119,14 @@ To maintain a resilient and high-performing integration, any future changes or o
     2. If the GET request succeeds, return the results immediately (using existing OkHttp CookieJar session cookies).
     3. If the GET request fails with an `HTTP 401` or `HTTP 404` error and a password is cached locally, invoke the POST `!unlock` endpoint *exactly once* to establish a new session, then retry the original GET request.
 
-
-### 6. Unsearchable Albums and Scoped Image Search (`user/{nickname}!imagesearch`)
-* **Problem**: SmugMug's global user-level image search (`user/{nickname}!imagesearch` with no `Scope` param) returns **0 results** for any photos inside albums/galleries marked `"Searchable: No"`.
-* **Solution**: To search inside unsearchable albums, you must execute a **scoped image search** specifically restricted to each matching gallery's URI (passing `Scope = /api/v2/node/{node_id}` or `Scope = gallery.uri`).
+### 6. Deprecated user-level imagesearch vs. Modern image!search
+* **Deprecation Warning**: The user-level image search (`GET user/{nickname}!imagesearch`) is a legacy/deprecated SmugMug API. Do not use it.
+* **Modern Standard**: Always use the unified **`GET image!search`** endpoint for all photo search operations.
+* **Scope Requirement**: Pass the user's root node URI (e.g. `/api/v2/node/4zqWw`) to the `Scope` query parameter to query across the entire account scope. Passing a specific gallery/folder node URI restricts the search to that container scope.
 
 ### 7. Scoped Searches and Password Access
-* **Problem**: Scoped searches on password-protected galleries (even if unlocked via `!unlock` previously in the session) fail or return 0 images if the password query parameter is omitted on the search call.
-* **Solution**: Retrieve the cached folder/gallery password from local session preferences (using the gallery key, node ID, or parent folder node ID) and explicitly supply it via the `Password` parameter to `searchImagesUser`.
-
-
-### 8. Crawl Cap & Prioritization Budget for Global Scoped Search
-* **Problem**: Performing sequential scoped API searches across a large number of cached albums during a global search fallback is extremely slow and triggers SmugMug's rate limiter (HTTP 429 Too Many Requests).
-* **Solution**: Implement a hard crawl cap (e.g., maximum 40 albums). To maximize the effectiveness of this cap, split the cached albums list into `passwordAlbums` and `publicAlbums`, placing the `passwordAlbums` first (i.e. `(passwordAlbums + publicAlbums).take(40)`). Password-protected albums are **definitively never** returned by the unscoped global API search step, so they must be crawled explicitly. Public/searchable albums are placed after the password ones in the budget.
-* **Caveat — Public Album Indexing**: The assumption that public albums are "fully covered" by the global search step only holds if SmugMug has fully indexed those albums. Very recently uploaded images, galleries with low crawl frequency, or accounts with misconfigured searchability settings may produce gaps. For completeness, including public albums in the crawl budget tail (after password albums) still adds coverage for these edge cases within the budget cap.
+* **Problem**: Scoped searches on password-protected folders or galleries (even if unlocked via `!unlock` previously in the session) fail or return 0 images if the password query parameter is omitted on the search call.
+* **Solution**: Retrieve the cached folder/gallery password from local session preferences (using the gallery key, node ID, or parent folder node ID) and explicitly supply it via the `Password` parameter to `searchImages`.
 
 ---
 

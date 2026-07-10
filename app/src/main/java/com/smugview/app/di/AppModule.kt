@@ -41,17 +41,46 @@ object AppModule {
             chain.proceed(request)
         }
 
+        val errorInterceptor = Interceptor { chain ->
+            val request = chain.request()
+            val response = chain.proceed(request)
+            val isApiRequest = request.url.host == "api.smugmug.com" && request.url.encodedPath.contains("/api/v2/")
+            if (!response.isSuccessful && isApiRequest && request.header("X-Ignore-Errors") != "true") {
+                val code = response.code
+                val httpMessage = response.message
+                val responseBodyContent = try {
+                    val peekBody = response.peekBody(1024 * 1024L) // Peek up to 1MB
+                    peekBody.string()
+                } catch (e: Exception) {
+                    null
+                }
+                val friendlyMessage = com.smugview.app.data.api.SmugMugErrorMapper.getFriendlyMessage(code, httpMessage, responseBodyContent)
+                
+                val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                mainHandler.post {
+                    android.widget.Toast.makeText(
+                        context,
+                        friendlyMessage,
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+            response
+        }
+
         // Cache Interceptor: Force OkHttp to cache GET responses by replacing 'no-cache/no-store' with a 5-minute cache header.
         // IMPORTANT: Search endpoints are explicitly excluded — they must always hit the network for fresh results.
         val cacheInterceptor = Interceptor { chain ->
             val request = chain.request()
             val response = chain.proceed(request)
             val urlPath = request.url.encodedPath
-            val isSearchEndpoint = urlPath.contains("imagesearch") ||
+            val isBypassedEndpoint = urlPath.contains("imagesearch") ||
                 urlPath.contains("image!search") ||
                 urlPath.contains("node!search") ||
-                request.url.queryParameter("Text") != null // Any request with a Text query param is a search
-            if (request.method == "GET" && response.isSuccessful && !isSearchEndpoint) {
+                urlPath.contains("unlock") ||
+                request.url.queryParameter("Text") != null ||
+                request.url.queryParameter("Password") != null
+            if (request.method == "GET" && response.isSuccessful && !isBypassedEndpoint) {
                 val cacheControl = response.header("Cache-Control")
                 if (cacheControl == null || cacheControl.contains("no-store") || cacheControl.contains("no-cache") || cacheControl.contains("max-age=0")) {
                     response.newBuilder()
@@ -69,15 +98,25 @@ object AppModule {
             var request = chain.request()
             var response = chain.proceed(request)
             var tryCount = 0
-            val maxLimit = 3
-            var delayMs = 1000L
+            val maxLimit = 5
+            var delayMs = 500L
 
             // Retry for server failures or rate limiting (429, 5xx)
             while (!response.isSuccessful && (response.code == 429 || response.code in 500..599) && tryCount < maxLimit) {
                 tryCount++
+                
+                var sleepTimeMs = delayMs
+                if (response.code == 429) {
+                    val retryAfterHeader = response.header("Retry-After") ?: response.header("retry-after")
+                    val retryAfterSeconds = retryAfterHeader?.toLongOrNull()
+                    if (retryAfterSeconds != null) {
+                        sleepTimeMs = retryAfterSeconds * 1000L
+                    }
+                }
+
                 response.close()
                 try {
-                    Thread.sleep(delayMs)
+                    Thread.sleep(sleepTimeMs)
                 } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt()
                     throw IOException(e)
@@ -112,6 +151,7 @@ object AppModule {
             .cache(cache)
             .cookieJar(cookieJar)
             .addInterceptor(headerInterceptor)
+            .addInterceptor(errorInterceptor)
             .addNetworkInterceptor(cacheInterceptor)
             .addInterceptor(loggingInterceptor)
             .addInterceptor(retryInterceptor)

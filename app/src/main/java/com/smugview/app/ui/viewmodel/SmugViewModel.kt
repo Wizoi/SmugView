@@ -138,6 +138,9 @@ class SmugViewModel @Inject constructor(
         if (tab != BrowserTab.Search && previousTab == BrowserTab.Search) {
             cancelSearchJob()
         }
+        if (tab != BrowserTab.TagSearch && previousTab == BrowserTab.TagSearch) {
+            cancelTagSearchJob()
+        }
         if (tab == BrowserTab.Search && previousTab == BrowserTab.Folders && updateScopeFromBrowsing) {
             val currentFolder = folderNavigationStack.lastOrNull()
             if (currentFolder != null) {
@@ -181,6 +184,65 @@ class SmugViewModel @Inject constructor(
     fun cancelSearchJob() {
         searchJob?.cancel()
         searchJob = null
+        backgroundSearchJob?.cancel()
+        backgroundSearchJob = null
+    }
+
+    fun cancelTagSearchJob() {
+        imageLoadJob?.cancel()
+        imageLoadJob = null
+        _isLoadingPhotos.value = false
+        _scanProgress.value = "Tag search was cancelled because you navigated away."
+    }
+
+    fun clearScanProgress() {
+        _scanProgress.value = ""
+    }
+
+    fun unlockAllSavedPasswords() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allPasswords = passwordPrefs.all
+            val unlockedRoots = mutableSetOf<String>()
+            for ((nodeId, passwordObj) in allPasswords) {
+                val password = passwordObj as? String ?: continue
+                if (password.isNotEmpty()) {
+                    try {
+                        val cachedNode = repository.getNodeById(nodeId)
+                        if (cachedNode != null) {
+                            if (cachedNode.type == "Folder") {
+                                if (unlockedRoots.add(nodeId)) {
+                                    repository.unlockNode(nodeId, apiKey, password)
+                                    kotlinx.coroutines.delay(400)
+                                }
+                            } else {
+                                val albumKey = cachedNode.getAlbumKey()
+                                if (albumKey.isNotEmpty()) {
+                                    if (unlockedRoots.add(albumKey)) {
+                                        repository.unlockAlbum(albumKey, apiKey, password)
+                                        kotlinx.coroutines.delay(400)
+                                    }
+                                } else {
+                                    if (unlockedRoots.add(nodeId)) {
+                                        repository.unlockNode(nodeId, apiKey, password)
+                                        kotlinx.coroutines.delay(400)
+                                    }
+                                }
+                            }
+                        } else {
+                            if (unlockedRoots.add(nodeId)) {
+                                val success = repository.unlockNode(nodeId, apiKey, password)
+                                if (!success) {
+                                    repository.unlockAlbum(nodeId, apiKey, password)
+                                }
+                                kotlinx.coroutines.delay(400)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // ignore
+                    }
+                }
+            }
+        }
     }
 
     // Splash State
@@ -279,6 +341,9 @@ class SmugViewModel @Inject constructor(
     private val _searchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val searchState: StateFlow<SearchUiState> = _searchState.asStateFlow()
 
+    private val _isSearchPhotosLoading = MutableStateFlow(false)
+    val isSearchPhotosLoading: StateFlow<Boolean> = _isSearchPhotosLoading.asStateFlow()
+
     // Search Gallery Sort Order: "Ascending" or "Descending"
     var searchGallerySortOrder by mutableStateOf(sharedPrefs.getString("search_gallery_sort_order", "Ascending") ?: "Ascending")
         private set
@@ -326,17 +391,23 @@ class SmugViewModel @Inject constructor(
     }
 
     private var searchJob: kotlinx.coroutines.Job? = null
+    private var backgroundSearchJob: kotlinx.coroutines.Job? = null
     private var treeSyncJob: kotlinx.coroutines.Job? = null
 
     fun performSearch(query: String, forceRefresh: Boolean = false) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d("SmugViewModel", "performSearch called: query='$query', forceRefresh=$forceRefresh")
+        }
         searchQuery = query
         if (query.isBlank()) {
             searchJob?.cancel()
+            backgroundSearchJob?.cancel()
             _searchState.value = SearchUiState.Idle
             return
         }
         _searchState.value = SearchUiState.Loading
         searchJob?.cancel()
+        backgroundSearchJob?.cancel()
         viewModelScope.launch {
             repository.insertSearchQuery(query)
         }
@@ -361,24 +432,39 @@ class SmugViewModel @Inject constructor(
                 
                 // Wait for the gallery cache to finish loading
                 if (!repository.isAlbumsCacheLoaded.value) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugViewModel", "performSearch waiting for gallery cache to finish loading")
+                    }
                     _searchState.value = SearchUiState.Loading
                     repository.isAlbumsCacheLoaded.first { it }
                 }
 
                 // 1. Load cached search results from the database IMMEDIATELY (Folders)
                 val cachedFolders = repository.getSearchResultNodes(query, scopeKey, "Folder")
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugViewModel", "performSearch: found ${cachedFolders.size} folders in database cache")
+                }
                 
                 // Fetch galleries from in-memory cache
                 val lowerQuery = query.lowercase()
                 val cachedGalleries = repository.albumsCache.value.filter {
-                    it.title?.lowercase()?.contains(lowerQuery) == true
+                    it.title.lowercase().contains(lowerQuery)
+                }
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugViewModel", "performSearch: matched ${cachedGalleries.size} galleries from in-memory cache")
                 }
                 val sortedGalleries = sortGalleries(cachedGalleries, searchGallerySortOrder)
 
                 val lastSearchedAt = searchStatusPrefs.getLong("${scopeKey}_${query}_ts", 0L)
                 val cacheAgeMs = System.currentTimeMillis() - lastSearchedAt
                 val cacheMaxAgeMs = 24 * 60 * 60 * 1000L // 24 hours
-                val isFullySearched = lastSearchedAt > 0L && cacheAgeMs < cacheMaxAgeMs
+                var isFullySearched = lastSearchedAt > 0L && cacheAgeMs < cacheMaxAgeMs
+                if (isFullySearched && !repository.hasSearchPhotosInDb(query, scopeKey)) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugViewModel", "performSearch: cache timestamp exists but database has no photos. Bypassing isFullySearched to fetch from API.")
+                    }
+                    isFullySearched = false
+                }
 
                 if (forceRefresh) {
                     repository.deleteSearchResultsForQueryAndType(query, scopeKey, "Photo")
@@ -395,6 +481,10 @@ class SmugViewModel @Inject constructor(
                 }.cachedIn(viewModelScope)
 
                 if (isFullySearched && !forceRefresh) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugViewModel", "performSearch cache is valid (fully searched in past 24h). Displaying cached results.")
+                    }
+                    _isSearchPhotosLoading.value = false
                     _searchState.value = SearchUiState.Success(
                         photos = emptyList(),
                         galleries = sortedGalleries,
@@ -434,12 +524,21 @@ class SmugViewModel @Inject constructor(
                 )
 
                 // 3. Trigger background API fetcher
-                viewModelScope.launch {
-                    repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey, password)
-                    searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
+                _isSearchPhotosLoading.value = true
+                backgroundSearchJob?.cancel()
+                backgroundSearchJob = viewModelScope.launch {
+                    try {
+                        repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey, password)
+                        searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
+                    } finally {
+                        _isSearchPhotosLoading.value = false
+                    }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 e.printStackTrace()
+                _isSearchPhotosLoading.value = false
                 _searchState.value = SearchUiState.Error(e.localizedMessage ?: "Error during search job")
             }
         }
@@ -562,6 +661,7 @@ class SmugViewModel @Inject constructor(
     init {
         loadHistoryAndActiveSite()
         observeSelectedTagsToLoadImages()
+        unlockAllSavedPasswords()
     }
 
     private fun loadHistoryAndActiveSite() {
@@ -725,15 +825,24 @@ class SmugViewModel @Inject constructor(
     }
 
     fun loadFolderContents(nodeId: String, forceRefresh: Boolean = false) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d("SmugViewModel", "loadFolderContents called: nodeId=$nodeId, forceRefresh=$forceRefresh")
+        }
         _browserState.value = BrowserUiState.Loading
         viewModelScope.launch {
             val password = getUnlockedPassword(nodeId)
             repository.getNodeChildren(nodeId, apiKey, forceRefresh, password).collect { result ->
                 result.fold(
                     onSuccess = { nodes ->
+                        if (BuildConfig.DEBUG) {
+                            android.util.Log.d("SmugViewModel", "loadFolderContents success: retrieved ${nodes.size} nodes for nodeId=$nodeId")
+                        }
                         _browserState.value = BrowserUiState.Success(nodes)
                     },
                     onFailure = { error ->
+                        if (BuildConfig.DEBUG) {
+                            android.util.Log.e("SmugViewModel", "loadFolderContents failed for nodeId=$nodeId", error)
+                        }
                         if (!password.isNullOrEmpty()) {
                             // If a saved password failed, it was probably changed or invalid
                             passwordPrefs.edit().remove(nodeId).apply()
@@ -1010,6 +1119,7 @@ class SmugViewModel @Inject constructor(
     }
 
     suspend fun getUnlockedPassword(nodeId: String): String? {
+        if (nodeId == "site" || nodeId.isBlank()) return null
         // 1. Try direct lookup by nodeId or albumKey
         var pw = passwordPrefs.getString(nodeId, null)
         if (pw != null) return pw
@@ -1226,34 +1336,37 @@ class SmugViewModel @Inject constructor(
                 imageLoadJob?.cancel()
                 _isLoadingPhotos.value = true
                 _scanProgress.value = "Loading photos for selected tags..."
-                imageLoadJob = viewModelScope.launch(Dispatchers.IO) imageSearchLaunch@{
+                imageLoadJob = viewModelScope.launch(context = Dispatchers.IO) imageSearchLaunch@{
                     try {
                         val nickname = _activeNickname.value ?: return@imageSearchLaunch
-                        val scopeUri = "/api/v2/user/$nickname"
-                        val keywordsQuery = included.joinToString(",")
+                        val activeScope = _searchScope.value
+                        val resolvedRootId = if (activeScope.nodeUri == null || activeScope.nodeId == null) {
+                            repository.getUserRootNodeId(nickname = nickname, apiKey = apiKey).first().getOrNull()
+                        } else {
+                            null
+                        }
+                        val targetScopeId = activeScope.nodeId ?: resolvedRootId
+                        if (targetScopeId != null) {
+                            val savedPassword = getUnlockedPassword(targetScopeId)
+                            if (savedPassword != null) {
+                                repository.unlockInheritedPasswordRoot(targetScopeId, apiKey, savedPassword)
+                            }
+                        }
+                        val scopeUri = activeScope.nodeUri ?: resolvedRootId?.let { "/api/v2/node/$it" } ?: "/api/v2/user/$nickname"
+                        val keywordsQuery = included.joinToString(separator = ",")
                         
                         _allScopePhotos.value = emptyList()
-                        val allImages = mutableListOf<AlbumImageData>()
-                        var start = 1
-                        var hasMore = true
-                        
-                        while (hasMore && allImages.size < 1500) {
-                            val pageResponse = try {
-                                repository.getImagesByKeyword(scopeUri, keywordsQuery, apiKey, count = 500, start = start)
-                            } catch (e: Exception) {
-                                android.util.Log.e("SmugViewModel", "Failed to load photos for keywords: $keywordsQuery at start: $start", e)
-                                emptyList()
-                            }
-                            if (pageResponse.isEmpty()) {
-                                break
-                            }
-                            allImages.addAll(pageResponse)
-                            _allScopePhotos.value = allImages.toList()
-                            
-                            start += pageResponse.size
-                            if (pageResponse.size < 500) {
-                                hasMore = false
-                            }
+                        try {
+                            val results = repository.getImagesByKeyword(
+                                scope = scopeUri,
+                                keywords = keywordsQuery,
+                                apiKey = apiKey,
+                                count = 500,
+                                start = 1
+                            )
+                            _allScopePhotos.value = results
+                        } catch (e: Exception) {
+                            android.util.Log.e("SmugViewModel", "Failed to load photos for keywords: $keywordsQuery", e)
                         }
                     } finally {
                         _isLoadingPhotos.value = false
@@ -1325,6 +1438,13 @@ class SmugViewModel @Inject constructor(
                     _isScanningTags.value = false
                     return@launch
                 }
+                
+                val savedPassword = getUnlockedPassword(targetScopeId)
+                if (savedPassword != null) {
+                    _scanProgress.value = "Unlocking scope..."
+                    repository.unlockInheritedPasswordRoot(targetScopeId, apiKey, savedPassword)
+                }
+
                 _scanProgress.value = "Fetching keywords..."
                 try {
                     val response = repository.getUserTopKeywords(_activeNickname.value!!, apiKey, targetScopeId)
@@ -1623,7 +1743,6 @@ class SmugViewModel @Inject constructor(
                                         tagsUpdated = false
                                     }
                                 }
-                                delay(150)
                             } catch (e: Exception) {
                                 currentNextUrl = null
                             }
@@ -1758,6 +1877,9 @@ class SmugViewModel @Inject constructor(
     }
 
     fun addBookmark(collectionId: Long, type: String, itemKey: String, title: String, albumKey: String = "", albumTitle: String = "", thumbnailUrl: String? = null, imageUrl: String? = null) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d("SmugViewModel", "addBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey, title='$title'")
+        }
         viewModelScope.launch {
             val bookmark = CollectionBookmark(
                 collectionId = collectionId,
@@ -1780,6 +1902,9 @@ class SmugViewModel @Inject constructor(
     }
 
     fun removeBookmark(collectionId: Long, type: String, itemKey: String) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d("SmugViewModel", "removeBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey")
+        }
         viewModelScope.launch {
             repository.removeBookmark(collectionId, type, itemKey)
 
@@ -1812,6 +1937,9 @@ class SmugViewModel @Inject constructor(
     }
 
     fun addPhotoToCollection(photo: AlbumImageData, collectionId: Long) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d("SmugViewModel", "addPhotoToCollection: imageKey=${photo.imageKey}, collectionId=$collectionId")
+        }
         viewModelScope.launch {
             val dbPhoto = CollectionPhoto(
                 imageKey = photo.imageKey,
@@ -2067,8 +2195,9 @@ class SmugViewModel @Inject constructor(
                 visited.add(currentNodeId)
 
                 try {
+                    val password = getUnlockedPassword(currentNodeId)
                     // Load children nodes, using cache if available (forceRefresh = false)
-                    repository.getNodeChildren(currentNodeId, apiKey, forceRefresh = false)
+                    repository.getNodeChildren(currentNodeId, apiKey, forceRefresh = false, password = password, ignoreErrors = "true")
                         .first()
                         .fold(
                             onSuccess = { children ->

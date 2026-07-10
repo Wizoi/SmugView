@@ -126,7 +126,7 @@ class SmugMugRepositoryTest {
         var mockChildNodesResponse: NodeListResponse? = null
         var mockAlbumKeywordsResponse: AlbumKeywordsResponse? = null
         
-        override suspend fun getNodeChildren(nodeId: String, apiKey: String, password: String?, filter: String, verbosity: Int): NodeListResponse {
+        override suspend fun getNodeChildren(nodeId: String, apiKey: String, password: String?, filter: String, verbosity: Int, ignoreErrors: String?): NodeListResponse {
             return if (nodeId == "folder1") {
                 mockChildNodesResponse ?: throw Exception("Mock not configured")
             } else {
@@ -134,18 +134,18 @@ class SmugMugRepositoryTest {
             }
         }
         
-        override suspend fun getAlbumKeywords(albumKeys: String, apiKey: String, password: String?, expand: String, filter: String, verbosity: Int): AlbumKeywordsResponse {
+        override suspend fun getAlbumKeywords(albumKeys: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int): AlbumKeywordsResponse {
             return mockAlbumKeywordsResponse ?: throw Exception("Mock not configured")
         }
 
         // Stub other required methods
         override suspend fun getUserProfile(nickname: String, apiKey: String, expand: String, verbosity: Int): UserResponse = throw Exception()
         override suspend fun getUserBioImage(nickname: String, apiKey: String, verbosity: Int): BioImageResponse = throw Exception()
-        override suspend fun getNode(nodeId: String, apiKey: String, verbosity: Int): SingleNodeResponse = throw Exception()
+        override suspend fun getNode(nodeId: String, apiKey: String, verbosity: Int, ignoreErrors: String?): SingleNodeResponse = throw Exception()
         override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeId: String?, verbosity: Int): TopKeywordsResponse = throw Exception()
-        override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, verbosity: Int): AlbumResponse = throw Exception()
-        override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, verbosity: Int): AlbumImagesResponse = throw Exception()
-        override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, verbosity: Int): AlbumImagesResponse = throw Exception()
+        override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, verbosity: Int, ignoreErrors: String?): AlbumResponse = throw Exception()
+        override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, verbosity: Int, ignoreErrors: String?): AlbumImagesResponse = throw Exception()
+        override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, ignoreErrors: String?): AlbumImagesResponse = throw Exception()
         override suspend fun getImageExif(imageKey: String, apiKey: String, password: String?, verbosity: Int): ExifResponse = throw Exception()
         override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, verbosity: Int): ImageResponse = throw Exception()
         
@@ -160,23 +160,28 @@ class SmugMugRepositoryTest {
             count: Int,
             start: Int,
             filter: String,
-            expand: String,
+            filterUri: String,
+            expand: String?,
             verbosity: Int
         ): ImageSearchResponse {
             return searchImagesMock?.invoke(start) ?: throw Exception("Mock not configured")
         }
-        override suspend fun searchImagesByUri(url: String, apiKey: String, verbosity: Int): ImageSearchResponse = throw Exception()
+        var searchImagesByUriMock: ((url: String) -> ImageSearchResponse)? = null
         
-        override suspend fun searchImagesUser(nickname: String, apiKey: String, text: String, scope: String?, password: String?, count: Int, start: Int, expand: String, filter: String, verbosity: Int): ImageSearchResponse = throw Exception()
-        override suspend fun searchImagesUserByUri(url: String, apiKey: String, password: String?, expand: String, filter: String, verbosity: Int): ImageSearchResponse = throw Exception()
+        override suspend fun searchImagesByUri(url: String, apiKey: String): ImageSearchResponse {
+            return searchImagesByUriMock?.invoke(url) ?: throw Exception("Mock not configured")
+        }
+        
+        override suspend fun searchImagesUser(nickname: String, apiKey: String, text: String, scope: String?, password: String?, count: Int, start: Int, expand: String?, filter: String, filterUri: String, verbosity: Int): ImageSearchResponse = throw Exception()
+        override suspend fun searchImagesUserByUri(url: String, apiKey: String, password: String?): ImageSearchResponse = throw Exception()
         override suspend fun searchNodes(apiKey: String, scope: String, text: String, password: String?, expand: String, filter: String, verbosity: Int): NodeListResponse = throw Exception()
         
-        override suspend fun unlockNode(nodeId: String, apiKey: String, password: String): retrofit2.Response<ResponseBody> = throw Exception()
-        override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String): retrofit2.Response<ResponseBody> = throw Exception()
+        override suspend fun unlockNode(nodeId: String, apiKey: String, password: String, ignoreErrors: String?): retrofit2.Response<ResponseBody> = throw Exception()
+        override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String, ignoreErrors: String?): retrofit2.Response<ResponseBody> = throw Exception()
         override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, verbosity: Int): UserAlbumsResponse = throw Exception()
-        override suspend fun getUserAlbumsByUri(url: String, apiKey: String, count: Int, expand: String, filter: String, verbosity: Int): UserAlbumsResponse = throw Exception()
+        override suspend fun getUserAlbumsByUri(url: String, apiKey: String): UserAlbumsResponse = throw Exception()
         var getImagesByKeywordMock: ((apiKey: String, scope: String?, text: String?, count: Int, start: Int) -> ImageSearchResponse)? = null
-        override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, verbosity: Int): ImageSearchResponse {
+        override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, filterUri: String, verbosity: Int): ImageSearchResponse {
             return getImagesByKeywordMock?.invoke(apiKey, scope, text, count, start) ?: throw Exception("Mock not configured")
         }
         override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest): retrofit2.Response<ResponseBody> = throw Exception()
@@ -274,10 +279,16 @@ class SmugMugRepositoryTest {
                 ImageSearchResponse(
                     response = ImageSearchPayload(
                         images = page1Images,
-                        pages = PagesData(start = 1, count = 250, total = 300)
+                        pages = PagesData(start = 1, count = 250, total = 300, nextField = "/api/v2/image!search?start=251")
                     )
                 )
-            } else if (start == 251) {
+            } else {
+                throw IllegalArgumentException("Unexpected start offset: $start")
+            }
+        }
+
+        fakeApi.searchImagesByUriMock = { url ->
+            if (url.contains("start=251")) {
                 ImageSearchResponse(
                     response = ImageSearchPayload(
                         images = page2Images,
@@ -285,7 +296,7 @@ class SmugMugRepositoryTest {
                     )
                 )
             } else {
-                throw IllegalArgumentException("Unexpected start offset: $start")
+                ImageSearchResponse(response = ImageSearchPayload(images = emptyList()))
             }
         }
 

@@ -24,7 +24,14 @@ class PhotoPagingSource(
             val response = if (nextUrl == null) {
                 api.getAlbumImages(albumKey, apiKey, password)
             } else {
-                api.getAlbumImagesByUri(nextUrl, apiKey, password)
+                val overriddenUrl = if (nextUrl.contains("count=")) {
+                    nextUrl.replace(Regex("count=\\d+"), "count=500")
+                } else {
+                    val separator = if (nextUrl.contains("?")) "&" else "?"
+                    "$nextUrl${separator}count=500"
+                }
+                val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
+                api.getAlbumImagesByUri(absoluteUrl, apiKey, password)
             }
 
             val images = response.response.images ?: emptyList()

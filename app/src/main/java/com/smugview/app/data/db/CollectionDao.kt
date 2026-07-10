@@ -19,6 +19,9 @@ interface CollectionDao {
     @Query("SELECT * FROM cached_nodes WHERE nodeId = :nodeId LIMIT 1")
     suspend fun getNodeById(nodeId: String): CachedNode?
 
+    @Query("SELECT * FROM cached_nodes WHERE nodeId = :idOrKey OR albumUri LIKE '%' || :idOrKey LIMIT 1")
+    suspend fun getNodeByIdOrKey(idOrKey: String): CachedNode?
+
     @Query("UPDATE cached_nodes SET childCount = :count WHERE nodeId = :nodeId")
     suspend fun updateChildCount(nodeId: String, count: Int)
 

@@ -1356,6 +1356,7 @@ fun SearchTabView(
     val searchState by viewModel.searchState.collectAsState()
     val pagingFlow by viewModel.searchPhotosPagingFlow.collectAsState()
     val searchPhotosPagingItems = pagingFlow.collectAsLazyPagingItems()
+    val isSearchPhotosLoading by viewModel.isSearchPhotosLoading.collectAsState()
     val activeScope by viewModel.searchScope.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
     var searchInput by remember { mutableStateOf(viewModel.searchQuery) }
@@ -1543,7 +1544,7 @@ fun SearchTabView(
                             modifier = Modifier.fillMaxSize()
                         ) {
                             Text(
-                                text = "Enter a word or phrase to search",
+                                text = if (isSearchPhotosLoading) "Loading photos..." else "Enter a word or phrase to search",
                                 color = Color.White.copy(alpha = 0.4f),
                                 fontWeight = FontWeight.Medium
                             )
@@ -1586,7 +1587,7 @@ fun SearchTabView(
                                         if (searchPhotosPagingItems.itemCount == 0) {
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                                 Text(
-                                                    text = state.photosError ?: "Enter a word or phrase to search",
+                                                    text = if (isSearchPhotosLoading) "Loading photos..." else (state.photosError ?: "Enter a word or phrase to search"),
                                                     color = if (state.photosError != null) MaterialTheme.colorScheme.error else Color.White.copy(alpha = 0.4f),
                                                     textAlign = TextAlign.Center,
                                                     modifier = Modifier.padding(16.dp)
@@ -2722,6 +2723,45 @@ fun TagSearchTabView(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        if (!isScanning && scanProgress.contains("cancelled", ignoreCase = true)) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = SoftRed.copy(alpha = 0.15f),
+                border = BorderStroke(1.dp, SoftRed.copy(alpha = 0.4f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Info",
+                        tint = SoftRed,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = scanProgress,
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable { viewModel.clearScanProgress() }
+                    )
+                }
+            }
+        }
 
         // Scanning State / Loader
         if (isScanning) {
