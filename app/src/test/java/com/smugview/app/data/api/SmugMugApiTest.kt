@@ -142,7 +142,7 @@ class SmugMugApiTest {
     @Before
     fun setUp() {
         // Sleep to prevent burst rate limits on the SmugMug API
-        Thread.sleep(4000)
+        Thread.sleep(250)
     }
 
     private fun setupApi(): Pair<SmugMugApi, String> {
@@ -468,6 +468,41 @@ class SmugMugApiTest {
     }
 
     @Test
+    fun testVisibilityStateKeywords() {
+        val ctx = resolveTestContext()
+        var success = false
+        var actual = "Failed"
+        val endpoint = "album/${ctx.albumKey}?_expand=AlbumKeywords"
+        val expected = "Verify keywords redacted on anonymous request, and present after unlocking"
+        try {
+            // 1. Initial Anonymous check
+            val response1 = runBlocking {
+                ctx.api.getAlbumKeywords(ctx.albumKey, ctx.apiKey)
+            }
+            val expansions1 = response1.expansions
+            val isRedactedInitially = expansions1 == null || expansions1.isEmpty()
+            
+            // 2. Unlock the album
+            unlockTargetAlbum(ctx)
+            
+            // 3. Authenticated check
+            val response2 = runBlocking {
+                ctx.api.getAlbumKeywords(ctx.albumKey, ctx.apiKey)
+            }
+            val expansions2 = response2.expansions
+            val isRestoredAfterUnlock = expansions2 != null && expansions2.isNotEmpty()
+            
+            success = isRedactedInitially && isRestoredAfterUnlock
+            actual = "Initial redacted: $isRedactedInitially, Restored after unlock: $isRestoredAfterUnlock"
+        } catch (e: Exception) {
+            actual = "Error: ${e.message}"
+            throw e
+        } finally {
+            logResult("testVisibilityStateKeywords", endpoint, expected, actual, success)
+        }
+    }
+
+    @Test
     fun testGetUserTopKeywords() {
         val ctx = resolveTestContext()
         var success = false
@@ -517,7 +552,7 @@ class SmugMugApiTest {
             try {
                 ctx.api.unlockAlbum(ctx.albumKey, ctx.apiKey, "MVYSO", "true")
                 ctx.api.unlockNode(ctx.nodeId, ctx.apiKey, "MVYSO", "true")
-                Thread.sleep(1000)
+                Thread.sleep(250)
             } catch (e: Exception) {
                 println("Failed to unlock album/node: ${e.message}")
             }
@@ -542,12 +577,18 @@ class SmugMugApiTest {
                 actual = "Page 1 returned ${page1Albums.size} albums, but no next page URL was present to test page 2"
                 success = page1Albums.isNotEmpty()
             } else {
-                Thread.sleep(1500)
+                Thread.sleep(250)
+                val verbosityUrl = if (nextUrl.contains("_verbosity=")) {
+                    nextUrl.replace(Regex("_verbosity=\\d+"), "_verbosity=1")
+                } else {
+                    val separator = if (nextUrl.contains("?")) "&" else "?"
+                    "$nextUrl${separator}_verbosity=1"
+                }
                 val page2Response = runBlocking {
-                    ctx.api.getUserAlbumsByUri(nextUrl, ctx.apiKey, count = 5)
+                    ctx.api.getUserAlbumsByUri(verbosityUrl, ctx.apiKey)
                 }
                 val page2Albums = page2Response.response.albums ?: emptyList()
-                actual = "Page 1 size: ${page1Albums.size}, Page 2 size: ${page2Albums.size}. Next URL: $nextUrl"
+                actual = "Page 1 size: ${page1Albums.size}, Page 2 size: ${page2Albums.size}. Next URL: $verbosityUrl"
                 success = page1Albums.size == 5 && page2Albums.isNotEmpty()
             }
         } catch (e: Exception) {
@@ -577,12 +618,18 @@ class SmugMugApiTest {
                 actual = "Page 1 returned ${page1Images.size} images, but no next page URL was present to test page 2"
                 success = page1Images.isNotEmpty()
             } else {
-                Thread.sleep(1500)
+                Thread.sleep(250)
+                val verbosityUrl = if (nextUrl.contains("_verbosity=")) {
+                    nextUrl.replace(Regex("_verbosity=\\d+"), "_verbosity=1")
+                } else {
+                    val separator = if (nextUrl.contains("?")) "&" else "?"
+                    "$nextUrl${separator}_verbosity=1"
+                }
                 val page2Response = runBlocking {
-                    ctx.api.getAlbumImagesByUri(nextUrl, ctx.apiKey, count = 5)
+                    ctx.api.getAlbumImagesByUri(verbosityUrl, ctx.apiKey)
                 }
                 val page2Images = page2Response.response.images ?: emptyList()
-                actual = "Page 1 size: ${page1Images.size}, Page 2 size: ${page2Images.size}. Next URL: $nextUrl"
+                actual = "Page 1 size: ${page1Images.size}, Page 2 size: ${page2Images.size}. Next URL: $verbosityUrl"
                 success = page1Images.size == 5 && page2Images.isNotEmpty()
             }
         } catch (e: Exception) {
@@ -598,7 +645,7 @@ class SmugMugApiTest {
             try {
                 ctx.api.unlockAlbum(ctx.tahomaAlbumKey, ctx.apiKey, ctx.tahomaPassword, "true")
                 ctx.api.unlockNode(ctx.tahomaNodeId, ctx.apiKey, ctx.tahomaPassword, "true")
-                Thread.sleep(1000)
+                Thread.sleep(250)
             } catch (e: Exception) {
                 println("Failed to unlock Tahoma album/node: ${e.message}")
             }
@@ -625,7 +672,7 @@ class SmugMugApiTest {
                 actual = "Page 1 returned ${page1Images.size} images, but no next page URL was present to test page 2"
                 success = page1Images.isNotEmpty()
             } else {
-                Thread.sleep(1500)
+                Thread.sleep(250)
                 val page2Response = runBlocking {
                     ctx.api.searchImagesByUri(nextUrl, ctx.apiKey)
                 }
@@ -661,7 +708,7 @@ class SmugMugApiTest {
                 actual = "Page 1 returned ${page1Images.size} images, but no next page URL was present to test page 2"
                 success = page1Images.isNotEmpty()
             } else {
-                Thread.sleep(1500)
+                Thread.sleep(250)
                 val page2Response = runBlocking {
                     mockApi.searchImagesUserByUri(nextUrl, ctx.apiKey, password = ctx.tahomaPassword)
                 }
@@ -681,10 +728,10 @@ class SmugMugApiTest {
 class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun getUserProfile(nickname: String, apiKey: String, expand: String, verbosity: Int) = delegate.getUserProfile(nickname, apiKey, expand, verbosity)
     override suspend fun getUserBioImage(nickname: String, apiKey: String, verbosity: Int) = delegate.getUserBioImage(nickname, apiKey, verbosity)
-    override suspend fun getNodeChildren(nodeId: String, apiKey: String, password: String?, filter: String, verbosity: Int, ignoreErrors: String?) = delegate.getNodeChildren(nodeId, apiKey, password, filter, verbosity, ignoreErrors)
-    override suspend fun getNode(nodeId: String, apiKey: String, verbosity: Int, ignoreErrors: String?) = delegate.getNode(nodeId, apiKey, verbosity, ignoreErrors)
-    override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, verbosity: Int, ignoreErrors: String?) = delegate.getAlbum(albumKey, apiKey, password, verbosity, ignoreErrors)
-    override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbumImages(albumKey, apiKey, password, count, expand, filter, verbosity, ignoreErrors)
+    override suspend fun getNodeChildren(nodeId: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getNodeChildren(nodeId, apiKey, password, filter, filterUri, verbosity, ignoreErrors)
+    override suspend fun getNode(nodeId: String, apiKey: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getNode(nodeId, apiKey, filter, filterUri, verbosity, ignoreErrors)
+    override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbum(albumKey, apiKey, password, filter, filterUri, verbosity, ignoreErrors)
+    override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbumImages(albumKey, apiKey, password, count, expand, filter, filterUri, verbosity, ignoreErrors)
     override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, ignoreErrors: String?) = delegate.getAlbumImagesByUri(url, apiKey, password, ignoreErrors)
     override suspend fun searchImages(apiKey: String, scope: String?, text: String?, sortMethod: String?, sortDirection: String?, count: Int, start: Int, filter: String, filterUri: String, expand: String?, verbosity: Int) = delegate.searchImages(apiKey, scope, text, sortMethod, sortDirection, count, start, filter, filterUri, expand, verbosity)
     override suspend fun searchImagesByUri(url: String, apiKey: String) = delegate.searchImagesByUri(url, apiKey)
@@ -727,13 +774,13 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
         return ImageSearchResponse(ImageSearchPayload(images, pages))
     }
 
-    override suspend fun searchNodes(apiKey: String, scope: String, text: String, password: String?, expand: String, filter: String, verbosity: Int) = delegate.searchNodes(apiKey, scope, text, password, expand, filter, verbosity)
-    override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, verbosity: Int) = delegate.getImage(imageKey, apiKey, password, expand, filter, verbosity)
+    override suspend fun searchNodes(apiKey: String, scope: String, text: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.searchNodes(apiKey, scope, text, password, expand, filter, filterUri, verbosity)
+    override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getImage(imageKey, apiKey, password, expand, filter, filterUri, verbosity)
     override suspend fun getImageExif(imageKey: String, apiKey: String, password: String?, verbosity: Int) = delegate.getImageExif(imageKey, apiKey, password, verbosity)
     override suspend fun unlockNode(nodeId: String, apiKey: String, password: String, ignoreErrors: String?) = delegate.unlockNode(nodeId, apiKey, password, ignoreErrors)
     override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String, ignoreErrors: String?) = delegate.unlockAlbum(albumKey, apiKey, password, ignoreErrors)
     override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest) = delegate.updateImageMetadata(imageKey, apiKey, body)
-    override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, verbosity: Int) = delegate.getUserAlbums(nickname, apiKey, count, expand, filter, verbosity)
+    override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getUserAlbums(nickname, apiKey, count, expand, filter, filterUri, verbosity)
     override suspend fun getUserAlbumsByUri(url: String, apiKey: String) = delegate.getUserAlbumsByUri(url, apiKey)
     override suspend fun getAlbumKeywords(albumKeys: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getAlbumKeywords(albumKeys, apiKey, password, expand, filter, filterUri, verbosity)
     override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeId: String?, verbosity: Int) = delegate.getUserTopKeywords(nickname, apiKey, nodeId, verbosity)

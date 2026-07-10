@@ -35,6 +35,10 @@ class SmugMugRepositoryTest {
             return nodes.find { it.nodeId == nodeId }
         }
 
+        override suspend fun getNodeByIdOrKey(idOrKey: String): CachedNode? {
+            return nodes.find { it.nodeId == idOrKey || it.getAlbumKey() == idOrKey }
+        }
+
         override suspend fun updateChildCount(nodeId: String, count: Int) {
             // No-op for test
         }
@@ -126,7 +130,7 @@ class SmugMugRepositoryTest {
         var mockChildNodesResponse: NodeListResponse? = null
         var mockAlbumKeywordsResponse: AlbumKeywordsResponse? = null
         
-        override suspend fun getNodeChildren(nodeId: String, apiKey: String, password: String?, filter: String, verbosity: Int, ignoreErrors: String?): NodeListResponse {
+        override suspend fun getNodeChildren(nodeId: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?): NodeListResponse {
             return if (nodeId == "folder1") {
                 mockChildNodesResponse ?: throw Exception("Mock not configured")
             } else {
@@ -141,13 +145,13 @@ class SmugMugRepositoryTest {
         // Stub other required methods
         override suspend fun getUserProfile(nickname: String, apiKey: String, expand: String, verbosity: Int): UserResponse = throw Exception()
         override suspend fun getUserBioImage(nickname: String, apiKey: String, verbosity: Int): BioImageResponse = throw Exception()
-        override suspend fun getNode(nodeId: String, apiKey: String, verbosity: Int, ignoreErrors: String?): SingleNodeResponse = throw Exception()
+        override suspend fun getNode(nodeId: String, apiKey: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?): SingleNodeResponse = throw Exception()
         override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeId: String?, verbosity: Int): TopKeywordsResponse = throw Exception()
-        override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, verbosity: Int, ignoreErrors: String?): AlbumResponse = throw Exception()
-        override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, verbosity: Int, ignoreErrors: String?): AlbumImagesResponse = throw Exception()
+        override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?): AlbumResponse = throw Exception()
+        override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?): AlbumImagesResponse = throw Exception()
         override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, ignoreErrors: String?): AlbumImagesResponse = throw Exception()
         override suspend fun getImageExif(imageKey: String, apiKey: String, password: String?, verbosity: Int): ExifResponse = throw Exception()
-        override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, verbosity: Int): ImageResponse = throw Exception()
+        override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int): ImageResponse = throw Exception()
         
         var searchImagesMock: ((start: Int) -> ImageSearchResponse)? = null
         
@@ -173,12 +177,15 @@ class SmugMugRepositoryTest {
         }
         
         override suspend fun searchImagesUser(nickname: String, apiKey: String, text: String, scope: String?, password: String?, count: Int, start: Int, expand: String?, filter: String, filterUri: String, verbosity: Int): ImageSearchResponse = throw Exception()
-        override suspend fun searchImagesUserByUri(url: String, apiKey: String, password: String?): ImageSearchResponse = throw Exception()
-        override suspend fun searchNodes(apiKey: String, scope: String, text: String, password: String?, expand: String, filter: String, verbosity: Int): NodeListResponse = throw Exception()
+        var searchImagesUserByUriMock: ((url: String) -> ImageSearchResponse)? = null
+        override suspend fun searchImagesUserByUri(url: String, apiKey: String, password: String?): ImageSearchResponse {
+            return searchImagesUserByUriMock?.invoke(url) ?: throw Exception("Mock not configured")
+        }
+        override suspend fun searchNodes(apiKey: String, scope: String, text: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int): NodeListResponse = throw Exception()
         
         override suspend fun unlockNode(nodeId: String, apiKey: String, password: String, ignoreErrors: String?): retrofit2.Response<ResponseBody> = throw Exception()
         override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String, ignoreErrors: String?): retrofit2.Response<ResponseBody> = throw Exception()
-        override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, verbosity: Int): UserAlbumsResponse = throw Exception()
+        override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int): UserAlbumsResponse = throw Exception()
         override suspend fun getUserAlbumsByUri(url: String, apiKey: String): UserAlbumsResponse = throw Exception()
         var getImagesByKeywordMock: ((apiKey: String, scope: String?, text: String?, count: Int, start: Int) -> ImageSearchResponse)? = null
         override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, filterUri: String, verbosity: Int): ImageSearchResponse {
@@ -259,6 +266,36 @@ class SmugMugRepositoryTest {
     }
 
     @Test
+    fun testMockVisibilityAnonymousState() = runBlocking {
+        val fakeDao = FakeCollectionDao()
+        val fakeApi = FakeSmugMugApi()
+        val repository = SmugMugRepository(fakeApi, fakeDao, mockContext())
+
+        // 1. Simulate anonymous/locked state: mock response has empty expansions
+        fakeApi.mockAlbumKeywordsResponse = AlbumKeywordsResponse(
+            expansions = emptyMap()
+        )
+
+        val response1 = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
+        assertTrue(response1.expansions == null || response1.expansions!!.isEmpty())
+
+        // 2. Simulate unlocked state: mock response has expanded keywords
+        fakeApi.mockAlbumKeywordsResponse = AlbumKeywordsResponse(
+            expansions = mapOf(
+                "/api/v2/album/album1" to AlbumExpansionContainer(
+                    albumKeywords = AlbumKeywordsContainer(keywords = listOf("nature", "sunset"))
+                )
+            )
+        )
+
+        val response2 = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
+        assertNotNull(response2.expansions)
+        val keywords = response2.expansions?.get("/api/v2/album/album1")?.albumKeywords?.keywords
+        assertNotNull(keywords)
+        assertEquals(2, keywords?.size)
+    }
+
+    @Test
     fun testSearchImagesOrchestrationAndPaging() = runBlocking {
         val fakeDao = FakeCollectionDao()
         val fakeApi = FakeSmugMugApi()
@@ -287,7 +324,7 @@ class SmugMugRepositoryTest {
             }
         }
 
-        fakeApi.searchImagesByUriMock = { url ->
+        fakeApi.searchImagesUserByUriMock = { url ->
             if (url.contains("start=251")) {
                 ImageSearchResponse(
                     response = ImageSearchPayload(

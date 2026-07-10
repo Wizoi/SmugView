@@ -62,4 +62,9 @@
 *   **Evidence-Based Reporting**: Before proposing or making code changes to fix any bug, always compile and provide a detailed evidence-based analysis report containing relevant logcat traces, databases/state snapshots, and actual API query inputs/outputs, along with recommendations for user review.
 *   **Stage-by-Stage Verification & Raw Payload Inspection**: When analyzing API discrepancies (e.g. between a browser request and the mobile client), never rely solely on parsed application models or memory state objects, which assume successful serialization. Fetch and inspect the raw HTTP response payloads anonymously (simulating the client) and check for visibility toggles (such as `"ShowKeywords": false`) or server-side redactions that explain the behavior.
 
+## 🧪 Test Architecture & Code Quality Guidelines
+*   **Startup & UI Thread Room Queries**: Any Room database query executed during application startup, view initialization, or UI rendering must use targeted index-based queries (e.g. `getNodeByIdOrKey` or matching primary keys). Unbounded queries (such as `getAllCachedNodes()`) are strictly prohibited in loops or init blocks to prevent Main-thread blockages and database lock congestion (ANRs).
+*   **Mock Verification of API Visibility Rules**: Mocks and unit test fixtures simulating API responses must model the actual visibility rules of the SmugMug API. Ensure fields that are redacted under anonymous states (like `Keywords` or `expansions` on locked categories) are explicitly verified in tests simulating anonymous vs. unlocked states.
+
+
 

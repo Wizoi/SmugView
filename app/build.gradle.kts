@@ -162,3 +162,7 @@ if (tasks.findByName("prepareKotlinBuildScriptModel") == null) {
     tasks.register("prepareKotlinBuildScriptModel")
 }
 
+tasks.withType<Test> {
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
+}
+

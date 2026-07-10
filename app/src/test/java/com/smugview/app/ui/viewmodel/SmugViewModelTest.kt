@@ -69,6 +69,8 @@ class SmugViewModelTest {
         kotlinx.coroutines.runBlocking {
             Mockito.`when`(mockRepository.getAllCachedNodes())
                 .thenReturn(emptyList())
+            Mockito.`when`(mockRepository.hasSearchPhotosInDb(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(true)
         }
         
         viewModel = SmugViewModel(mockApp, mockRepository, mockWorkManager)
@@ -97,6 +99,8 @@ class SmugViewModelTest {
             .thenReturn(emptyList())
             
         Mockito.`when`(mockRepository.hasSearchResultInDb("Sunset", "site"))
+            .thenReturn(false)
+        Mockito.`when`(mockRepository.hasSearchPhotosInDb("Sunset", "site"))
             .thenReturn(false)
             
         Mockito.`when`(mockRepository.searchNodesRemote("/api/v2/node/4zqWw", "site", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
