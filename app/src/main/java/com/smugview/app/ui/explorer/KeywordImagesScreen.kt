@@ -18,6 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -266,13 +268,35 @@ fun KeywordImagesScreen(
                         )
                     }
                 } else {
-                    Text(
-                        text = "Results (${filteredPhotos.size}):",
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Sort Date: ${viewModel.keywordPhotosSortOrder}",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        IconButton(
+                            onClick = {
+                                val newOrder = if (viewModel.keywordPhotosSortOrder == "Ascending") "Descending" else "Ascending"
+                                viewModel.updateKeywordPhotosSortOrder(newOrder)
+                            },
+                            enabled = !isLoadingPhotos,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (viewModel.keywordPhotosSortOrder == "Ascending") Icons.Default.SortByAlpha else Icons.Default.Sort,
+                                contentDescription = "Toggle Sort Order",
+                                tint = if (isLoadingPhotos) Color.Gray else NeonBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
 
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),

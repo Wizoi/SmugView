@@ -1625,12 +1625,13 @@ fun SearchTabView(
                                                                 }
                                                             }
                                                         },
+                                                        enabled = !isSearchPhotosLoading,
                                                         modifier = Modifier.size(24.dp)
                                                     ) {
                                                         Icon(
                                                             imageVector = if (viewModel.searchPhotosSortOrder == "Ascending") Icons.Default.SortByAlpha else Icons.Default.Sort,
                                                             contentDescription = "Toggle Sort Order",
-                                                            tint = NeonBlue,
+                                                            tint = if (isSearchPhotosLoading) Color.Gray else NeonBlue,
                                                             modifier = Modifier.size(18.dp)
                                                         )
                                                     }
@@ -2590,7 +2591,7 @@ fun TagSearchTabView(
                         tagSearchInput = it
                         viewModel.tagSearchQuery = it
                     },
-                    placeholder = { Text("Search tags or add filter...", color = Color.White.copy(alpha = 0.4f)) },
+                    placeholder = { Text("Enter tags...", color = Color.White.copy(alpha = 0.4f)) },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.LocalOffer,
@@ -2640,15 +2641,23 @@ fun TagSearchTabView(
             Spacer(modifier = Modifier.width(8.dp))
 
             IconButton(
-                onClick = { viewModel.triggerTagScopeScan(activeScope) },
+                onClick = onNavigateToKeywordImages,
+                enabled = selectedTags.isNotEmpty(),
                 modifier = Modifier
-                    .background(SurfaceDark, RoundedCornerShape(12.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                    .background(
+                        if (selectedTags.isNotEmpty()) SurfaceDark else SurfaceDark.copy(alpha = 0.5f),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .border(
+                        1.dp,
+                        if (selectedTags.isNotEmpty()) Color.White.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.05f),
+                        RoundedCornerShape(12.dp)
+                    )
             ) {
                 Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Scan Tags",
-                    tint = NeonBlue
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search Images for Tags",
+                    tint = if (selectedTags.isNotEmpty()) NeonBlue else Color.White.copy(alpha = 0.3f)
                 )
             }
         }
@@ -2695,31 +2704,6 @@ fun TagSearchTabView(
                     }
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Scope Badge
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .background(SurfaceDark.copy(alpha = 0.8f), RoundedCornerShape(20.dp))
-                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = "Scope Info",
-                tint = NeonBlue,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "Scope: ${activeScope.name}",
-                color = Color.White.copy(alpha = 0.9f),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -2936,23 +2920,7 @@ fun TagSearchTabView(
                     }
                 }
 
-                // 4. Search Button
-                if (selectedTags.isNotEmpty()) {
-                    item {
-                        Button(
-                            onClick = onNavigateToKeywordImages,
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonBlue),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp)
-                        ) {
-                            Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Search Images for Tag(s)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                    }
-                } else if (allTags.isEmpty()) {
+                if (allTags.isEmpty()) {
                     item {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,

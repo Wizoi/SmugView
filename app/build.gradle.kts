@@ -22,8 +22,8 @@ android {
         applicationId = "com.smugview.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.3"
+        versionCode = 7
+        versionName = "0.31"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

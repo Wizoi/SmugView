@@ -142,6 +142,13 @@ fun SearchPhotoDetailScreen(
 
     val currentPhoto = if (pagerState.currentPage < searchPhotos.itemCount) searchPhotos[pagerState.currentPage] else null
 
+    val detailedPhotoState by if (currentPhoto != null) {
+        viewModel.getImageDetails(currentPhoto.imageKey).collectAsState()
+    } else {
+        remember { mutableStateOf(null) }
+    }
+    val detailedPhoto = detailedPhotoState?.getOrNull()
+
     // Preload next and previous images in the background when current page changes
     LaunchedEffect(pagerState.currentPage, searchPhotos.itemCount) {
         val imageLoader = context.imageLoader
@@ -236,7 +243,11 @@ fun SearchPhotoDetailScreen(
                 ) {
                     if (photo.isVideo) {
                         val rawUrl = photo.videoUrl ?: photo.archivedUri ?: photo.thumbnailUrl ?: ""
-                        val photoAlbumKey = photo.uris?.album?.substringAfterLast("/") ?: ""
+                        val pageDetailedState by viewModel.getImageDetails(photo.imageKey).collectAsState()
+                        val pageDetailed = pageDetailedState?.getOrNull()
+                        val photoAlbumKey = pageDetailed?.uris?.album?.substringAfterLast("/")
+                            ?: photo.uris?.album?.substringAfterLast("/")
+                            ?: ""
                         val videoUrl = remember(rawUrl, photoAlbumKey) {
                             getAuthenticatedMediaUrl(rawUrl, photoAlbumKey, viewModel)
                         }
@@ -312,11 +323,12 @@ fun SearchPhotoDetailScreen(
                 }
 
                 // Jump to Gallery Button
-                val albumKey = currentPhoto?.uris?.album?.substringAfterLast("/")
+                val albumKey = detailedPhoto?.uris?.album?.substringAfterLast("/")
+                    ?: currentPhoto?.uris?.album?.substringAfterLast("/")
                 if (albumKey != null) {
                     Button(
                         onClick = {
-                            onNavigateToPhotoDetail(albumKey, currentPhoto.imageKey)
+                            onNavigateToPhotoDetail(albumKey, currentPhoto?.imageKey ?: "")
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = SurfaceGlass),
                         shape = RoundedCornerShape(16.dp),
@@ -439,7 +451,9 @@ fun SearchPhotoDetailScreen(
 
                         IconButton(
                             onClick = {
-                                val photoAlbumKey = currentPhoto.uris?.album?.substringAfterLast("/") ?: ""
+                                val photoAlbumKey = detailedPhoto?.uris?.album?.substringAfterLast("/")
+                                    ?: currentPhoto?.uris?.album?.substringAfterLast("/")
+                                    ?: ""
                                 if (photoAlbumKey.isNotEmpty()) {
                                     onNavigateToGallery(photoAlbumKey, currentPhoto.imageKey)
                                 } else {
@@ -580,7 +594,9 @@ fun SearchPhotoDetailScreen(
 
                             AssistChip(
                                 onClick = {
-                                    val photoAlbumKey = currentPhoto.uris?.album?.substringAfterLast("/") ?: ""
+                                    val photoAlbumKey = detailedPhoto?.uris?.album?.substringAfterLast("/")
+                                        ?: currentPhoto?.uris?.album?.substringAfterLast("/")
+                                        ?: ""
                                     if (photoAlbumKey.isNotEmpty()) {
                                         onNavigateToGallery(photoAlbumKey, currentPhoto.imageKey)
                                     } else {

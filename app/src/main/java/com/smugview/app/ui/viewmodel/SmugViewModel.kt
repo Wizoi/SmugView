@@ -374,6 +374,15 @@ class SmugViewModel @Inject constructor(
         }
     }
 
+    // Keyword Photos Sort Order: "Descending" or "Ascending"
+    var keywordPhotosSortOrder by mutableStateOf(sharedPrefs.getString("keyword_photos_sort_order", "Descending") ?: "Descending")
+        private set
+
+    fun updateKeywordPhotosSortOrder(order: String) {
+        keywordPhotosSortOrder = order
+        sharedPrefs.edit().putString("keyword_photos_sort_order", order).apply()
+    }
+
     fun sortGalleries(galleries: List<CachedNode>, order: String): List<CachedNode> {
         return if (order == "Descending") {
             galleries.sortedByDescending { it.title.lowercase() }
@@ -641,20 +650,27 @@ class SmugViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val tagFilteredPhotos: StateFlow<List<AlbumImageData>> = combine(
         _allScopePhotos,
-        _selectedTags
-    ) { photos, selected ->
+        _selectedTags,
+        snapshotFlow { keywordPhotosSortOrder }
+    ) { photos, selected, sortOrder ->
         if (selected.isEmpty()) {
             emptyList()
         } else {
             val included = selected.filter { it.value == TagFilterState.INCLUDED }.keys
             val excluded = selected.filter { it.value == TagFilterState.EXCLUDED }.keys
-            photos.filter { photo ->
+            val filtered = photos.filter { photo ->
                 val keywords = photo.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList()
                 val hasFirst = if (included.isNotEmpty()) keywords.contains(included.first()) else true
                 val hasAllIncluded = included.all { keywords.contains(it) }
                 val hasNoExcluded = excluded.none { keywords.contains(it) }
                 hasFirst && hasAllIncluded && hasNoExcluded
             }.distinctBy { it.imageKey }
+            
+            if (sortOrder == "Ascending") {
+                filtered.sortedWith(compareBy<AlbumImageData> { it.dateTime ?: it.date ?: "" })
+            } else {
+                filtered.sortedWith(compareByDescending<AlbumImageData> { it.dateTime ?: it.date ?: "" })
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -1816,33 +1832,73 @@ class SmugViewModel @Inject constructor(
             viewModelScope.launch {
                 val albumKey = _currentAlbumKey.value
                 val password = getUnlockedPassword(albumKey)
+                var finalResult: Result<AlbumImageData>? = null
                 repository.getImage(imageKey, apiKey, password).collect { result ->
-                    stateFlow.value = result
-                    result.getOrNull()?.let { detailedImage ->
-                        val apiAlbumKey = detailedImage.uris?.album?.substringAfterLast("/") ?: ""
-                        val resolvedAlbumKey = if (apiAlbumKey.isNotEmpty()) {
-                            apiAlbumKey
-                        } else {
-                            getAlbumKeyFromWebUri(detailedImage.webUri) ?: ""
+                    finalResult = result
+                }
+
+                var detailedImage = finalResult?.getOrNull()
+                
+                // If the response was successful but uris.album is redacted/null, it is locked.
+                if (detailedImage != null && detailedImage.uris?.album == null) {
+                    val thumbnailUrl = detailedImage.thumbnailUrl ?: ""
+                    val delimiter = "/i-$imageKey"
+                    if (thumbnailUrl.contains(delimiter)) {
+                        val partBefore = thumbnailUrl.substringBefore(delimiter)
+                        val albumSegment = partBefore.substringAfterLast('/')
+                        if (albumSegment.isNotEmpty()) {
+                            val allNodes = repository.getAllCachedNodes()
+                            val matchedNode = allNodes.find { it.webUri?.contains(albumSegment) == true }
+                            val resolvedKey = matchedNode?.getAlbumKey() ?: matchedNode?.nodeId
+                            if (resolvedKey != null) {
+                                val savedPasswords = passwordPrefs.all.values.filterIsInstance<String>().distinct()
+                                for (savedPw in savedPasswords) {
+                                    val unlocked = repository.unlockAlbum(resolvedKey, apiKey, savedPw) || repository.unlockNode(resolvedKey, apiKey, savedPw)
+                                    if (unlocked) {
+                                        passwordPrefs.edit().putString(resolvedKey, savedPw).apply()
+                                        var tempResult: Result<AlbumImageData>? = null
+                                        repository.getImage(imageKey, apiKey, savedPw).collect { result ->
+                                            tempResult = result
+                                        }
+                                        val tempImg = tempResult?.getOrNull()
+                                        if (tempImg != null && tempImg.uris?.album != null) {
+                                            finalResult = tempResult
+                                            detailedImage = tempImg
+                                            break
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        val index = searchPhotosList.indexOfFirst { it.imageKey == imageKey }
-                        if (index >= 0) {
-                            val finalUris = (detailedImage.uris ?: com.smugview.app.data.api.AlbumImageUris()).copy(
-                                album = if (resolvedAlbumKey.isNotEmpty()) "/api/v2/album/$resolvedAlbumKey" else null
-                            )
-                            searchPhotosList[index] = searchPhotosList[index].copy(
-                                title = detailedImage.title,
-                                caption = detailedImage.caption,
-                                archivedUri = detailedImage.archivedUri,
-                                date = detailedImage.date,
-                                dateTime = detailedImage.dateTime,
-                                originalWidth = detailedImage.originalWidth,
-                                originalHeight = detailedImage.originalHeight,
-                                format = detailedImage.format,
-                                uris = finalUris,
-                                videoUrl = detailedImage.videoUrl
-                            )
-                        }
+                    }
+                }
+
+                stateFlow.value = finalResult
+
+                detailedImage?.let { img ->
+                    val apiAlbumKey = img.uris?.album?.substringAfterLast("/") ?: ""
+                    val resolvedAlbumKey = if (apiAlbumKey.isNotEmpty()) {
+                        apiAlbumKey
+                    } else {
+                        getAlbumKeyFromWebUri(img.webUri) ?: ""
+                    }
+                    val index = searchPhotosList.indexOfFirst { it.imageKey == imageKey }
+                    if (index >= 0) {
+                        val finalUris = (img.uris ?: com.smugview.app.data.api.AlbumImageUris()).copy(
+                            album = if (resolvedAlbumKey.isNotEmpty()) "/api/v2/album/$resolvedAlbumKey" else null
+                        )
+                        searchPhotosList[index] = searchPhotosList[index].copy(
+                            title = img.title,
+                            caption = img.caption,
+                            archivedUri = img.archivedUri,
+                            date = img.date,
+                            dateTime = img.dateTime,
+                            originalWidth = img.originalWidth,
+                            originalHeight = img.originalHeight,
+                            format = img.format,
+                            uris = finalUris,
+                            videoUrl = img.videoUrl
+                        )
                     }
                 }
             }

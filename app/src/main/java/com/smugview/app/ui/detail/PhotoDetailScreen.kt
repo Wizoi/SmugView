@@ -1,5 +1,6 @@
 package com.smugview.app.ui.detail
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -938,16 +939,23 @@ fun sharePhoto(context: Context, coroutineScope: kotlinx.coroutines.CoroutineSco
                     file
                 )
 
+                val imageDescription = photo.fileName?.takeIf { it.isNotBlank() }
+                    ?: getFileNameFromUrl(imageUrl, photo.imageKey)
+
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "image/jpeg"
                     putExtra(Intent.EXTRA_STREAM, fileUri)
                     putExtra(Intent.EXTRA_TEXT, webLink)
-                    putExtra(Intent.EXTRA_SUBJECT, photo.title ?: "Shared Photo")
+                    putExtra(Intent.EXTRA_SUBJECT, imageDescription)
+                    clipData = ClipData.newRawUri("", fileUri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
 
                 withContext(Dispatchers.Main) {
-                    context.startActivity(Intent.createChooser(intent, "Share Photo"))
+                    val chooser = Intent.createChooser(intent, "Share Photo").apply {
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(chooser)
                 }
             } else {
                 withContext(Dispatchers.Main) {
@@ -971,6 +979,16 @@ fun sharePhoto(context: Context, coroutineScope: kotlinx.coroutines.CoroutineSco
     }
 }
 
+fun getFileNameFromUrl(url: String, fallbackKey: String): String {
+    val segment = url.substringAfterLast('/').substringBefore('?')
+    if (segment.isEmpty()) return "shared_image_$fallbackKey.jpg"
+    val decodedSegment = try {
+        java.net.URLDecoder.decode(segment, "UTF-8")
+    } catch (e: Exception) {
+        segment
+    }
+    return decodedSegment.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+}
 
 fun getBaseNameFromUrl(url: String, fallbackKey: String): String {
     val segment = url.substringAfterLast('/').substringBefore('?')
