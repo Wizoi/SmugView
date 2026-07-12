@@ -63,10 +63,9 @@ class SmugMugRepository @Inject constructor(
         return uri.substringAfterLast("/").substringBefore("!")
     }
 
-    // Fetches User profile metadata
-    fun getUserProfile(nickname: String, apiKey: String): Flow<Result<com.smugview.app.data.api.UserData>> = flow {
+    fun getUserProfile(nickname: String, apiKey: String, ignoreErrors: String? = null): Flow<Result<com.smugview.app.data.api.UserData>> = flow {
         try {
-            val userResponse = api.getUserProfile(nickname, apiKey)
+            val userResponse = api.getUserProfile(nickname, apiKey, ignoreErrors = ignoreErrors)
             val bioImageKey = userResponse.expansions?.values?.firstOrNull { it.bioImage != null }?.bioImage?.imageKey
             val enrichedUser = userResponse.response.user.copy(bioImageKey = bioImageKey)
             emit(Result.success(enrichedUser))
@@ -133,19 +132,22 @@ class SmugMugRepository @Inject constructor(
             }
 
             try {
+                val allApiNodes = mutableListOf<com.smugview.app.data.api.NodeData>()
+                val allExpansions = mutableMapOf<String, com.smugview.app.data.api.ExpansionContainer>()
+
                 val response = try {
                     if (nodeId.startsWith("virtual:")) {
                         com.smugview.app.data.api.NodeListResponse(
                             com.smugview.app.data.api.NodeListPayload(emptyList())
                         )
                     } else {
-                        api.getNodeChildren(nodeId, apiKey, password, ignoreErrors = ignoreErrors)
+                        api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors)
                     }
                 } catch (e: Exception) {
                     if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                         val unlocked = unlockInheritedPasswordRoot(nodeId, apiKey, password)
                         if (unlocked) {
-                            api.getNodeChildren(nodeId, apiKey, password, ignoreErrors = ignoreErrors)
+                            api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors)
                         } else {
                             throw e
                         }
@@ -155,12 +157,32 @@ class SmugMugRepository @Inject constructor(
                         throw e
                     }
                 }
-                val apiNodes = response.response.nodes ?: emptyList()
+                response.response.nodes?.let { allApiNodes.addAll(it) }
+                response.expansions?.let { allExpansions.putAll(it) }
+
+                var nextUrl = response.response.pages?.next
+                var pageNum = 1
+                while (nextUrl != null && !nodeId.startsWith("virtual:")) {
+                    pageNum++
+                    if (com.smugview.app.BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugMugRepository", "getNodeChildren: fetching page $pageNum for nodeId=$nodeId via nextUrl=$nextUrl")
+                    }
+                    kotlinx.coroutines.delay(100)
+                    val overriddenUrl = overrideUrlCount(nextUrl, 100)
+                    val nextResponse = api.getNodeChildrenByUri(overriddenUrl, apiKey, password, ignoreErrors = ignoreErrors)
+                    nextResponse.response.nodes?.let { allApiNodes.addAll(it) }
+                    nextResponse.expansions?.let { allExpansions.putAll(it) }
+                    nextUrl = nextResponse.response.pages?.next
+                }
+
+                if (com.smugview.app.BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugMugRepository", "getNodeChildren: completed fetching all pages for nodeId=$nodeId. Total children fetched = ${allApiNodes.size}")
+                }
                 
-                val dbNodes = apiNodes.mapIndexed { index, node ->
+                val dbNodes = allApiNodes.mapIndexed { index, node ->
                     val highlightUri = node.uris.highlightImage
                     val highlightUrl = if (highlightUri != null) {
-                        val expansion = response.expansions?.get(highlightUri)
+                        val expansion = allExpansions[highlightUri]
                         val thumb = expansion?.image?.thumbnailUrl
                         thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
                     } else null
@@ -487,7 +509,7 @@ class SmugMugRepository @Inject constructor(
                 val existing = dao.getNodeById(actualNodeId)
                 val albumNode = CachedNode(
                     nodeId = actualNodeId,
-                    parentNodeId = parentId,
+                    parentNodeId = existing?.parentNodeId?.takeIf { it != "root" && !it.startsWith("virtual:") } ?: parentId,
                     type = "Album",
                     title = album.name,
                     description = existing?.description,
@@ -788,7 +810,9 @@ class SmugMugRepository @Inject constructor(
     }
 
     suspend fun getAllCachedNodes(): List<CachedNode> {
-        return dao.getAllCachedNodes()
+        val dbNodes = dao.getAllCachedNodes()
+        val memNodes = albumsCache.value
+        return (dbNodes + memNodes).distinctBy { it.nodeId }
     }
 
     suspend fun getNodesByAlbumUris(albumUris: List<String>): List<CachedNode> {
@@ -856,6 +880,66 @@ class SmugMugRepository @Inject constructor(
             emit(Result.failure(e))
         }
     }.flowOn(Dispatchers.IO)
+
+    suspend fun fetchNodeFromApi(nodeId: String, apiKey: String, password: String? = null): CachedNode? {
+        return try {
+            val response = api.getNode(nodeId = nodeId, apiKey = apiKey)
+            val node = response.response.node
+            val parentNodeId = node.uris.parentNode?.substringAfterLast("/")
+            val cachedNode = CachedNode(
+                nodeId = node.nodeId,
+                parentNodeId = parentNodeId,
+                type = node.type,
+                title = node.name ?: "Untitled",
+                description = node.description,
+                access = node.securityType,
+                passwordHint = node.passwordHint,
+                uri = node.uri ?: "",
+                childNodesUri = node.uris.childNodes,
+                albumUri = node.uris.album,
+                highlightImageUrl = null,
+                sortIndex = 0,
+                webUri = node.webUri
+            )
+            dao.insertNodes(listOf(cachedNode))
+            cachedNode
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun resolveAndCacheAlbumLineage(albumKey: String, apiKey: String, password: String? = null): List<CachedNode> {
+        val cachedNode = dao.getNodeById(albumKey) ?: run {
+            val allNodes = dao.getAllCachedNodes()
+            allNodes.find { it.nodeId == albumKey || it.getAlbumKey() == albumKey }
+        }
+        var currentNode = cachedNode ?: run {
+            val albumDetails = getAlbum(albumKey, apiKey, password)
+            val nId = albumDetails?.nodeId
+            if (albumDetails != null && !nId.isNullOrEmpty()) {
+                fetchNodeFromApi(nId, apiKey, password)
+            } else {
+                null
+            }
+        }
+
+        val parents = mutableListOf<CachedNode>()
+        var parentId = currentNode?.parentNodeId
+        while (!parentId.isNullOrEmpty()) {
+            var parentNode = dao.getNodeById(parentId)
+            if (parentNode == null) {
+                parentNode = fetchNodeFromApi(parentId, apiKey, password)
+            }
+            if (parentNode != null) {
+                parents.add(0, parentNode)
+                parentId = parentNode.parentNodeId
+            } else {
+                break
+            }
+        }
+        return parents
+    }
 
     // --- Offline Local Collections Room Interface ---
 
@@ -1097,7 +1181,9 @@ class SmugMugRepository @Inject constructor(
                 } else null
 
                 val existing = dao.getNodeById(node.nodeId)
-                val parentId = existing?.parentNodeId ?: "search_result"
+                val parentId = existing?.parentNodeId?.takeIf { it != "search_result" }
+                    ?: node.uris.parentNode?.substringAfterLast("/")?.substringBefore("!")
+                    ?: "search_result"
 
                 CachedNode(
                     nodeId = node.nodeId,
@@ -1141,7 +1227,24 @@ class SmugMugRepository @Inject constructor(
     }
 
     suspend fun getSearchResultNodes(query: String, scope: String, type: String): List<CachedNode> {
-        val remoteResults = dao.getSearchResults(query, scope, type).map { it.toCachedNode() }
+        val remoteResults = dao.getSearchResults(query, scope, type).map { result ->
+            val cached = dao.getNodeById(result.itemKey)
+            CachedNode(
+                nodeId = result.itemKey,
+                parentNodeId = cached?.parentNodeId ?: "search_result",
+                type = result.itemType,
+                title = result.title,
+                description = result.description,
+                access = result.access,
+                passwordHint = result.passwordHint,
+                uri = result.uri ?: "",
+                childNodesUri = result.childNodesUri,
+                albumUri = result.albumUri,
+                highlightImageUrl = result.thumbnailUrl,
+                sortIndex = result.sortIndex,
+                webUri = result.webUri
+            )
+        }
         
         // Also fetch local DB matches for nodes matching this scope and query
         // isGlobal: scopeKey is "site" (generic sentinel) or blank — do NOT hardcode site-specific root node IDs.
@@ -1245,7 +1348,8 @@ fun SearchResult.toAlbumImageData(): AlbumImageData {
         originalWidth = originalWidth,
         originalHeight = originalHeight,
         videoUrl = videoUrl,
-        webUri = webUri
+        webUri = webUri,
+        uris = albumUri?.let { com.smugview.app.data.api.AlbumImageUris(album = it) }
     )
 }
 
@@ -1267,6 +1371,7 @@ fun AlbumImageData.toSearchResult(query: String, scope: String, index: Int): Sea
         originalSize = originalSize,
         videoUrl = videoUrl,
         webUri = webUri,
+        albumUri = uris?.imageAlbum ?: uris?.album,
         sortIndex = index
     )
 }

@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
 fun SmugViewNavigation() {
     val navController = rememberNavController()
     val viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel()
+    val coroutineScope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = "browser") {
@@ -130,7 +131,16 @@ fun SmugViewNavigation() {
                         navController.navigateUp()
                     },
                     onNavigateToGallery = { key, targetKey ->
-                        navController.navigate("photo_detail/$key/$targetKey")
+                        coroutineScope.launch {
+                            val node = viewModel.getCachedNodeById(key)
+                            if (node != null && node.type == "Folder") {
+                                viewModel.navigateToChildFolder(node)
+                                navController.popBackStack("browser", false)
+                            } else {
+                                val title = viewModel.getAlbumName(key)
+                                navController.navigate("photo_grid/$key/$title")
+                            }
+                        }
                     }
                 )
             }
@@ -206,9 +216,21 @@ fun SmugViewNavigation() {
                     onNavigateToPhotoDetail = { albumKey, targetImageKey ->
                         navController.navigate("photo_detail/$albumKey/$targetImageKey")
                     },
-                    onNavigateToGallery = { albumKey, targetImageKey ->
+                    onNavigateToGallery = { albumKey, targetKey ->
                         viewModel.cancelSearchJob()
-                        navController.navigate("photo_grid/$albumKey/Gallery")
+                        coroutineScope.launch {
+                            val node = viewModel.getCachedNodeById(albumKey)
+                            if (node != null && node.type == "Folder") {
+                                viewModel.navigateToChildFolder(node)
+                                navController.popBackStack("browser", false)
+                            } else {
+                                val title = viewModel.getAlbumName(albumKey)
+                                navController.navigate("photo_grid/$albumKey/$title")
+                            }
+                        }
+                    },
+                    onNavigateToKeywordImages = {
+                        navController.navigate("keyword_images")
                     }
                 )
             }

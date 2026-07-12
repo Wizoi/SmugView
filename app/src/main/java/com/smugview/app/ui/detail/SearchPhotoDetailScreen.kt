@@ -114,6 +114,7 @@ fun SearchPhotoDetailScreen(
     onBackClick: () -> Unit,
     onNavigateToPhotoDetail: (albumKey: String, imageKey: String) -> Unit,
     onNavigateToGallery: (albumKey: String, imageKey: String) -> Unit,
+    onNavigateToKeywordImages: () -> Unit,
     viewModel: SmugViewModel = hiltViewModel()
 ) {
     val pagingFlow by viewModel.searchPhotosPagingFlow.collectAsState()
@@ -142,12 +143,11 @@ fun SearchPhotoDetailScreen(
 
     val currentPhoto = if (pagerState.currentPage < searchPhotos.itemCount) searchPhotos[pagerState.currentPage] else null
 
-    val detailedPhotoState by if (currentPhoto != null) {
-        viewModel.getImageDetails(currentPhoto.imageKey).collectAsState()
-    } else {
-        remember { mutableStateOf(null) }
-    }
-    val detailedPhoto = detailedPhotoState?.getOrNull()
+    val detailedPhotoState = remember(currentPhoto?.imageKey) {
+        currentPhoto?.imageKey?.let { viewModel.getImageDetails(it) }
+            ?: kotlinx.coroutines.flow.MutableStateFlow(null)
+    }.collectAsState()
+    val detailedPhoto = detailedPhotoState.value?.getOrNull()
 
     // Preload next and previous images in the background when current page changes
     LaunchedEffect(pagerState.currentPage, searchPhotos.itemCount) {
@@ -323,12 +323,20 @@ fun SearchPhotoDetailScreen(
                 }
 
                 // Jump to Gallery Button
-                val albumKey = detailedPhoto?.uris?.album?.substringAfterLast("/")
-                    ?: currentPhoto?.uris?.album?.substringAfterLast("/")
-                if (albumKey != null) {
+                if (currentPhoto != null) {
                     Button(
                         onClick = {
-                            onNavigateToPhotoDetail(albumKey, currentPhoto?.imageKey ?: "")
+                            val photoAlbumKey = detailedPhoto?.uris?.album?.substringAfterLast("/")
+                                ?: detailedPhoto?.uris?.imageAlbum?.substringAfterLast("/")
+                                ?: currentPhoto.uris?.album?.substringAfterLast("/")
+                                ?: currentPhoto.uris?.imageAlbum?.substringAfterLast("/")
+                                ?: ""
+                            if (photoAlbumKey.isNotEmpty()) {
+                                onNavigateToGallery(photoAlbumKey, currentPhoto.imageKey)
+                            } else {
+                                val reason = if (detailedPhoto == null) "Loading details..." else "Album key could not be resolved."
+                                Toast.makeText(context, "Gallery Navigation Failed: $reason", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = SurfaceGlass),
                         shape = RoundedCornerShape(16.dp),
@@ -451,19 +459,16 @@ fun SearchPhotoDetailScreen(
 
                         IconButton(
                             onClick = {
-                                val photoAlbumKey = detailedPhoto?.uris?.album?.substringAfterLast("/")
-                                    ?: currentPhoto?.uris?.album?.substringAfterLast("/")
-                                    ?: ""
-                                if (photoAlbumKey.isNotEmpty()) {
-                                    onNavigateToGallery(photoAlbumKey, currentPhoto.imageKey)
-                                } else {
-                                    Toast.makeText(context, "Loading photo details, please wait...", Toast.LENGTH_SHORT).show()
+                                if (currentPhoto != null) {
+                                    scope.launch {
+                                        downloadPhotoToGallery(context, currentPhoto, viewModel)
+                                    }
                                 }
                             }
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Collections,
-                                contentDescription = "Go to Gallery",
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Download Photo",
                                 tint = Color.White,
                                 modifier = Modifier.size(26.dp)
                             )
@@ -516,7 +521,6 @@ fun SearchPhotoDetailScreen(
         // EXIF Bottom Sheet Overlay
         if (showExifSheet && currentPhoto != null) {
             val exifState by viewModel.getImageExif(currentPhoto.imageKey).collectAsState()
-
             ModalBottomSheet(
                 onDismissRequest = { showExifSheet = false },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -528,17 +532,19 @@ fun SearchPhotoDetailScreen(
                         .navigationBarsPadding()
                         .padding(horizontal = 24.dp, vertical = 16.dp)
                 ) {
+                    // Action Chips Rows
                     Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            // Save (Bookmark) Action
                             AssistChip(
                                 onClick = {
                                     val fav = localCollections.find { it.name.lowercase() == "favorites" }
@@ -557,6 +563,7 @@ fun SearchPhotoDetailScreen(
                                 modifier = Modifier.weight(1f)
                             )
 
+                            // Share Action
                             AssistChip(
                                 onClick = {
                                     if (currentPhoto.webUri != null || currentPhoto.archivedUri != null) {
@@ -578,6 +585,7 @@ fun SearchPhotoDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            // Download Action
                             AssistChip(
                                 onClick = {
                                     scope.launch {
@@ -592,10 +600,13 @@ fun SearchPhotoDetailScreen(
                                 modifier = Modifier.weight(1f)
                             )
 
+                            // Gallery Action
                             AssistChip(
                                 onClick = {
                                     val photoAlbumKey = detailedPhoto?.uris?.album?.substringAfterLast("/")
+                                        ?: detailedPhoto?.uris?.imageAlbum?.substringAfterLast("/")
                                         ?: currentPhoto?.uris?.album?.substringAfterLast("/")
+                                        ?: currentPhoto?.uris?.imageAlbum?.substringAfterLast("/")
                                         ?: ""
                                     if (photoAlbumKey.isNotEmpty()) {
                                         onNavigateToGallery(photoAlbumKey, currentPhoto.imageKey)
@@ -604,7 +615,7 @@ fun SearchPhotoDetailScreen(
                                     }
                                 },
                                 label = { Text("Gallery", color = Color.White) },
-                                leadingIcon = { Icon(Icons.Default.Collections, contentDescription = "Go to Gallery", tint = Color.White, modifier = Modifier.size(16.dp)) },
+                                leadingIcon = { Icon(Icons.Default.Collections, contentDescription = "Gallery", tint = Color.White, modifier = Modifier.size(16.dp)) },
                                 colors = AssistChipDefaults.assistChipColors(containerColor = SurfaceDark),
                                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
                                 shape = RoundedCornerShape(12.dp),
@@ -613,8 +624,7 @@ fun SearchPhotoDetailScreen(
                         }
                     }
 
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(text = "EXIF Metadata", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -687,10 +697,10 @@ fun SearchPhotoDetailScreen(
                                         ExifCardItem(
                                             icon = Icons.Default.ZoomIn,
                                             label = "Original Dimensions",
-                                            value = if (currentPhoto.originalWidth != null && currentPhoto.originalHeight != null) {
-                                                "${currentPhoto.originalWidth} x ${currentPhoto.originalHeight}"
-                                            } else {
-                                                "Unknown"
+                                            value = run {
+                                                val w = detailedPhoto?.originalWidth ?: currentPhoto.originalWidth
+                                                val h = detailedPhoto?.originalHeight ?: currentPhoto.originalHeight
+                                                if (w != null && h != null) "$w x $h" else "Unknown"
                                             },
                                             modifier = Modifier.weight(1f)
                                         )
@@ -711,7 +721,7 @@ fun SearchPhotoDetailScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        val fileName = currentPhoto.fileName ?: currentPhoto.title ?: "Unknown"
+                                        val fileName = detailedPhoto?.fileName ?: currentPhoto.fileName ?: currentPhoto.title ?: "Unknown"
                                         ExifCardItem(
                                             icon = Icons.Default.InsertDriveFile,
                                             label = "File Name",
@@ -723,7 +733,7 @@ fun SearchPhotoDetailScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        val sizeBytes = currentPhoto.originalSize
+                                        val sizeBytes = detailedPhoto?.originalSize ?: currentPhoto.originalSize
                                         val sizeStr = if (sizeBytes != null) {
                                             if (sizeBytes > 1024 * 1024) String.format(java.util.Locale.US, "%.2f MB", sizeBytes / (1024.0 * 1024.0))
                                             else String.format(java.util.Locale.US, "%.2f KB", sizeBytes / 1024.0)
@@ -745,10 +755,11 @@ fun SearchPhotoDetailScreen(
                                         modifier = Modifier.padding(bottom = 8.dp)
                                     )
 
-
-
-                                    val tags = remember(currentPhoto, updatedKeywordsMap[currentPhoto.imageKey]) {
-                                        val keywordsStr = updatedKeywordsMap[currentPhoto.imageKey] ?: currentPhoto.keywordsString ?: ""
+                                    val tags = remember(currentPhoto, detailedPhoto, updatedKeywordsMap[currentPhoto.imageKey]) {
+                                        val keywordsStr = updatedKeywordsMap[currentPhoto.imageKey]
+                                            ?: detailedPhoto?.keywordsString
+                                            ?: currentPhoto.keywordsString
+                                            ?: ""
                                         keywordsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                                     }
 
@@ -761,6 +772,11 @@ fun SearchPhotoDetailScreen(
                                                     modifier = Modifier
                                                         .padding(4.dp)
                                                         .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                                                        .clickable {
+                                                            viewModel.selectSingleTag(tag)
+                                                            showExifSheet = false
+                                                            onNavigateToKeywordImages()
+                                                        }
                                                         .padding(horizontal = 12.dp, vertical = 6.dp)
                                                 ) {
                                                     Text(text = tag, color = Color.White, fontSize = 11.sp)
@@ -770,8 +786,6 @@ fun SearchPhotoDetailScreen(
                                     } else {
                                         Text(text = "No tags available.", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp)
                                     }
-
-                                    // Add Tag section removed as requested
                                 }
                             }
                         }

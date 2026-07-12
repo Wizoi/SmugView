@@ -124,7 +124,8 @@ data class AlbumImageData(
 
 data class AlbumImageUris(
     @SerializedName("LargestVideo") val largestVideo: String? = null,
-    @SerializedName("Album") val album: String? = null
+    @SerializedName("Album") val album: String? = null,
+    @SerializedName("ImageAlbum") val imageAlbum: String? = null
 )
 
 // Image Metadata (EXIF) Response

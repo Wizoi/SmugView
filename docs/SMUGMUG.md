@@ -38,9 +38,10 @@ To maintain a resilient and high-performing integration, any future changes or o
 * **Profile Resolution**:
   - Endpoint: `GET /api/v2/user/{nickname}`
   - Purpose: Resolves the public nickname to the user's root node ID via `response.user.uris.node.uri` (e.g. `/api/v2/node/4zqWw` -> Root Node ID `4zqWw`).
-* **Hierarchy Navigation**:
-  - Endpoint: `GET /api/v2/node/{node_id}!children`
-  - Purpose: Lists child folders, albums, and pages under a specific folder node.
+* **Hierarchy Navigation & Paging**:
+  - Endpoint: `GET /api/v2/node/{node_id}!children` (requests initial batch of up to 100 children subnodes)
+  - Paging Endpoint: `GET {dynamic_url}` (traverses subsequent pages using `getNodeChildrenByUri` and the `pages.next` URI)
+  - Purpose: Recursively lists and caches all child folders, albums, and pages under a specific folder node.
 * **Album Data Retrieval**:
   - Detail Endpoint: `GET /api/v2/album/{album_key}` (gets title, style, configuration)
   - Images Endpoint: `GET /api/v2/album/{album_key}!images` (gets paginated album image assets)
@@ -127,6 +128,18 @@ To maintain a resilient and high-performing integration, any future changes or o
 ### 7. Scoped Searches and Password Access
 * **Problem**: Scoped searches on password-protected folders or galleries (even if unlocked via `!unlock` previously in the session) fail or return 0 images if the password query parameter is omitted on the search call.
 * **Solution**: Retrieve the cached folder/gallery password from local session preferences (using the gallery key, node ID, or parent folder node ID) and explicitly supply it via the `Password` parameter to `searchImages`.
+
+### 8. Custom Header `X-Ignore-Errors` for Silent Verification
+* **Problem**: When the user is typing a nickname in the explorer view, incomplete inputs trigger immediate API checks. These requests often fail with `404 Not Found` responses, causing our standard network error interceptor to pop up disruptive "Not Found" Toast messages.
+* **Solution**: Pass `@Header("X-Ignore-Errors") ignoreErrors: String?` (value `"true"`) on validation lookups. The OkHttp interceptor catches this header and bypasses UI Toast alerts, silently allowing the app to handle validation states.
+
+### 9. Parent Gallery Identification in Scoped Search Results
+* **Problem**: Photos returned by `image!search` omit the parent gallery's `AlbumKey`, making navigation links (like "Go to Gallery") impossible to populate directly.
+* **Solution**: Ensure the `_filter` query parameter includes `Uris` and `_filteruri` includes `ImageAlbum` (e.g. `LargestVideo,ImageAlbum`). The repository maps this to `uris.imageAlbum`. If `imageAlbum` is null due to API redactions on locked/anonymous resources, the view model parses the gallery path segment from the photo's `thumbnailUrl` or `webUri`, matches it against all cached nodes, and injects the resolved album URI.
+
+### 10. Bypassing Global Redactions on Password Unlocked Photos
+* **Problem**: Even after successfully unlocking a password-protected gallery via `POST !unlock`, retrieving details for a photo in that gallery via `GET image/{key}` can return redacted/empty `uris.album` links.
+* **Solution**: In `getImageDetails`, detect if `uris.album` is redacted/null on a successful image payload. Extract the parent gallery path slug segment from the thumbnail, look up its `resolvedKey` in `getAllCachedNodes()`, and if unlocked or public, manually construct and attach the correct album path `/api/v2/album/$resolvedKey` to override the redaction.
 
 ---
 

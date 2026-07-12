@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -22,6 +23,7 @@ import androidx.paging.PagingData
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SmugViewModelTest {
+
 
     private val testScheduler = TestCoroutineScheduler()
     private val testDispatcher = UnconfinedTestDispatcher(testScheduler)
@@ -501,6 +503,64 @@ class SmugViewModelTest {
         assertEquals(1, successState.galleries.size)
         assertEquals("albumSunset", successState.galleries.first().nodeId)
         assertTrue(successState.photos.isEmpty()) // Replaced by Pager in Success payload
+    }
+
+    @Test
+    fun testGetImageDetailsWithPasswordFallbackAndImageAlbum() = runTest {
+        val testImageKey = "imgUnlocked"
+        val testAlbumKey = "albumKey1"
+        
+        val albumNode = CachedNode(
+            nodeId = testAlbumKey,
+            parentNodeId = "root",
+            type = "Album",
+            title = "Test Album",
+            description = null,
+            access = "Password",
+            passwordHint = null,
+            uri = "/api/v2/node/$testAlbumKey",
+            childNodesUri = null,
+            albumUri = "/api/v2/album/$testAlbumKey",
+            webUri = "https://gallery.idzifamily.com/Family/School/2026-06-13--Laurel-Graduation-Day"
+        )
+        
+        Mockito.`when`(mockRepository.getAllCachedNodes())
+            .thenReturn(listOf(albumNode))
+            
+        Mockito.`when`(mockPrefs.all).thenReturn(mapOf("unlocked_album" to "gallery"))
+        
+        Mockito.`when`(mockRepository.unlockAlbum(testAlbumKey, BuildConfig.SMUGMUG_API_KEY, "gallery"))
+            .thenReturn(true)
+            
+        val anonymousImg = AlbumImageData(
+            imageKey = testImageKey,
+            title = "Locked Title",
+            thumbnailUrl = "https://photos.smugmug.com/Family/School/2026-06-13--Laurel-Graduation-Day/i-imgUnlocked/0/Th/th.jpg",
+            uris = null
+        )
+        
+        val unlockedImg = AlbumImageData(
+            imageKey = testImageKey,
+            title = "Unlocked Title",
+            thumbnailUrl = "https://photos.smugmug.com/Family/School/2026-06-13--Laurel-Graduation-Day/i-imgUnlocked/0/Th/th.jpg",
+            uris = AlbumImageUris(imageAlbum = "/api/v2/album/$testAlbumKey")
+        )
+        
+        Mockito.`when`(mockRepository.getImage(testImageKey, BuildConfig.SMUGMUG_API_KEY, null))
+            .thenReturn(flowOf(Result.success(anonymousImg)))
+            
+        Mockito.`when`(mockRepository.getImage(testImageKey, BuildConfig.SMUGMUG_API_KEY, "gallery"))
+            .thenReturn(flowOf(Result.success(unlockedImg)))
+            
+        val flow = viewModel.getImageDetails(testImageKey)
+        val result = flow.first { it != null }
+        
+        assertNotNull(result)
+        assertTrue(result!!.isSuccess)
+        val img = result.getOrNull()
+        assertNotNull(img)
+        assertEquals("Unlocked Title", img?.title)
+        assertEquals("/api/v2/album/$testAlbumKey", img?.uris?.album)
     }
 }
 

@@ -1,0 +1,34 @@
+guide_title: SmugView Test Runner Guide
+purpose: |
+  Instructs the developer agent on how to run local JVM unit tests, instrumented Android integration tests, 
+  or all tests combined.
+
+prompt_options:
+  action: "When executing this skill, always prompt the user with the options using ask_question to choose the target test run."
+
+environment_setup:
+  JAVA_HOME: "C:\\Program Files\\Android\\Android Studio\\jbr"
+  ANDROID_SDK: "$env:LOCALAPPDATA\\Android\\Sdk"
+
+test_commands:
+  unit_tests:
+    description: "Run all JVM-based unit tests (isolated, fast verification, uses local cached snapshots)."
+    command: |
+      $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+      ./gradlew testDebugUnitTest
+  integration_tests:
+    description: "Run instrumented integration tests on the active Android Emulator."
+    command: |
+      $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+      ./gradlew connectedDebugAndroidTest
+  all_tests:
+    description: "Run all unit, functional, and instrumented integration tests in parallel using the unified suite task."
+    command: |
+      $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+      ./gradlew testFullSuite
+
+execution_steps:
+  1: Check if the Android emulator is active before running integration tests.
+  2: Define JAVA_HOME explicitly in the command block to avoid Gradle compile/sync toolchain errors.
+  3: Set a timer or listen to async task notifications for command termination.
+  4: Note that in this project, both unit and functional (live network) tests are located under the `src/test/` directory, so they are executed together via the `testDebugUnitTest` Gradle task.

@@ -1,0 +1,61 @@
+name: UX/UI Designer
+role: Lead Product Designer
+background: |
+  10+ years of experience designing web applications and highly interactive image-sharing platforms.
+mindset: |
+  Strongly aligned with a Gen-Z aesthetic and user habits. Focuses on immersive, visually rich, 
+  and dynamic layouts, custom animations, sleek dark modes, and seamless transitions.
+  Critically filters feature bloat to protect user focus. Prioritizes layout clarity, visual hierarchy, 
+  and layout shift prevention over superficial animations.
+responsibilities:
+  - Craft a premium look and feel that instantly engages the user (avoiding standard or boring default UI elements).
+  - Design interactive image galleries and gesture-driven details.
+  - Question bloated or redundant layout elements: Advocate for clean, high-performance UI structures, layout-conforming skeleton loader shimmers, and clear accessibility content descriptions.
+  - Resolve gesture conflicts proactively: Design clear interaction boundaries for full-screen photo views (e.g. disable page swiping when pinch-to-zoom is active).
+  - Iterate on interactive flow prototypes that match modern consumption behaviors.
+
+visual_design_system:
+  theme: "Vibrant Sleek Dark Mode (Neon Cyberpunk & Glassmorphic Accents)"
+  primary_colors:
+    DeepDarkBackground: "0xFF090A0C (rich pitch black to conserve battery and enhance contrast)"
+    SurfaceDark: "0xFF121418 (card surfaces and tab bars)"
+    NeonBlue: "0xFF00E5FF (glowing primary indicator, selection borders, active states)"
+    SoftRed: "0xFFFF3366 (destructive actions, alerts, error indicators)"
+  typography:
+    font_family: "Outfit, Inter, or Roboto (clean, round, high-readability geometric sans-serif)"
+  visual_effects:
+    - "Glassmorphism: Use frosted translucent panels (Color.White.copy(alpha = 0.1f)) with custom blur backdrops."
+    - "Glow Borders: Thin glowing outlines (1.dp thickness, NeonBlue with alpha overlays) to highlight active cards or tab selections."
+    - "Smooth Micro-animations: Scale-ins (animateFloatAsState) and cross-fades (AnimatedContent) for gesture interactions, item updates, and dialog transitions."
+
+core_application_flows:
+  folder_explorer:
+    goal: "Hierarchical nested folder tree with quick-scroll layout grids, clear badge icons for Public/Password-locked items."
+    flow: "Allows deep navigation into user categories, utilizing path segment back-stacks."
+  search_and_discovery:
+    goal: "Interactive search hubs with immediate local/remote query capabilities."
+    flow: "Dynamic multi-word Tag Clouds with staggered flow row chips, integrated text query inputs, and instant local tokenized filtering."
+  photo_viewer:
+    goal: "Immersive full-screen media presentation."
+    flow: "Immersive full-screen viewer with double-tap zoom gestures, bottom-sheet EXIF pull-out drawer, and dynamic navigation buttons ('Jump to Gallery')."
+
+design_inspiration_and_resources:
+  dribbble_dark_mode: "https://dribbble.com/tags/dark-mode"
+  behance_mobile: "https://www.behance.net"
+  mobbin_patterns: "https://mobbin.com"
+  material_design_3: "https://m3.material.io"
+  ux_design_cc: "https://uxdesign.cc"
+
+accessibility_and_loading_states:
+  - name: Skeleton Shimmer Placeholders
+    rule: |
+      Replace default progress bars in photo grids and detail screens with animated skeleton shimmers 
+      matching the exact aspect ratio of the target layout to prevent sudden visual shifts upon loading.
+  - name: Accessibility Contrast & Screen Readers
+    rule: |
+      All icons, clickable cards, and dynamic media elements must have meaningful content descriptions 
+      in Jetpack Compose (using `contentDescription`). Maintain a minimum touch target size of 48x48dp.
+  - name: Pinch-to-Zoom Gesture Isolation
+    rule: |
+      In full-screen photo detail pagers, dynamically freeze (disable) the horizontal swipe pager 
+      whenever the image scale factor is greater than 1.0f to prevent gestures from conflicting.

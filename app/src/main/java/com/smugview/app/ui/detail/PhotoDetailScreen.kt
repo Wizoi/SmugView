@@ -479,6 +479,24 @@ fun PhotoDetailScreen(
                             )
                         }
 
+                        // Download Photo
+                        IconButton(
+                            onClick = {
+                                if (currentPhoto != null) {
+                                    scope.launch {
+                                        downloadPhotoToGallery(context, currentPhoto, viewModel)
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Download Photo",
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+
                         // Info (i) Button
                         IconButton(
                             onClick = { showExifSheet = true }

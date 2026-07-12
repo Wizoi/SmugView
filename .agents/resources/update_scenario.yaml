@@ -1,0 +1,45 @@
+guide_title: SmugView Update Scenario & Collaborative Workflow Guide
+purpose: |
+  Guides the developer agent in updating a workflow, process, or user scenario across the application by engaging 
+  and collaborating across all core expert personas (UX Designer, UX Reviewer, Android Expert, and SmugMug API Specialist).
+
+pre_requisite:
+  clarification: "If there is any ambiguity of intention or requirements in the requested workflow change, the personas must raise and ask clarifying questions first to resolve the ambiguity before proceeding to plan design."
+
+collaborative_workflow:
+  1_engage_personas:
+    action: "Read the prompt describing the target scenario or feature modification."
+    personas:
+      - name: "UX Designer"
+        role: "Proposes the visual structure, layout, typography, interactions, and aesthetic alignment."
+        reference: ".agents/resources/personas/ux_designer.yaml"
+      - name: "UX Reviewer"
+        role: "Acts as Usability Adversary. Critiques the proposed flows, checking for empty states, text truncation, keyboard accessibility, and back-navigation behaviors."
+        reference: ".agents/resources/personas/ux_reviewer.yaml"
+      - name: "Android Platform Expert"
+        role: "Verifies client-side implementation constraints (Jetpack Compose thread safety, Room indexing, coroutine handling, and JVM tests)."
+        reference: ".agents/resources/personas/android_expert.yaml"
+      - name: "SmugMug API Specialist"
+        role: "Validates API payloads, URI mapping conventions, rate limiting, and optimization filters."
+        reference: ".agents/resources/personas/api_specialist.yaml"
+      - name: "QA/Tester"
+        role: "Plans the test coverage, defines low-level snapshot targets, and ensures expected fields are captured."
+        reference: ".agents/resources/personas/qa_tester.yaml"
+      - name: "Project Manager"
+        role: "Reviews the scenario execution, collects performance details, and enforces automatic retrospectives."
+        reference: ".agents/resources/personas/project_manager.yaml"
+  2_collaborate_design:
+    action: |
+      Instruct the personas to collaboratively formulate a design:
+      - Step A: The UX Designer structures the layout and visual flow.
+      - Step B: The SmugMug API Specialist plans payload queries and filtering optimizations.
+      - Step C: The Android Expert structures the Compose/Room caching models and threading constraints.
+      - Step D: The UX Reviewer performs a usability review against edge cases (e.g. empty states, back buttons).
+      - Step E: The QA/Tester designs the integration test plan and details snapshot injection requirements.
+      - Step F: Critical Assessment & Alternatives: Sibling personas must review each other's plans, highlight trade-offs (e.g., performance vs. feature richness), detail at least one alternative considered, and verify that the combined layout is optimal and robust before generating a proposal.
+  3_generate_proposal:
+    action: "Compile the collaborative design into a structured Implementation Plan proposal."
+  4_obtain_approval:
+    action: "Stop execution and present the proposal to the user for explicit review and approval before starting any code changes."
+  5_post_execution_retro:
+    action: "Invoke the Project Manager to automatically conduct a retrospective analysis, update persona yaml config files, and append learnings to AGENTS.md rules."

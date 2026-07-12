@@ -13,7 +13,7 @@ To keep credentials secure, this project uses a build-time configuration system 
 2. Register your application to obtain a developer **API Key** (also known as a consumer key).
 
 ### Step 2: Set up `local.properties`
-1. Locate the [local.properties.example](local.properties.example) template file in the project root.
+1. Locate the [local.properties.example](../local.properties.example) template file in the project root.
 2. Duplicate this file and rename the copy to `local.properties` in the project root directory.
 3. Open the newly created `local.properties` and fill in your details:
    ```properties
@@ -23,7 +23,7 @@ To keep credentials secure, this project uses a build-time configuration system 
    # Your target SmugMug nickname/profile to load on launch
    smugmug.nickname=YOUR_NICKNAME_HERE
    ```
-4. *Security Check:* The root `local.properties` and `app/local.properties` are pre-configured in [.gitignore](.gitignore) to ensure they are **never** accidentally pushed to GitHub.
+4. *Security Check:* The root `local.properties` and `app/local.properties` are pre-configured in [../.gitignore](../.gitignore) to ensure they are **never** accidentally pushed to GitHub.
 
 ---
 

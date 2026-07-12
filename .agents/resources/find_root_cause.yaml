@@ -1,0 +1,64 @@
+guide_title: SmugView Directed Root Cause Analysis (RCA) Guide
+purpose: |
+  Guides developer agents through a structured, evidence-based, persona-driven root cause 
+  analysis for any bug, error, or compilation failure in the SmugView codebase.
+
+core_issue_determination:
+  rule: |
+    Before digging deeper into the analysis, the agent must identify and state the core issue to be investigated, 
+    verifying with the user that this matches the intended issue.
+    
+    CRITICAL: If the incident involves a recent application crash, the agent must immediately retrieve and collect 
+    key crash information (such as fatal exception traces or zygote process signals) from the running emulator's 
+    logcat logs to assess the exact reason for the crash before executing other analysis tasks.
+  outline: |
+    Outline and present the next few diagnostic or investigation steps that will be executed to locate the root cause 
+    (e.g., specific logcat searches, database table queries, or API endpoint simulation tests).
+
+pre_analysis_steps:
+  - step: 1
+    name: Check Git Status
+    action: "Run `git status` in the repository root to ensure there are no uncommitted or unexpected changes."
+  - step: 2
+    name: Review Sibling Agent Logs
+    action: "Review sibling developer transcripts under `C:\\Users\\kidzi\\.gemini\\antigravity-ide\\brain\\<sibling-conversation-id>\\.system_generated\\logs\\transcript.jsonl` using PowerShell commands (Get-Content) to prevent regressions in shared files."
+
+investigation_procedure:
+  - role: SmugMug API Specialist
+    ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/api_specialist.yaml"
+    methodology: |
+      Verify API requests, tokens, parameters, and expansion paths. Execute raw HTTP queries anonymized or authenticated 
+      to detect server-side visibility flags or payload redactions directly rather than relying on parsed models.
+  - role: Android Platform Expert
+    ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/android_expert.yaml"
+    methodology: |
+      Trace client-side flows, VM variables, Compose renders, Room queries, and caching logic. Ensure database queries 
+      triggered on startup/render are indexed and asynchronous (ANR prevention). Verify pixel math bounds (NaN checks).
+  - role: QA/Tester
+    ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/qa_tester.yaml"
+    methodology: |
+      Analyze why test coverage missed the bug. Suggest test implementation improvements. Run live API queries manually 
+      to collect payloads, and map expected fields into snapshot data layers to refactor mocks and reduce test runtimes.
+  - role: Project Manager
+    ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/project_manager.yaml"
+    methodology: |
+      Analyze the overall conversation trajectory. Collect execution diagnostics, and run the automatic post-fix retrospective 
+      to continuously refine agents and persona instructions.
+
+options_decision_framework:
+  requirement: "Outline and document at least 1-3 design options with their respective Pros and Cons before proposing code edits. Have all agent personas (UX, Android, API, QA) explicitly weigh in on these options in the analysis."
+  criteria: "Weigh API rate limits, complexity, cache dependency, and refactoring scope."
+  critical_verification: |
+    Challenge correctness assumptions: Perform a rigorous pre-verification validation using code, test scripts, or unit tests 
+    to pre-verify the assumptions and the fix prior to presenting the recommendation in the plan.
+
+reporting_and_execution:
+  report_format:
+    - "Relevant Logs (logcat or build errors)"
+    - "State/DB Snapshots"
+    - "API Request/Response Diagnostics"
+    - "Test Coverage Gap Analysis & Snapshot Refactoring Recommendations"
+    - "Options Analysis (Pros/Cons table)"
+    - "Summary Recommendation"
+  execution_rule: "Create implementation_plan.md and obtain explicit user approval before modifying code or running build tasks."
+  post_execution_rule: "Trigger automatic Project Manager retrospective to update workspace guidelines."

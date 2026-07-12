@@ -8,6 +8,14 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import okhttp3.ResponseBody
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 
 class SmugMugRepositoryTest {
 
@@ -125,115 +133,97 @@ class SmugMugRepositoryTest {
         }
     }
 
-    // A fake implementation of SmugMugApi for unit testing
-    class FakeSmugMugApi : SmugMugApi {
-        var mockChildNodesResponse: NodeListResponse? = null
-        var mockAlbumKeywordsResponse: AlbumKeywordsResponse? = null
-        
-        override suspend fun getNodeChildren(nodeId: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?): NodeListResponse {
-            return if (nodeId == "folder1") {
-                mockChildNodesResponse ?: throw Exception("Mock not configured")
-            } else {
-                NodeListResponse(response = NodeListPayload(nodes = emptyList()))
-            }
-        }
-        
-        override suspend fun getAlbumKeywords(albumKeys: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int): AlbumKeywordsResponse {
-            return mockAlbumKeywordsResponse ?: throw Exception("Mock not configured")
-        }
-
-        // Stub other required methods
-        override suspend fun getUserProfile(nickname: String, apiKey: String, expand: String, verbosity: Int): UserResponse = throw Exception()
-        override suspend fun getUserBioImage(nickname: String, apiKey: String, verbosity: Int): BioImageResponse = throw Exception()
-        override suspend fun getNode(nodeId: String, apiKey: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?): SingleNodeResponse = throw Exception()
-        override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeId: String?, verbosity: Int): TopKeywordsResponse = throw Exception()
-        override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?): AlbumResponse = throw Exception()
-        override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?): AlbumImagesResponse = throw Exception()
-        override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, ignoreErrors: String?): AlbumImagesResponse = throw Exception()
-        override suspend fun getImageExif(imageKey: String, apiKey: String, password: String?, verbosity: Int): ExifResponse = throw Exception()
-        override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int): ImageResponse = throw Exception()
-        
-        var searchImagesMock: ((start: Int) -> ImageSearchResponse)? = null
-        
-        override suspend fun searchImages(
-            apiKey: String,
-            scope: String?,
-            text: String?,
-            sortMethod: String?,
-            sortDirection: String?,
-            count: Int,
-            start: Int,
-            filter: String,
-            filterUri: String,
-            expand: String?,
-            verbosity: Int
-        ): ImageSearchResponse {
-            return searchImagesMock?.invoke(start) ?: throw Exception("Mock not configured")
-        }
-        var searchImagesByUriMock: ((url: String) -> ImageSearchResponse)? = null
-        
-        override suspend fun searchImagesByUri(url: String, apiKey: String): ImageSearchResponse {
-            return searchImagesByUriMock?.invoke(url) ?: throw Exception("Mock not configured")
-        }
-        
-        override suspend fun searchImagesUser(nickname: String, apiKey: String, text: String, scope: String?, password: String?, count: Int, start: Int, expand: String?, filter: String, filterUri: String, verbosity: Int): ImageSearchResponse = throw Exception()
-        var searchImagesUserByUriMock: ((url: String) -> ImageSearchResponse)? = null
-        override suspend fun searchImagesUserByUri(url: String, apiKey: String, password: String?): ImageSearchResponse {
-            return searchImagesUserByUriMock?.invoke(url) ?: throw Exception("Mock not configured")
-        }
-        override suspend fun searchNodes(apiKey: String, scope: String, text: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int): NodeListResponse = throw Exception()
-        
-        override suspend fun unlockNode(nodeId: String, apiKey: String, password: String, ignoreErrors: String?): retrofit2.Response<ResponseBody> = throw Exception()
-        override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String, ignoreErrors: String?): retrofit2.Response<ResponseBody> = throw Exception()
-        override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int): UserAlbumsResponse = throw Exception()
-        override suspend fun getUserAlbumsByUri(url: String, apiKey: String): UserAlbumsResponse = throw Exception()
-        var getImagesByKeywordMock: ((apiKey: String, scope: String?, text: String?, count: Int, start: Int) -> ImageSearchResponse)? = null
-        override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, filterUri: String, verbosity: Int): ImageSearchResponse {
-            return getImagesByKeywordMock?.invoke(apiKey, scope, text, count, start) ?: throw Exception("Mock not configured")
-        }
-        override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest): retrofit2.Response<ResponseBody> = throw Exception()
+    private fun createMockApi(interceptor: Interceptor): SmugMugApi {
+        val client = OkHttpClient.Builder()
+            .addInterceptor(interceptor)
+            .build()
+            
+        val retrofit = Retrofit.Builder()
+            .baseUrl("https://api.smugmug.com/api/v2/")
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            
+        return retrofit.create(SmugMugApi::class.java)
     }
 
     @Test
     fun testGetAlbumsInScopeOrchestration() = runBlocking {
         val fakeDao = FakeCollectionDao()
-        val fakeApi = FakeSmugMugApi()
-        val repository = SmugMugRepository(fakeApi, fakeDao, mockContext())
+        
+        val mockInterceptor = Interceptor { chain ->
+            val url = chain.request().url.toString()
+            val json = if (url.contains("node/folder1!children")) {
+                """
+                {
+                  "Response": {
+                    "Uri": "/api/v2/node/folder1!children",
+                    "Locator": "Node",
+                    "LocatorType": "Objects",
+                    "Node": [
+                      {
+                        "Uri": "/api/v2/node/folder2",
+                        "NodeID": "folder2",
+                        "Type": "Folder",
+                        "Name": "Subfolder",
+                        "Uris": {
+                          "ChildNodes": "/api/v2/node/folder2!children"
+                        }
+                      },
+                      {
+                        "Uri": "/api/v2/node/album1",
+                        "NodeID": "album1",
+                        "Type": "Album",
+                        "Name": "My Gallery",
+                        "Uris": {
+                          "Album": "/api/v2/album/album1"
+                        }
+                      }
+                    ]
+                  },
+                  "Code": 200,
+                  "Message": "Ok"
+                }
+                """.trimIndent()
+            } else {
+                """
+                {
+                  "Response": {
+                    "Uri": "/api/v2/node/folder2!children",
+                    "Locator": "Node",
+                    "LocatorType": "Objects",
+                    "Node": []
+                  },
+                  "Code": 200,
+                  "Message": "Ok"
+                }
+                """.trimIndent()
+            }
+            
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+        
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, mockContext())
 
         // 1. Initially database cache is empty
         val initialAlbums = repository.getAlbumsInScope("folder1")
         assertTrue(initialAlbums.isEmpty())
 
-        // 2. Set up mock API children response: folder1 contains folder2 (Folder) and album1 (Album)
-        fakeApi.mockChildNodesResponse = NodeListResponse(
-            response = NodeListPayload(
-                nodes = listOf(
-                    NodeData(
-                        uri = "/api/v2/node/folder2",
-                        nodeId = "folder2",
-                        type = "Folder",
-                        name = "Subfolder",
-                        uris = NodeUris(childNodes = "/api/v2/node/folder2!children")
-                    ),
-                    NodeData(
-                        uri = "/api/v2/node/album1",
-                        nodeId = "album1",
-                        type = "Album",
-                        name = "My Gallery",
-                        uris = NodeUris(album = "/api/v2/album/album1")
-                    )
-                )
-            )
-        )
-
-        // 3. Trigger remote fetch for scope folder1
+        // 2. Trigger remote fetch for scope folder1
         val fetched = repository.fetchAlbumsInScopeRemote("folder1", "dummy_key")
         
         // Should have found 1 album directly under folder1
         assertEquals(1, fetched.size)
         assertEquals("album1", fetched[0].nodeId)
         
-        // 4. Verify they are now cached in the database
+        // 3. Verify they are now cached in the database
         val cachedAlbums = repository.getAlbumsInScope("folder1")
         assertEquals(1, cachedAlbums.size)
         assertEquals("album1", cachedAlbums[0].nodeId)
@@ -242,17 +232,42 @@ class SmugMugRepositoryTest {
     @Test
     fun testGetAlbumKeywordsOrchestration() = runBlocking {
         val fakeDao = FakeCollectionDao()
-        val fakeApi = FakeSmugMugApi()
-        val repository = SmugMugRepository(fakeApi, fakeDao, mockContext())
-
-        // Setup mock API keywords response
-        fakeApi.mockAlbumKeywordsResponse = AlbumKeywordsResponse(
-            expansions = mapOf(
-                "/api/v2/album/album1" to AlbumExpansionContainer(
-                    albumKeywords = AlbumKeywordsContainer(keywords = listOf("nature", "sunset"))
-                )
-            )
-        )
+        
+        val mockInterceptor = Interceptor { chain ->
+            val json = """
+            {
+              "Response": {
+                "Uri": "/api/v2/album/album1",
+                "Locator": "Album",
+                "LocatorType": "Object",
+                "Album": {
+                  "AlbumKey": "album1",
+                  "Uri": "/api/v2/album/album1"
+                }
+              },
+              "Expansions": {
+                "/api/v2/album/album1": {
+                  "AlbumKeywords": {
+                    "Keywords": ["nature", "sunset"]
+                  }
+                }
+              },
+              "Code": 200,
+              "Message": "Ok"
+            }
+            """.trimIndent()
+            
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+        
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, mockContext())
 
         // Call repository keywords batch method
         val response = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
@@ -268,26 +283,63 @@ class SmugMugRepositoryTest {
     @Test
     fun testMockVisibilityAnonymousState() = runBlocking {
         val fakeDao = FakeCollectionDao()
-        val fakeApi = FakeSmugMugApi()
-        val repository = SmugMugRepository(fakeApi, fakeDao, mockContext())
+        var callCount = 0
+        
+        val mockInterceptor = Interceptor { chain ->
+            callCount++
+            val json = if (callCount == 1) {
+                // Anonymous: empty expansions
+                """
+                {
+                  "Response": {
+                    "Uri": "/api/v2/album/album1",
+                    "Locator": "Album",
+                    "LocatorType": "Object"
+                  },
+                  "Expansions": {},
+                  "Code": 200,
+                  "Message": "Ok"
+                }
+                """.trimIndent()
+            } else {
+                // Unlocked: full expansions
+                """
+                {
+                  "Response": {
+                    "Uri": "/api/v2/album/album1",
+                    "Locator": "Album",
+                    "LocatorType": "Object"
+                  },
+                  "Expansions": {
+                    "/api/v2/album/album1": {
+                      "AlbumKeywords": {
+                        "Keywords": ["nature", "sunset"]
+                      }
+                    }
+                  },
+                  "Code": 200,
+                  "Message": "Ok"
+                }
+                """.trimIndent()
+            }
+            
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+        
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, mockContext())
 
-        // 1. Simulate anonymous/locked state: mock response has empty expansions
-        fakeApi.mockAlbumKeywordsResponse = AlbumKeywordsResponse(
-            expansions = emptyMap()
-        )
-
+        // 1. Simulate anonymous/locked state
         val response1 = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
         assertTrue(response1.expansions == null || response1.expansions!!.isEmpty())
 
-        // 2. Simulate unlocked state: mock response has expanded keywords
-        fakeApi.mockAlbumKeywordsResponse = AlbumKeywordsResponse(
-            expansions = mapOf(
-                "/api/v2/album/album1" to AlbumExpansionContainer(
-                    albumKeywords = AlbumKeywordsContainer(keywords = listOf("nature", "sunset"))
-                )
-            )
-        )
-
+        // 2. Simulate unlocked state
         val response2 = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
         assertNotNull(response2.expansions)
         val keywords = response2.expansions?.get("/api/v2/album/album1")?.albumKeywords?.keywords
@@ -298,44 +350,45 @@ class SmugMugRepositoryTest {
     @Test
     fun testSearchImagesOrchestrationAndPaging() = runBlocking {
         val fakeDao = FakeCollectionDao()
-        val fakeApi = FakeSmugMugApi()
-        val repository = SmugMugRepository(fakeApi, fakeDao, mockContext())
-
-        // Mock 1st page: 250 images, total = 300
-        val page1Images = (1..250).map { i ->
-            AlbumImageData(imageKey = "img_$i", title = "Image $i")
+        val gson = com.google.gson.Gson()
+        
+        val mockInterceptor = Interceptor { chain ->
+            val url = chain.request().url.toString()
+            val images = if (url.contains("start=251")) {
+                (251..300).map { i -> mapOf("ImageKey" to "img_$i", "Title" to "Image $i") }
+            } else {
+                (1..250).map { i -> mapOf("ImageKey" to "img_$i", "Title" to "Image $i") }
+            }
+            
+            val nextField = if (url.contains("start=251")) null else "/api/v2/image!search?start=251"
+            
+            val payload = mapOf(
+                "Response" to mapOf(
+                    "Image" to images,
+                    "Pages" to mapOf(
+                        "Start" to (if (url.contains("start=251")) 251 else 1),
+                        "Count" to images.size,
+                        "Total" to 300,
+                        "Next" to nextField
+                    )
+                ),
+                "Code" to 200,
+                "Message" to "Ok"
+            )
+            
+            val json = gson.toJson(payload)
+            
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
         }
         
-        // Mock 2nd page: 50 images
-        val page2Images = (251..300).map { i ->
-            AlbumImageData(imageKey = "img_$i", title = "Image $i")
-        }
-
-        fakeApi.searchImagesMock = { start ->
-            if (start == 1) {
-                ImageSearchResponse(
-                    response = ImageSearchPayload(
-                        images = page1Images,
-                        pages = PagesData(start = 1, count = 250, total = 300, nextField = "/api/v2/image!search?start=251")
-                    )
-                )
-            } else {
-                throw IllegalArgumentException("Unexpected start offset: $start")
-            }
-        }
-
-        fakeApi.searchImagesUserByUriMock = { url ->
-            if (url.contains("start=251")) {
-                ImageSearchResponse(
-                    response = ImageSearchPayload(
-                        images = page2Images,
-                        pages = PagesData(start = 251, count = 50, total = 300)
-                    )
-                )
-            } else {
-                ImageSearchResponse(response = ImageSearchPayload(images = emptyList()))
-            }
-        }
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, mockContext())
 
         // Call performBackgroundSearchImages
         repository.performBackgroundSearchImages(
@@ -355,26 +408,45 @@ class SmugMugRepositoryTest {
     @Test
     fun testGetImagesByKeywordRepositoryMapping() = runBlocking {
         val fakeDao = FakeCollectionDao()
-        val fakeApi = FakeSmugMugApi()
-        val repository = SmugMugRepository(fakeApi, fakeDao, mockContext())
-
         var apiScope: String? = null
         var apiText: String? = null
-        var apiCount = 0
-        var apiStart = 0
-
-        fakeApi.getImagesByKeywordMock = { apiKey, scope, text, count, start ->
-            apiScope = scope
-            apiText = text
-            apiCount = count
-            apiStart = start
-            ImageSearchResponse(
-                response = ImageSearchPayload(
-                    images = listOf(AlbumImageData(imageKey = "res1", title = "Result Image")),
-                    pages = PagesData(start = 1, count = 1, total = 1)
-                )
-            )
+        
+        val mockInterceptor = Interceptor { chain ->
+            val url = chain.request().url
+            apiScope = url.queryParameter("Scope")
+            apiText = url.queryParameter("Text")
+            
+            val json = """
+            {
+              "Response": {
+                "Image": [
+                  {
+                    "ImageKey": "res1",
+                    "Title": "Result Image"
+                  }
+                ],
+                "Pages": {
+                  "Start": 1,
+                  "Count": 1,
+                  "Total": 1
+                }
+              },
+              "Code": 200,
+              "Message": "Ok"
+            }
+            """.trimIndent()
+            
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
         }
+        
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, mockContext())
 
         val result = repository.getImagesByKeyword(
             scope = "/api/v2/user/testUser",
@@ -388,7 +460,5 @@ class SmugMugRepositoryTest {
         assertEquals("res1", result[0].imageKey)
         assertEquals("/api/v2/user/testUser", apiScope)
         assertEquals("clara idzi", apiText) // Verify comma is replaced with space
-        assertEquals(100, apiCount)
-        assertEquals(5, apiStart)
     }
 }

@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.dagger.hilt.android")
 }
 
@@ -50,8 +51,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            isCrunchPngs = false
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             isCrunchPngs = false
             val keystorePath = localProperties.getProperty("signing.storeFile")
             if (keystorePath != null) {
@@ -74,9 +79,7 @@ android {
         compose = true
         buildConfig = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -86,6 +89,11 @@ android {
         unitTests {
             isReturnDefaultValues = true
         }
+    }
+    bundle {
+        language { enableSplit = true }
+        density { enableSplit = true }
+        abi { enableSplit = true }
     }
 }
 
@@ -164,5 +172,21 @@ if (tasks.findByName("prepareKotlinBuildScriptModel") == null) {
 
 tasks.withType<Test> {
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
+}
+
+tasks.register("testFullSuite") {
+    group = "verification"
+    description = "Runs all unit, functional, and instrumented integration tests in parallel."
+    dependsOn("testDebugUnitTest", "connectedDebugAndroidTest")
+}
+
+tasks.register("testDebugSuite") {
+    group = "verification"
+    description = "Runs all offline unit, functional, and retry tests in parallel."
+    dependsOn("testDebugUnitTest")
+}
+
+tasks.matching { it.name.startsWith("kapt") && it.name.endsWith("TestKotlin") }.configureEach {
+    enabled = false
 }
 

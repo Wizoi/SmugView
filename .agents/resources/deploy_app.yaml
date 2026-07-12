@@ -1,0 +1,44 @@
+guide_title: SmugView Application Deployment & Packaging Guide
+purpose: |
+  Provides unified instructions to check for code changes, build the application, and deploy 
+  to the running Android Emulator, optionally building the release Android App Bundle (.aab).
+
+pre_requisite:
+  action: "Before initiating any deployment or bundle compile task, always execute the fast local unit tests first (e.g. `./gradlew testDebugUnitTest`) to verify codebase integrity."
+
+environment_setup:
+  JAVA_HOME: "C:\\Program Files\\Android\\Android Studio\\jbr"
+  ANDROID_SDK: "$env:LOCALAPPDATA\\Android\\Sdk"
+
+steps:
+  1_check_changes:
+    action: "Run `git status` to see if Kotlin, Gradle, or XML resource files have changed."
+  2_check_emulator:
+    action: "Verify if emulator is running and active using ADB."
+    command: |
+      $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+      & "$env:ANDROID_HOME\platform-tools\adb.exe" devices
+      & "$env:ANDROID_HOME\platform-tools\adb.exe" shell getprop sys.boot_completed
+  3_select_target:
+    options:
+      - name: deploy_to_emulator
+        description: "Deploy/install debug build to running emulator, and automatically start the application."
+        condition: "Run if there are changes since last deploy, or if a clean emulator session is started."
+        command: |
+          $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+          ./gradlew installDebug
+          
+          # Auto-start application main activity
+          $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+          & "$env:ANDROID_HOME\platform-tools\adb.exe" shell am start -n com.smugview.app/.MainActivity
+      - name: build_appbundle
+        description: "Build release Android App Bundle (AAB) and provide clickable local link."
+        command: |
+          $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+          ./gradlew bundleRelease
+        output_link: "app/build/outputs/bundle/release/app-release.aab"
+  4_fork_mitigation:
+    action: "If installation fails with 'can't fork', reboot the emulator using ADB."
+    command: |
+      $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+      & "$env:ANDROID_HOME\platform-tools\adb.exe" reboot

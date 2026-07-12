@@ -2234,7 +2234,8 @@ fun CollectionsTabView(
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
                                         ) {
                                             Icon(
                                                 imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
@@ -2251,6 +2252,7 @@ fun CollectionsTabView(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                         }
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = "${albumImages.size} item${if (albumImages.size > 1) "s" else ""}",
                                             color = Color.White.copy(alpha = 0.4f),

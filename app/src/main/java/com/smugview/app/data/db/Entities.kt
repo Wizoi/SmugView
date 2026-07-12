@@ -145,7 +145,7 @@ fun SearchResult.toAlbumImageData(): com.smugview.app.data.api.AlbumImageData {
         originalHeight = this.originalHeight,
         originalSize = this.originalSize,
         format = this.format,
-        uris = null,
+        uris = this.albumUri?.let { com.smugview.app.data.api.AlbumImageUris(album = it, imageAlbum = it) },
         videoUrl = this.videoUrl
     )
 }

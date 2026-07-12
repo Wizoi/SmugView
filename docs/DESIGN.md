@@ -38,11 +38,13 @@ https://api.smugmug.com/api/v2
     *   Implement exponential backoff retry mechanism in OkHttpClient for handling temporary network dropouts or `429 Too Many Requests` status codes.
     *   Intercept API `404 Not Found` for profile lookups to show an explicit "User Profile Not Found" error rather than a generic network error.
 
-### 2. Pagination (Paging 3 Integration)
+### 2. Pagination (Paging 3 Integration & Recursive Children Loading)
 All lists (Nodes, Images, Search Results) in SmugMug are paginated.
 *   **Pagination parameters**: Use `_config` (to retrieve metadata like total counts and pagination URLs) and limit parameters.
 *   **Next Page**: The API responses contain a `Response.Pages.Next` URI string.
-*   **Implementation**: Use Android's `Paging 3` library. The network data layer will use `PagingSource` implementations that extract the `Next` URI from the JSON response and execute subsequent network calls using this URI.
+*   **Implementation**: 
+    *   **Images & Search Results**: Use Android's `Paging 3` library. The network data layer uses `PagingSource` implementations that extract the `Next` URI from the JSON response and execute subsequent network calls using this URI.
+    *   **Node Children (Folders/Albums)**: For full local directory caching, the repository pages through child nodes recursively. It initiates the request with a count of 100, then executes sequential `getNodeChildrenByUri` calls using `pages.next` URIs in a loop with a small 100ms pacing delay until all children are fetched and cached in the local Room SQLite database.
 
 ### 3. Key Endpoints
 
@@ -51,7 +53,7 @@ Retrieve public user profile details to verify the nickname entered in the explo
 - **Endpoint**: `GET /api/v2/user/{nickname}`
 - **Query Params**: `APIKey={api_key}`
 - **Response path to Node**: `Response.User.Uris.Node` or `Response.User.Uris.Node.Uri`
-- **Error Handling**: If the nickname is invalid or returns a `404`, show a clear "Site Not Found" inline error.
+- **Error Handling**: If the nickname is invalid or returns a `404`, show a clear "Site Not Found" inline error. To prevent transient typos from throwing user-facing error flyout popups (Toasts) during real-time typing validation, pass `X-Ignore-Errors: true` as an HTTP header to tell the client interceptor to silence/ignore these lookup errors.
 
 #### B. Fetch Node Details (Folder / Album Structure)
 Discover the children of a folder or album node.
@@ -133,6 +135,13 @@ The search interface must query folders, galleries, and photos simultaneously, p
 
 > [!IMPORTANT]
 > **Sequential Search-Cache Constraint**: To prevent race conditions, the remote gallery search must complete and write results to the local database *before* executing the scoped photo search. If run concurrently, the database query checks local cached directories before the API results are saved, returning 0 image results for unsearchable albums.
+
+*   **Parent Gallery Key Resolution**: Because photos fetched via global search (`image!search`) do not return a direct parent gallery key, the app resolves it by:
+    1. Parsing the folder/gallery URL slug segment from the photo's `thumbnailUrl` or `webUri`.
+    2. Matching the segment against the local database cache of all visited nodes (`getAllCachedNodes()`).
+    3. If the gallery is public, injecting the resolved album key path into `uris.album` to enable navigation.
+    4. If the gallery is password-protected, automatically attempting to unlock the gallery using saved passwords in `passwordPrefs` before fetching metadata.
+
 
 
 ### 2. Interactive Tag Filtering Bottom-Sheet

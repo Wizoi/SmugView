@@ -1,0 +1,112 @@
+guide_title: SmugView Workspace Application Guide
+purpose: |
+  Unified application guide containing SmugView compilation mitigations, Room caching strategies, 
+  Compose UI threads, and API constraints. Used by all personas as a shared reference.
+
+mitigation_registry:
+  - id: 1
+    title: Gradle Repositories Settings Conflict
+    relevance: [android]
+    error: "Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'build.gradle.kts'"
+    root_cause: "In settings.gradle.kts, repositoriesMode was set to FAIL_ON_PROJECT_REPOS. build.gradle.kts contained an allprojects block violating this."
+    mitigation: "Declare repositories solely in settings.gradle.kts under dependencyResolutionManagement."
+  - id: 2
+    title: Toolchain Version Mismatch
+    relevance: [android]
+    error: "Unsupported class file major version 65 (Java 21) or Gradle sync failure."
+    root_cause: "Incompatibility between the project's target JDK runtime and the local system environment JDK."
+    mitigation: "Configure JAVA_HOME to Android Studio's JetBrains Runtime (JBR) at C:/Program Files/Android/Android Studio/jbr."
+  - id: 3
+    title: Tooling Sync API task prepareKotlinBuildScriptModel Not Found
+    relevance: [android]
+    error: "Task 'prepareKotlinBuildScriptModel' not found in project ':app'"
+    root_cause: "Gradle 8.5+ with Kotlin DSL tooling sync expects this task. Missing if plugins are not applied."
+    mitigation: "Apply plugins versionless in app/build.gradle.kts, and conditionally register a dummy task in both build files if missing."
+  - id: 4
+    title: API Paginated Feeds & UI Thread Locking (ANR)
+    relevance: [android, api]
+    error: "Main UI thread locks up (ANR) while scrolling fast on paginated lists."
+    root_cause: "Updating Compose state with rapid incoming database/network emission updates blocks UI thread."
+    mitigation: "Apply the `.conflate()` operator on repository Flow collections inside ViewModel scopes to skip intermediate frames."
+  - id: 5
+    title: Duplicate Keys in LazyVerticalGrid/StaggeredGrid
+    relevance: [android, ux]
+    error: "Key X was already used. If you are using LazyColumn/Row please make sure you provide a unique key for each item."
+    root_cause: "Compose key collisions when mapping items from dynamic search APIs where a photo appears in multiple scopes."
+    mitigation: "Deduplicate lists using .distinctBy { it.imageKey } or append the item index to the key (e.g. ${imageKey}_${index})."
+  - id: 6
+    title: Caching of HTTP Error Responses
+    relevance: [api, android]
+    error: "OkHttp caches error codes (429, 503) on local disk indefinitely."
+    root_cause: "OkHttp interceptors rewrote Cache-Control for GET requests without checking response.isSuccessful."
+    mitigation: "Ensure interceptors check response.isSuccessful prior to modifying cache headers."
+  - id: 7
+    title: Coroutine Concurrency Throttling
+    relevance: [api, android]
+    error: "Hitting 429 Too Many Requests blocks."
+    root_cause: "Executing too many concurrent network queries in coroutineScope with tiny pacing delays."
+    mitigation: "Throttle requests using a Coroutine Semaphore(3) combined with a stagger delay of 250ms * pageIndex."
+  - id: 8
+    title: SmugMug Global Search 'Searchable: No' Restrictions
+    relevance: [api, android]
+    error: "Search results exclude items with Searchable: No."
+    root_cause: "SmugMug global search API restricts un-indexed items."
+    mitigation: "Fall back to a local database check comparing titles against local cached_nodes (title LIKE %query%)."
+
+compose_design_system_tokens:
+  - rule: "Visual Theme Colors: DeepDarkBackground (#0C0C0E), SurfaceDark (#141416), NeonBlue (#00F0FF), SoftRed (#FF3B30), GlowBorder (#00F0FF with 0.15 opacity)."
+    relevance: [ux]
+  - rule: "Compose Font Styles: Inter or Outfit custom typography styles (Heading1, Heading2, BodyText, MicroLabel)."
+    relevance: [ux]
+  - rule: "Smooth Layout Transitions: Use animateContentSize() or Crossfade on state transitions (e.g. changing tabs, loading states)."
+    relevance: [ux]
+  - rule: "Modifier Extension Imports: Explicitly import androidx.compose.foundation.border/clickable manually when using them."
+    relevance: [android]
+  - rule: "Compose Dialog Imports: Use `androidx.compose.ui.window.Dialog` and `DialogProperties`. Avoid duplicate/ambiguous imports."
+    relevance: [android]
+  - rule: "Opt-In Experimental Features: Annotate Composable entry screens with @OptIn(ExperimentalLayoutApi::class) when using FlowRow."
+    relevance: [android]
+  - rule: "Box Layout Order: Box draws children in order of declaration. Place scrolling items first and overlays/buttons last to keep them interactive."
+    relevance: [android, ux]
+  - rule: "ExoPlayer CDN Redirects: When streaming from secured CDNs, configure setAllowCrossProtocolRedirects(true) and pass APIKey/password tokens in URI."
+    relevance: [android, api]
+  - rule: "Material 3 Chip Border Type Mismatches: Instantiate borders using standard Compose `BorderStroke(width, color)` directly to avoid release mismatch compile errors."
+    relevance: [android]
+
+kotlin_room_state_hoisting:
+  - rule: "Smart Casting Nullable Properties: Copy nullable properties with custom getters to a local variable (e.g. `val localVal = obj.prop`) before null checking."
+    relevance: [android]
+  - rule: "SmugMug EXIF API Key Names: SerializedName Make and Model, with a calculated combined custom camera getter."
+    relevance: [android, api]
+  - rule: "Password-Protected Sub-resources: Forward the Password token as a Retrofit @Query parameter when requesting metadata in secure galleries."
+    relevance: [android, api]
+  - rule: "State Hoisting Scope Boundaries: Hoist active overlay or dialog states to the parent level (e.g. BrowserScreen.kt) to prevent multi-tab sync issues."
+    relevance: [android, ux]
+  - rule: "Encapsulated Repository Access: Expose DAO operations through suspend delegate functions in repository, keeping Room DAO references private."
+    relevance: [android]
+  - rule: "Kotlin Property Delegates Imports: Explicitly import getValue and setValue runtime delegates when using 'by remember { mutableStateOf(...) }'."
+    relevance: [android]
+  - rule: "Conditional Debug Logging: Wrap all added diagnostic/debug log calls (e.g. `Log.d`, `Log.i`) with `if (com.smugview.app.BuildConfig.DEBUG)` checks, and do NOT remove them after verification so they remain in the codebase for future diagnostics."
+    relevance: [android, api]
+
+cli_and_tooling_environment:
+  - rule: "PowerShell Java Setup: Prefix Gradle commands with `$env:JAVA_HOME=\"C:\\Program Files\\Android\\Android Studio\\jbr\"`."
+    relevance: [android]
+  - rule: "PowerShell ADB Execution: Locate platform-tools platform folder and invoke adb using call operator `&`."
+    relevance: [android]
+  - rule: "Emulator PM Forking Failure: Resolve by calling ADB reboot."
+    relevance: [android]
+
+key_learnings:
+  - learning: "Active Cache Management: Do NOT clear Coil's disk cache in onDestroy() of MainActivity, as it causes redundant network fetches on screen rotation."
+    relevance: [android, ux]
+  - learning: "Crawl Budget & Password Prioritization: Implement a hard cap (e.g. 40 albums) on local searches to prevent rate limits, and prioritize password-locked galleries first."
+    relevance: [api, android]
+  - learning: "Compose Graphics NaN Prevention: Always verify dimension bounds (e.g. `height > 0f`) before performing division in layouts to prevent blank white screens."
+    relevance: [android, ux]
+  - learning: "Main Thread Dispatcher unit test crash: updates to MutableStateFlow do not require Main thread Dispatcher and can be done safely on background threads."
+    relevance: [android]
+  - learning: "WhileSubscribed flow testing: Launch a background flow collector during JVM unit tests to satisfy subscribers and trigger flow execution."
+    relevance: [android]
+  - learning: "Stage-by-Stage Verification & Raw Payload Inspection: Always write standalone scripts to inspect raw JSON payloads anonymously or authenticated to identify api redactions."
+    relevance: [api]
