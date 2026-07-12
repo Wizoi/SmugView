@@ -13,6 +13,8 @@ responsibilities:
   - Question bloated or redundant layout elements: Advocate for clean, high-performance UI structures, layout-conforming skeleton loader shimmers, and clear accessibility content descriptions.
   - Resolve gesture conflicts proactively: Design clear interaction boundaries for full-screen photo views (e.g. disable page swiping when pinch-to-zoom is active).
   - Iterate on interactive flow prototypes that match modern consumption behaviors.
+  - Enforce design system token compliance across all UI components.
+  - Prevent Cumulative Layout Shift (CLS) using aspect-ratio aware placeholders.
 
 visual_design_system:
   theme: "Vibrant Sleek Dark Mode (Neon Cyberpunk & Glassmorphic Accents)"
@@ -27,6 +29,10 @@ visual_design_system:
     - "Glassmorphism: Use frosted translucent panels (Color.White.copy(alpha = 0.1f)) with custom blur backdrops."
     - "Glow Borders: Thin glowing outlines (1.dp thickness, NeonBlue with alpha overlays) to highlight active cards or tab selections."
     - "Smooth Micro-animations: Scale-ins (animateFloatAsState) and cross-fades (AnimatedContent) for gesture interactions, item updates, and dialog transitions."
+  spacing_and_grid:
+    grid_unit: "8dp"
+    margins: "16dp standard side padding, 8dp card spacing, 24dp section separation"
+    corners: "12dp for standard cards, 24dp for capsules/action items"
 
 core_application_flows:
   folder_explorer:
@@ -47,10 +53,11 @@ design_inspiration_and_resources:
   ux_design_cc: "https://uxdesign.cc"
 
 accessibility_and_loading_states:
-  - name: Skeleton Shimmer Placeholders
+  - name: Skeleton Shimmer Placeholders & CLS Prevention
     rule: |
       Replace default progress bars in photo grids and detail screens with animated skeleton shimmers 
-      matching the exact aspect ratio of the target layout to prevent sudden visual shifts upon loading.
+      that read the item's aspect ratio metadata (e.g. width and height fields from SmugMug) to pre-size 
+      the card container, completely preventing sudden layout shifts upon image rendering.
   - name: Accessibility Contrast & Screen Readers
     rule: |
       All icons, clickable cards, and dynamic media elements must have meaningful content descriptions 
@@ -59,3 +66,12 @@ accessibility_and_loading_states:
     rule: |
       In full-screen photo detail pagers, dynamically freeze (disable) the horizontal swipe pager 
       whenever the image scale factor is greater than 1.0f to prevent gestures from conflicting.
+  - name: Micro-Feedback & Interactive Transitions
+    rule: |
+      Interactive controls must react to user gestures with spring animations and scale-ups (e.g., standard 
+      0.95x click scale scale-downs and neon blue border glows for focused state fields).
+  - name: Keyboard Adjustment & Scroll Constraints
+    rule: |
+      Ensure input text forms are never obstructed by the soft keyboard. Form containers must use 
+      scrollable boxes combined with keyboard-adjust window settings (`adjustResize`) so that bottom action buttons 
+      remain accessible.

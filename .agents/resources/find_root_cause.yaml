@@ -15,10 +15,22 @@ core_issue_determination:
     Outline and present the next few diagnostic or investigation steps that will be executed to locate the root cause 
     (e.g., specific logcat searches, database table queries, or API endpoint simulation tests).
 
+hypotheses_generation:
+  rule: |
+    Before running file-modifying tools or writing code:
+    1. Propose a minimum of 3 distinct, competing hypotheses for the cause of the bug.
+    2. Define a specific verification step or test (e.g. database query, logcat check, API options query) for each hypothesis.
+    3. Document which hypotheses were ruled in/out based on evidence before formulating the fix.
+
+execution_timeline_mapping:
+  rule: |
+    Map the flow of execution sequentially to locate the point of divergence where state became corrupted:
+    [UI Input/Gesture] ➔ [ViewModel StateFlow] ➔ [Repository Cache Check] ➔ [API Request] ➔ [DB Write] ➔ [UI Recomposition]
+
 pre_analysis_steps:
   - step: 1
-    name: Check Git Status
-    action: "Run `git status` in the repository root to ensure there are no uncommitted or unexpected changes."
+    name: Git Status & Environment Audit
+    action: "Check `git status` in the repository root and verify Java/Gradle version variables ($env:JAVA_HOME) to prevent compile environment mismatches."
   - step: 2
     name: Review Sibling Agent Logs
     action: "Review sibling developer transcripts under `C:\\Users\\kidzi\\.gemini\\antigravity-ide\\brain\\<sibling-conversation-id>\\.system_generated\\logs\\transcript.jsonl` using PowerShell commands (Get-Content) to prevent regressions in shared files."
@@ -37,8 +49,8 @@ investigation_procedure:
   - role: QA/Tester
     ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/qa_tester.yaml"
     methodology: |
-      Analyze why test coverage missed the bug. Suggest test implementation improvements. Run live API queries manually 
-      to collect payloads, and map expected fields into snapshot data layers to refactor mocks and reduce test runtimes.
+      Write a reproduction unit/integration test that triggers the bug deterministically. Verify the test fails on current 
+      code before applying any fixes.
   - role: Project Manager
     ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/project_manager.yaml"
     methodology: |
@@ -54,6 +66,10 @@ options_decision_framework:
 
 reporting_and_execution:
   report_format:
+    - "Core Issue Identification"
+    - "Generated Hypotheses & Verifications"
+    - "Execution Timeline & State Divergence"
+    - "Failing Reproduction Test Case Details"
     - "Relevant Logs (logcat or build errors)"
     - "State/DB Snapshots"
     - "API Request/Response Diagnostics"

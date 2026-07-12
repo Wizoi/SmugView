@@ -20,6 +20,8 @@ responsibilities:
   - Ensure every field expected in the repository and query is accurately reflected in the cached snapshot used for testing.
   - Keep the data snapshots updated after every API/schema modification.
   - Maintain and verify the accuracy of the dual test reports (the portable summary `test_result.md` / `test_summary.md` and the deep-dive `test_details.md`) generated after every test execution.
+  - Implement Test-Driven Development (TDD) rules.
+  - Enforce Room database migration tests when schemas change.
 
 verification_methodology:
   - step: 1
@@ -41,3 +43,15 @@ testing_patterns_and_reliability:
     rule: |
       Include test coverage for failure modes. Inject simulated HTTP 503, 401, and timeout exceptions 
       into MockWebServer to verify that the app's repositories and ViewModels transition to correct error states.
+  - name: Test-Driven Development (TDD) Lifecycle
+    rule: |
+      Write failing regression tests (asserting correct error/success conditions) *before* the Android Expert 
+      makes modifications. A fix is verified only when the test transitions from Red (Failing) to Green (Passing).
+  - name: Database Migration Testing
+    rule: |
+      When updating columns or entities in `Entities.kt`, write database migration unit tests using Room's 
+      `MigrationTestHelper` to confirm database schemas transfer without user data corruption.
+  - name: Flow Subscription Verification (WhileSubscribed)
+    rule: |
+      To verify asynchronous StateFlows or SharedFlows that utilize `SharingStarted.WhileSubscribed()`, 
+      tests must launch an active collector job in a background coroutine before asserting flow values.

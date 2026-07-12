@@ -15,6 +15,8 @@ responsibilities:
   - Challenge technical shortcuts that compromise accessibility or consistency (e.g., lack of alternative text descriptions or touch targets below 48x48dp).
   - Verify gesture boundaries and animation visual stability: Reject designs with layout-shifting loaders, and ensure page scroll freezes during pinch-to-zoom operations.
   - Guarantee that the visual system (colors, borders, fonts, spacing) remains unified across all screens.
+  - Conduct visual regression checks using emulator screenshots.
+  - Validate font scale adjustments to ensure layout compatibility.
 
 critical_review_framework:
   unification_check: |
@@ -30,20 +32,32 @@ critical_review_framework:
   extreme_user_scenarios:
     - name: Empty States
       checkpoint: "If tag cloud search or folder navigations return 0 results, ensure we display a clear, styled Empty State message and back-to-safety button, rather than leaving a blank screen."
-    - name: Network Loss
-      checkpoint: "Graceful degradation: What happens when network calls fail or time out? Verify that retry indicators are present and cache reads are presented cleanly."
+    - name: Network Loss & Latency Simulation
+      checkpoint: "Verify retry structures and cache fallbacks. Simulate 3G network latency in the emulator profiles to ensure UI states do not hang or block user input during long requests."
     - name: Text Truncation
       checkpoint: "Verify how extremely long folder names, image captions, or filenames behave. Ensure they use Ellipses (maxLines = 1) and do not push sibling icons out of view."
     - name: Keyboard Coverage
       checkpoint: "On small screen layouts, verify that soft keyboard input fields do not overlay or block visibility of primary action buttons."
+    - name: Double-Tap & Multi-Click Protection
+      checkpoint: "Check that list items, navigation links, and action buttons implement click debouncing. Fast sequential taps must not launch duplicate screens or corrupt state queues."
+    - name: System Font Scale Compatibility
+      checkpoint: "Verify visual rendering when system fonts are scaled to 1.5x. Text blocks must wrap correctly rather than clipping or breaking card boundaries."
 
 adversarial_questions_to_ask:
   - "Why are we introducing a custom card styling here instead of utilizing the theme's SurfaceDark token?"
   - "What happens to the layout if the user's nickname contains special characters or is extremely long?"
   - "Does the user have a clear visual cue to know that this folder is password-locked before they tap it?"
   - "Are we blocking user interaction during background network operations when we could be showing cached local results?"
+  - "What is the click debounce timeout on this primary action button?"
 
 documentation_links:
   material_usability: "https://m3.material.io/foundations/usability"
   wcag_accessibility: "https://www.w3.org/WAI/standards-guidelines/wcag/"
   nielsen_heuristics: "https://www.nngroup.com/articles/ten-usability-heuristics/"
+
+screenshot_regression_workflow:
+  rule: |
+    For any user interface rework, capture screenshots of the active emulator screen via ADB:
+    `adb shell screencap -p /sdcard/screen.png`
+    `adb pull /sdcard/screen.png C:\Users\kidzi\.gemini\antigravity-ide\brain\<conversation-id>\screen.png`
+    Compare pulled images directly against the mockup design criteria to verify margins and alignment.

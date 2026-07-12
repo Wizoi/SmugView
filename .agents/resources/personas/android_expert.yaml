@@ -18,6 +18,7 @@ responsibilities:
   - Ensure coroutine exception resilience: Define CoroutineExceptionHandler on launched ViewModel scopes to capture network/caching failures gracefully.
   - Main Thread & ANR Prevention: Ensure database queries during startup or rendering are index-targeted (not unbounded queries like getAllCachedNodes() to prevent Main-thread blockages).
   - Compose Graphics Check: Verify bounds before division in pixel dimension calculations to avoid NaN division-by-zero crashes.
+  - State Preservation: Ensure ViewModel state saves via SavedStateHandle and Compose UI states use rememberSaveable to handle configuration changes or system process death.
 
 documentation_links:
   android_developer: "https://developer.android.com"
@@ -70,6 +71,16 @@ android_skills_and_knowledge:
         When calculating aspect ratios or layout dimensions in Compose modifiers (e.g., custom grid layouts or 
         image scaling), always verify that dimensions are greater than zero before performing division to prevent 
         `NaN` values and rendering crashes.
+    - name: Compose State Hoisting & Preservation
+      doc_url: "https://developer.android.com/develop/ui/compose/state"
+      rule: |
+        Enforce state survival across configuration changes and system process death. Complex screen state data must be 
+        wrapped in `rememberSaveable` with a custom `Saver`, and ViewModels must consume parameters via `SavedStateHandle`.
+    - name: Lifecycle-Aware Resource Management (ExoPlayer)
+      doc_url: "https://developer.android.com/reference/androidx/media3/exoplayer/ExoPlayer"
+      rule: |
+        ExoPlayer and other system resource handles must be explicitly released using a Composable `DisposableEffect` 
+        on `onDispose` block to prevent leaks when navigating away from video items or detail screens.
 
   room_and_threading_guidelines:
     - name: Startup & UI Thread Room Queries (ANR Prevention)
@@ -79,6 +90,11 @@ android_skills_and_knowledge:
         targeted index-based queries (e.g. `getNodeByIdOrKey` or matching primary keys). Unbounded queries (such 
         as `getAllCachedNodes()`) are strictly prohibited in loops or init blocks to prevent Main-thread blockages 
         and database lock congestion (ANRs).
+    - name: Flow Collection Conflation & Debounce
+      doc_url: "https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.flow/conflate/"
+      rule: |
+        Apply `.conflate()` or `.debounce(300)` to high-frequency database emissions collected by UI flows to bypass 
+        stale layout frames and prevent blocking the Main UI Thread.
 
   search_and_local_filtering:
     - name: Local Caching Fallback for Folders/Galleries
@@ -107,12 +123,12 @@ android_skills_and_knowledge:
         Never load original or full-sized images into grid thumbnails. Enforce thumbnail constraints 
         in Coil image requests by specifying target dimensions (`size(width, height)`) or using 
         `crossfade(true)` and `diskCachePolicy(CachePolicy.ENABLED)`.
-    - name: Stable Compose Parameters
+    - name: Stable Compose Parameters & Immutable Collections
       doc_url: "https://developer.android.com/develop/ui/compose/performance/stability"
       rule: |
-        When passing API models or collection wrappers as parameters to Composables, mark them as `@Stable` 
-        or map them to clean, UI-specific data classes to prevent the Compose compiler from flagging them as 
-        unstable, which triggers redundant recompositions during scroll events.
+        Ensure that lists passed to Composables use kotlinx.collections.immutable types (e.g. `ImmutableList`), 
+        as standard Kotlin standard collections are treated as unstable by the Compose compiler and trigger redundant 
+        recomposition loops.
     - name: Coroutine Exception Safety in ViewModels
       doc_url: "https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-coroutine-exception-handler/"
       rule: |

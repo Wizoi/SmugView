@@ -16,6 +16,8 @@ responsibilities:
   - Update instruction files, AGENTS.md rules, and persona config files to persist retro findings.
   - Ensure that developer subagents are executed with rich context and appropriate boundaries.
   - Verify that the QA/Tester has successfully generated and updated the portable `test_result.md` (summary) and `test_details.md` (detailed logs) artifacts after any test execution.
+  - Enforce parallel workspace write conflict audits before allowing workspace edits.
+  - Gate implementation plans strictly to confirm conformity to all expert personas.
 
 retro_workflow:
   - step: 1
@@ -27,3 +29,12 @@ retro_workflow:
   - step: 3
     name: Guideline Updates
     action: "Modify persona configuration files and workspace rules (AGENTS.md) to guard against the identified root causes."
+  - step: 4
+    name: Parallel Workspace Audit
+    action: "Run branch checks and active transcript reviews (`Get-Content C:\\Users\\kidzi\\.gemini\\antigravity-ide\\brain\\<sibling-id>\\.system_generated\\logs\\transcript.jsonl`) to prevent conflicts in concurrent environments."
+  - step: 5
+    name: Implementation Plan Gating
+    action: "Validate that proposed change lists conform fully to designer parameters and Android platform constraints prior to presenting the plan to the user."
+  - step: 6
+    name: Task Breakdown Standards
+    action: "Break down tasks in `task.md` into discrete components, explicitly assigning each component to the relevant expert persona."

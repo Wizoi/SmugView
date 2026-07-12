@@ -21,6 +21,8 @@ responsibilities:
   - Optimize network payload footprints (e.g. using _filter, _filteruri, and count queries).
   - Guard against API rate-limiting blocks (HTTP 429) using semaphore-throttled pacing and back-off retries.
   - Review API usage patterns to prevent rate limiting, handle offline modes gracefully, and avoid security vulnerabilities (such as API key exposure).
+  - Implement ETag validation for HTTP responses to avoid downloading redundant data payloads.
+  - Establish OAuth Authenticator retries to automatically refresh credentials on authorization timeout.
 
 documentation_links:
   developer_portal: "https://api.smugmug.com/api/v2/doc"
@@ -84,11 +86,12 @@ api_skills_and_knowledge:
         `uri.substringAfterLast("/").substringBefore("!")`). Failure to do this results in invalid lookup keys.
 
   rate_limiting_and_scoping:
-    - name: Batch Scoped Search HTTP 429 Rate Limiting
+    - name: Batch Scoped Search HTTP 429 Rate Limiting & Jittered Backoff
       doc_url: "https://api.smugmug.com/api/v2/doc/reference"
       rule: |
-        Introduce a pacing delay of at least `250ms` (e.g., `delay(250)`) between sequential calls, and wrap 
-        queries in an automatic retry loop that detects `429` errors, sleeps for `1500ms`, and retries up to 3 times.
+        Always use jittered exponential backoff rather than a fixed delay when recovering from HTTP 429 requests:
+        `t_sleep = 2^attempt * 1000ms + random(0, 1000ms)`. Ensure a baseline pacing delay of 250ms is observed 
+        between sequential batch operations.
     - name: Dynamic On-Demand Loading
       doc_url: "https://api.smugmug.com/api/v2/doc/reference"
       rule: |
@@ -126,15 +129,25 @@ api_skills_and_knowledge:
         using Android's native `Uri` builder prior to initiating playback.
 
   resilience_patterns:
-    - name: Nullable JSON Deserialization Fallbacks
+    - name: Nullable JSON Deserialization Fallbacks & Array Ambiguity
       doc_url: "https://api.smugmug.com/api/v2/doc/reference"
       rule: |
-        Mark all API response model properties that are not guaranteed by the server (e.g. `PasswordHint`, 
-        `HighlightImage`, `AlbumKeywords`) as nullable in Kotlin. Provide safe fallback defaults in the 
-        domain mapper layer.
+        Mark all API response model properties that are not guaranteed by the server as nullable in Kotlin. Ensure 
+        adapters are registered to handle deserialization anomalies where empty objects `{}` are returned as empty arrays `[]` 
+        on failure.
     - name: Partial Batch Failure Mitigation
       doc_url: "https://api.smugmug.com/api/v2/doc/reference/album.html"
       rule: |
         When a chunked multi-get request (e.g. `album/id1,id2`) fails with an HTTP 400 or 404 error, 
         do not fail the entire operation. Catch the exception and fall back to fetching individual 
         album nodes sequentially to identify and isolate the faulty node ID.
+    - name: ETag-Based Conditional GET Requests
+      doc_url: "https://api.smugmug.com/api/v2/doc/reference"
+      rule: |
+        Enable conditional GET requests by attaching ETag headers (`If-None-Match`, `If-Modified-Since`) in requests 
+        to bypass full payload transfers when caches match (HTTP 304).
+    - name: OAuth Transparent Authenticator refresh
+      doc_url: "https://api.smugmug.com/api/v2/doc/reference"
+      rule: |
+        OkHttp client must hook an Authenticator interceptor that listens for HTTP 401 Unauthorized status, 
+        transparently triggers the token refresh process, saves the new tokens in storage, and re-submits the query.
