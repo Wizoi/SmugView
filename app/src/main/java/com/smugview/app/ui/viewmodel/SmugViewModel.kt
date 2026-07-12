@@ -1978,7 +1978,7 @@ class SmugViewModel @Inject constructor(
     fun getImageDetails(imageKey: String): StateFlow<Result<AlbumImageData>?> {
         val flow = _imageDetailsStates.getOrPut(imageKey) {
             val stateFlow = MutableStateFlow<Result<AlbumImageData>?>(null)
-            viewModelScope.launch {
+            viewModelScope.launch(Dispatchers.Default) {
                 val albumKey = _currentAlbumKey.value
                 val searchPhoto = searchPhotosList.find { it.imageKey == imageKey }
                 val webUri = searchPhoto?.webUri
@@ -2104,20 +2104,22 @@ class SmugViewModel @Inject constructor(
                     val updatedImg = img.copy(uris = finalUris)
                     stateFlow.value = Result.success(updatedImg)
 
-                    val index = searchPhotosList.indexOfFirst { it.imageKey == imageKey }
-                    if (index >= 0) {
-                        searchPhotosList[index] = searchPhotosList[index].copy(
-                            title = img.title,
-                            caption = img.caption,
-                            archivedUri = img.archivedUri,
-                            date = img.date,
-                            dateTime = img.dateTime,
-                            originalWidth = img.originalWidth,
-                            originalHeight = img.originalHeight,
-                            format = img.format,
-                            uris = finalUris,
-                            videoUrl = img.videoUrl
-                        )
+                    withContext(Dispatchers.Main) {
+                        val index = searchPhotosList.indexOfFirst { it.imageKey == imageKey }
+                        if (index >= 0) {
+                            searchPhotosList[index] = searchPhotosList[index].copy(
+                                title = img.title,
+                                caption = img.caption,
+                                archivedUri = img.archivedUri,
+                                date = img.date,
+                                dateTime = img.dateTime,
+                                originalWidth = img.originalWidth,
+                                originalHeight = img.originalHeight,
+                                format = img.format,
+                                uris = finalUris,
+                                videoUrl = img.videoUrl
+                            )
+                        }
                     }
                 }
             }

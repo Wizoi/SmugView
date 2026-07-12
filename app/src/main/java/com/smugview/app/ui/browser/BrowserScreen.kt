@@ -2554,7 +2554,6 @@ fun TagSearchTabView(
     val allTags by viewModel.allScopeTags.collectAsState()
     val selectedTags by viewModel.selectedTags.collectAsState()
     val tagCloud by viewModel.tagCloudTags.collectAsState()
-    val filteredPhotos by viewModel.tagFilteredPhotos.collectAsState()
 
     var tagSearchInput by remember { mutableStateOf(viewModel.tagSearchQuery) }
     val focusManager = LocalFocusManager.current

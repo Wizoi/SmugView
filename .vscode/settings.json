@@ -1,4 +1,7 @@
 {
   "antigravity.editor.autoOpenAgentEdits": false,
-  "antigravity.editor.showDiffOnSave": "prompt"
+  "antigravity.editor.autoOpenAgentReads": false,
+  "antigravity.editor.showDiffOnSave": "prompt",
+  "workbench.editor.enablePreview": true,
+  "workbench.editor.enablePreviewFromQuickOpen": true
 }

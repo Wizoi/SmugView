@@ -927,6 +927,10 @@ class SmugMugRepository @Inject constructor(
 
         val parents = mutableListOf<CachedNode>()
         var parentId = currentNode?.parentNodeId
+        val visitedIds = mutableSetOf<String>()
+        if (!parentId.isNullOrEmpty()) {
+            visitedIds.add(parentId)
+        }
         while (!parentId.isNullOrEmpty() && parentId != "root") {
             var parentNode = dao.getNodeById(parentId)
             if (parentNode == null) {
@@ -934,7 +938,14 @@ class SmugMugRepository @Inject constructor(
             }
             if (parentNode != null) {
                 parents.add(0, parentNode)
-                parentId = parentNode.parentNodeId
+                val nextParentId = parentNode.parentNodeId
+                if (nextParentId == parentId || visitedIds.contains(nextParentId)) {
+                    break
+                }
+                parentId = nextParentId
+                if (!parentId.isNullOrEmpty()) {
+                    visitedIds.add(parentId)
+                }
             } else {
                 break
             }
