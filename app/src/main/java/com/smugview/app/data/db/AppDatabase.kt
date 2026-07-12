@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
         SearchHistory::class,
         SearchResult::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

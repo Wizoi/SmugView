@@ -15,6 +15,8 @@ responsibilities:
   - Iterate on interactive flow prototypes that match modern consumption behaviors.
   - Enforce design system token compliance across all UI components.
   - Prevent Cumulative Layout Shift (CLS) using aspect-ratio aware placeholders.
+  - **Audit for Technical Jargon**: Actively look for and remove technical jargon (such as "EXIF", "ISO", or raw database statuses) from user-facing text, ensuring that all copy and UI components are simple, friendly, and easy to understand for non-technical users.
+
 
 visual_design_system:
   theme: "Vibrant Sleek Dark Mode (Neon Cyberpunk & Glassmorphic Accents)"

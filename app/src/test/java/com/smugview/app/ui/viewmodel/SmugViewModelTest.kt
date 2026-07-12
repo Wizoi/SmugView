@@ -562,7 +562,46 @@ class SmugViewModelTest {
         assertEquals("Unlocked Title", img?.title)
         assertEquals("/api/v2/album/$testAlbumKey", img?.uris?.album)
     }
+
+    @Test
+    fun testObserveSelectedTagsToLoadImagesInjectsRedactedKeywords() = runTest {
+        viewModel.setActiveNicknameForTest("testUser")
+        
+        val redactedImage = AlbumImageData(
+            imageKey = "img_redacted",
+            title = "Redacted Caption",
+            keywords = "",
+            keywordArray = emptyList()
+        )
+        
+        Mockito.`when`(mockRepository.getUserRootNodeId("testUser", BuildConfig.SMUGMUG_API_KEY))
+            .thenReturn(flowOf(Result.success("4zqWw")))
+            
+        Mockito.`when`(mockRepository.getImagesByKeyword("/api/v2/node/4zqWw", "dancing", BuildConfig.SMUGMUG_API_KEY, 500, 1))
+            .thenReturn(listOf(redactedImage))
+            
+        val collectJob = launch {
+            viewModel.tagFilteredPhotos.collect {}
+        }
+        
+        viewModel.selectTag("dancing")
+        
+        var results = emptyList<AlbumImageData>()
+        kotlinx.coroutines.withTimeout(3000) {
+            while (results.isEmpty()) {
+                kotlinx.coroutines.delay(20)
+                results = viewModel.tagFilteredPhotos.value
+            }
+        }
+        
+        collectJob.cancel()
+        
+        assertEquals(1, results.size)
+        assertEquals("img_redacted", results[0].imageKey)
+        assertEquals("dancing", results[0].keywordsString)
+    }
 }
+
 
 
 // Add extension to expose activeNickname setter for unit test purposes

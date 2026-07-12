@@ -882,6 +882,7 @@ class SmugMugRepository @Inject constructor(
     }.flowOn(Dispatchers.IO)
 
     suspend fun fetchNodeFromApi(nodeId: String, apiKey: String, password: String? = null): CachedNode? {
+        if (nodeId == "root") return null
         return try {
             val response = api.getNode(nodeId = nodeId, apiKey = apiKey)
             val node = response.response.node
@@ -926,7 +927,7 @@ class SmugMugRepository @Inject constructor(
 
         val parents = mutableListOf<CachedNode>()
         var parentId = currentNode?.parentNodeId
-        while (!parentId.isNullOrEmpty()) {
+        while (!parentId.isNullOrEmpty() && parentId != "root") {
             var parentNode = dao.getNodeById(parentId)
             if (parentNode == null) {
                 parentNode = fetchNodeFromApi(parentId, apiKey, password)
@@ -1344,12 +1345,15 @@ fun SearchResult.toAlbumImageData(): AlbumImageData {
         archivedUri = archivedUri,
         date = date,
         dateTime = date,
-        format = format,
+        fileName = fileName,
+        keywords = keywords,
+        webUri = webUri,
         originalWidth = originalWidth,
         originalHeight = originalHeight,
-        videoUrl = videoUrl,
-        webUri = webUri,
-        uris = albumUri?.let { com.smugview.app.data.api.AlbumImageUris(album = it) }
+        originalSize = originalSize,
+        format = format,
+        uris = albumUri?.let { com.smugview.app.data.api.AlbumImageUris(album = it, imageAlbum = it) },
+        videoUrl = videoUrl
     )
 }
 
@@ -1369,6 +1373,7 @@ fun AlbumImageData.toSearchResult(query: String, scope: String, index: Int): Sea
         originalHeight = originalHeight,
         fileName = fileName,
         originalSize = originalSize,
+        keywords = keywordsString,
         videoUrl = videoUrl,
         webUri = webUri,
         albumUri = uris?.imageAlbum ?: uris?.album,

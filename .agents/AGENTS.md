@@ -15,6 +15,8 @@
     Modifier.then(if (isSelected) Modifier.border(1.dp, NeonBlue, shape) else Modifier)
     ```
 *   **Folder/Album Navigation Routing**: When resolving keys for gallery navigation, always distinguish between Folder nodes and Album nodes. If the target key corresponds to a Folder node, navigate the user to the folder explorer root (`"browser"`) and update the active folder via `navigateToChildFolder(node)` rather than navigating to the media grid (`"photo_grid"`), preventing endpoint query failures.
+*   **Technical Jargon Auditing**: Actively identify and eliminate technical jargon (such as "EXIF", "ISO", or raw database response parameters) from user-facing text, replacing them with simple, intuitive descriptions that are easy for non-technical users to understand.
+
 
 
 ## 🤝 Parallel Workspace Coordination
@@ -75,8 +77,10 @@
 
 ## 🧪 QA/Tester & Data-Layer Snapshot Rules
 *   **Scenario Update Test Planning**: Every workflow or scenario update must begin with a QA/Tester subagent-approved test coverage plan.
+*   **Test Gap & Impact Analysis**: Every implementation plan must detail why a bug was missed by existing tests, how to address it in future tests, and how existing tests or snapshots are impacted (including updating snapshots and expectations).
 *   **Mock Elimination via Snapshots**: Transition test suites away from static mock data layers. Capture raw, live API response JSON payloads and inject them at the lowest data layer (e.g. mock server or network level) to guarantee that all fields, schemas, and relationships (like `Uris` and `WebUri`) are identical to actual server payloads.
 *   **Field Congruency Verification**: Before implementing tests, manually execute the target query against the SmugMug API. The QA/Tester must verify that all fields, URIs, and formats expected in the repository queries exist in the captured raw response before updating snapshots.
+
 *   **Dual Test Reports & Verification**: After every test execution, the QA/Tester is responsible for generating, updating, and verifying the accuracy of the portable relative-linked summary (`test_result.md`) and deep-dive (`test_details.md`) reports. The Project Manager must verify these artifacts. Note that these are transient files created during the testing/build phase.
     *   **Summary Report Structure (`test_result.md`)**: Grouped by test category using a Markdown table with columns: `Verdict | Test Scenario | Source Query / API Endpoint | Expected Data / Fields | Actual Data / Status`. The status column must remain concise and end with a relative link to the detailed report: `[Details](test_details.md#<lowercase-scenario-name>)`.
     *   **Detailed Log Structure (`test_details.md`)**: Contains anchor headers (`<a name="<lowercase-scenario-name>"></a>\n## <Scenario>`), full response details, bulleted step lists, and verification logs.

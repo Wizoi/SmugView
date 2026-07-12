@@ -783,11 +783,21 @@ class SmugViewModel @Inject constructor(
             val included = selected.filter { it.value == TagFilterState.INCLUDED }.keys
             val excluded = selected.filter { it.value == TagFilterState.EXCLUDED }.keys
             val filtered = photos.filter { photo ->
-                val keywords = photo.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList()
-                val hasFirst = if (included.isNotEmpty()) keywords.contains(included.first()) else true
-                val hasAllIncluded = included.all { keywords.contains(it) }
-                val hasNoExcluded = excluded.none { keywords.contains(it) }
-                hasFirst && hasAllIncluded && hasNoExcluded
+                val titleTokens = photo.title?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
+                val captionTokens = photo.caption?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
+                val fileNameTokens = photo.fileName?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
+                val keywordTokens = photo.keywordsString?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
+                val allTokens = (titleTokens + captionTokens + fileNameTokens + keywordTokens).toSet()
+
+                val hasAllIncluded = included.all { tag ->
+                    val tagTokens = tag.lowercase().split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotEmpty() }
+                    tagTokens.isEmpty() || tagTokens.all { allTokens.contains(it) }
+                }
+                val hasNoExcluded = excluded.none { tag ->
+                    val tagTokens = tag.lowercase().split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotEmpty() }
+                    tagTokens.isNotEmpty() && tagTokens.all { allTokens.contains(it) }
+                }
+                hasAllIncluded && hasNoExcluded
             }.distinctBy { it.imageKey }
             
             if (sortOrder == "Ascending") {
@@ -1528,7 +1538,14 @@ class SmugViewModel @Inject constructor(
                                 count = 500,
                                 start = 1
                             )
-                            _allScopePhotos.value = results
+                            val mappedResults = results.map { img ->
+                                if (img.keywordsString.isNullOrEmpty()) {
+                                    img.copy(keywordArray = included.toList())
+                                } else {
+                                    img
+                                }
+                            }
+                            _allScopePhotos.value = mappedResults
                         } catch (e: Exception) {
                             android.util.Log.e("SmugViewModel", "Failed to load photos for keywords: $keywordsQuery", e)
                         }
@@ -2208,7 +2225,7 @@ class SmugViewModel @Inject constructor(
                 archivedUri = photo.archivedUri,
                 localFilePath = null,
                 dateTaken = photo.date,
-                keywords = photo.keywords,
+                keywords = photo.keywordsString,
                 isDownloaded = false
             )
             repository.addPhotoToCollection(dbPhoto)

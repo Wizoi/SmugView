@@ -78,7 +78,7 @@ interface SmugMugApi {
         @Query("Password") password: String? = null,
         @Query("count") count: Int = 500,
         @Query("_expand") expand: String = "LargestVideo",
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,Uris",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris",
         @Query("_filteruri") filterUri: String = "LargestVideo,Album",
         @Query("_verbosity") verbosity: Int = 1,
         @Header("X-Ignore-Errors") ignoreErrors: String? = null
@@ -102,7 +102,7 @@ interface SmugMugApi {
         @Query("SortDirection") sortDirection: String? = null,
         @Query("count") count: Int = 500,
         @Query("start") start: Int = 1,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format,Uris,WebUri",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format,Keywords,KeywordArray,Uris,WebUri",
         @Query("_filteruri") filterUri: String = "ImageAlbum",
         @Query("_expand") expand: String? = null,
         @Query("_verbosity") verbosity: Int = 1
@@ -124,7 +124,7 @@ interface SmugMugApi {
         @Query("count") count: Int = 250,
         @Query("start") start: Int = 1,
         @Query("_expand") expand: String? = null,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format,Uris,WebUri",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format,Keywords,KeywordArray,Uris,WebUri",
         @Query("_filteruri") filterUri: String = "ImageAlbum",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
@@ -154,7 +154,7 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
         @Query("_expand") expand: String = "LargestVideo",
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,Uris,WebUri",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris,WebUri",
         @Query("_filteruri") filterUri: String = "LargestVideo,ImageAlbum",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageResponse

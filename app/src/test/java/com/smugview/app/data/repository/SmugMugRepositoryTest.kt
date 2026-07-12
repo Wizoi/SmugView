@@ -461,4 +461,58 @@ class SmugMugRepositoryTest {
         assertEquals("/api/v2/user/testUser", apiScope)
         assertEquals("clara idzi", apiText) // Verify comma is replaced with space
     }
+
+    @Test
+    fun testSearchResultMappingPreservesKeywords() {
+        val originalImage = AlbumImageData(
+            imageKey = "test_key",
+            title = "Test Title",
+            caption = "Test Caption",
+            keywords = "tahoma, marching, band",
+            keywordArray = listOf("tahoma", "marching", "band")
+        )
+        val searchResult = originalImage.toSearchResult("query", "scope", 1)
+        assertEquals("tahoma, marching, band", searchResult.keywords)
+        
+        val mappedBack = searchResult.toAlbumImageData()
+        assertEquals("tahoma, marching, band", mappedBack.keywordsString)
+    }
+
+    @Test
+    fun testResolveAndCacheAlbumLineageSafeForRoot() = runBlocking {
+        val fakeDao = FakeCollectionDao()
+        val mockInterceptor = Interceptor { chain ->
+            if (chain.request().url.toString().contains("node/root")) {
+                throw RuntimeException("Should not request root node from API")
+            }
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(404)
+                .message("Not Found")
+                .body("".toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, mockContext())
+        
+        fakeDao.insertNodes(listOf(
+            CachedNode(
+                nodeId = "child_node",
+                parentNodeId = "root",
+                type = "Album",
+                title = "Child Node",
+                description = null,
+                access = "Public",
+                passwordHint = null,
+                uri = "/api/v2/album/child_node",
+                childNodesUri = null,
+                albumUri = "/api/v2/album/child_node"
+            )
+        ))
+        
+        val lineage = repository.resolveAndCacheAlbumLineage("child_node", "dummyKey")
+        assertEquals(0, lineage.size)
+    }
 }
+

@@ -125,6 +125,7 @@ data class SearchResult(
     val originalHeight: Int? = null,
     val fileName: String? = null,
     val originalSize: Long? = null,
+    val keywords: String? = null,
     
     val sortIndex: Int = 0
 )
@@ -139,7 +140,7 @@ fun SearchResult.toAlbumImageData(): com.smugview.app.data.api.AlbumImageData {
         date = this.date,
         dateTime = this.date,
         fileName = this.fileName,
-        keywords = null,
+        keywords = this.keywords,
         webUri = this.webUri,
         originalWidth = this.originalWidth,
         originalHeight = this.originalHeight,

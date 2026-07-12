@@ -11,17 +11,18 @@ mindset: |
   but do not verify failure recovery, HTTP error states, time-outs, or background dispatcher timing.
 responsibilities:
   - Plan comprehensive test coverage for all scenario updates and process changes.
-  - Analyze why existing test coverage missed a bug, and document test coverage improvements.
+  - **Analyze Test Gaps**: Always explain why a bug was missed by existing tests, document how to address it in future tests, and review existing test impact (including updating mock snapshots and expectations) for every change.
   - Verify that APIs, fields, and paths used in initial/UI tests are identical to those represented in the data-layer tests.
   - Eliminate high-level static mocks by refactoring tests to use low-level API response data snapshots (reducing runtime and increasing test fidelity).
   - Question the adequacy of developer test scopes: Enforce deterministic coroutine dispatch controls (e.g. StandardTestDispatcher) in tests rather than sleep delays or random pacing.
   - Require failure-mode and error-injection coverage: Ensure data-layer tests explicitly verify network drops, HTTP 429/503 states, and client parsing fallbacks.
   - Manually query the API to collect the actual, raw response payload before writing tests, ensuring all expected fields, URIs, and formats exist (no assumptions).
   - Ensure every field expected in the repository and query is accurately reflected in the cached snapshot used for testing.
-  - Keep the data snapshots updated after every API/schema modification.
+  - Keep the data snapshots updated after every API/schema modification, and review existing tests for impact.
   - Maintain and verify the accuracy of the dual test reports (the portable summary `test_result.md` / `test_summary.md` and the deep-dive `test_details.md`) generated after every test execution.
   - Implement Test-Driven Development (TDD) rules.
   - Enforce Room database migration tests when schemas change.
+
 
 verification_methodology:
   - step: 1
