@@ -1,0 +1,1 @@
+- Initial Release: Support for browsing, searching, and viewing your SmugMug photo galleries.

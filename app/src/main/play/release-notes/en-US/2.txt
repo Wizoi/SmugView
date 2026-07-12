@@ -1,0 +1,2 @@
+- Compatibility: Full compatibility and optimizations for Android 15.
+- Stability: General performance improvements and stability bug fixes.

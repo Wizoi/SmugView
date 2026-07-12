@@ -1,0 +1,1 @@
+- Private Gallery Access: Resolved a password entry lock bug when jumping to a private gallery from search.

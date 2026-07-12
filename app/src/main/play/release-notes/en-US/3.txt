@@ -1,0 +1,3 @@
+- Remote Tag Search: Search and filter photos by tags stored online.
+- Photo Tag Editor: Add, update, and manage keywords/tags directly from the photo details page.
+- Persistent Folder Cache: Remembers your folder layout so the app loads faster on startup.

@@ -937,7 +937,9 @@ class SmugMugRepository @Inject constructor(
                 parentNode = fetchNodeFromApi(parentId, apiKey, password)
             }
             if (parentNode != null) {
-                parents.add(0, parentNode)
+                if (parentNode.parentNodeId != "root" && !parentNode.parentNodeId.isNullOrEmpty()) {
+                    parents.add(0, parentNode)
+                }
                 val nextParentId = parentNode.parentNodeId
                 if (nextParentId == parentId || visitedIds.contains(nextParentId)) {
                     break

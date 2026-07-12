@@ -1,0 +1,3 @@
+- Search Autocomplete: Matching keywords and tags now appear instantly as you type.
+- Incremental Photo Loading: Streamlined photo loading for large galleries (up to 1,500 items).
+- Modernized Suggestions: Replaced overlay popups with clean, inline search suggestions.

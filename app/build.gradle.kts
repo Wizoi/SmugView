@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.dagger.hilt.android")
+    id("com.github.triplet.play")
 }
 
 android {
@@ -23,8 +24,8 @@ android {
         applicationId = "com.smugview.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.31"
+        versionCode = 8
+        versionName = "0.40"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -188,5 +189,11 @@ tasks.register("testDebugSuite") {
 
 tasks.matching { it.name.startsWith("kapt") && it.name.endsWith("TestKotlin") }.configureEach {
     enabled = false
+}
+
+play {
+    serviceAccountCredentials.set(rootProject.file("play-service-account.json"))
+    defaultToAppBundles.set(true)
+    track.set("internal")
 }
 

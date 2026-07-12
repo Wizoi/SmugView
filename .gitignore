@@ -19,6 +19,7 @@ local.properties
 app/local.properties
 *.keystore
 *.jks
+play-service-account.json
 
 # OS generated files
 .DS_Store

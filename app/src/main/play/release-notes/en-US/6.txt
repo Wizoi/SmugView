@@ -1,0 +1,3 @@
+- Stronger Privacy Controls: Private galleries are now hidden in anonymous state.
+- Offline Connection Support: Improved automatic retry attempts if the network connection is unstable.
+- Performance: Cleaned up code to reduce memory usage and smooth out scrolling.

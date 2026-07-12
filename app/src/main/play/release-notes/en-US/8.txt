@@ -1,0 +1,3 @@
+- Search Result Details: Resolved unpopulated metadata details (dimensions, size, name) on search items.
+- Easy Breadcrumb Navigation: Clicking folder path breadcrumbs now correctly opens that folder.
+- Clean Layout: Fixed a blank space bug in the folder path breadcrumb bar.

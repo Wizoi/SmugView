@@ -70,6 +70,7 @@ fun PhotoGridScreen(
     albumTitle: String,
     onNavigateToPhotoDetail: (imageKey: String) -> Unit,
     onBackClick: () -> Unit,
+    onNavigateToFolder: () -> Unit,
     viewModel: SmugViewModel = hiltViewModel()
 ) {
     LaunchedEffect(albumKey) {
@@ -204,9 +205,13 @@ fun PhotoGridScreen(
                 navStack = fullNavStack,
                 onBreadcrumbClick = { index ->
                     if (index < folderNavStack.size) {
-                        viewModel.navigateToStackFolder(index)
+                        if (index == -1) {
+                            viewModel.navigateToHome()
+                        } else {
+                            viewModel.navigateToStackFolder(index)
+                        }
                         viewModel.setActiveTab(com.smugview.app.ui.viewmodel.BrowserTab.Folders)
-                        onBackClick()
+                        onNavigateToFolder()
                     }
                 }
             )

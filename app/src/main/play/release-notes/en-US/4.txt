@@ -1,0 +1,3 @@
+- Sort Focus Alignment: scroll state trackers scroll back to top/bottom when sorting is changed to maintain focus.
+- Speed and Responsiveness: Optimized SQLite queries and background data mapping to prevent lag.
+- Saved Passwords Persistence: Updated node mapping to preserve unlocked gallery passwords on restarts.

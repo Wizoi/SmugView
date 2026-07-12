@@ -1,10 +1,10 @@
 guide_title: SmugView Application Deployment & Packaging Guide
 purpose: |
   Provides unified instructions to check for code changes, build the application, and deploy 
-  to the running Android Emulator, optionally building the release Android App Bundle (.aab).
+  to the running Android Emulator, optionally building and publishing the release Android App Bundle (.aab) to Google Play.
 
 pre_requisite:
-  action: "Before initiating any deployment or bundle compile task, always execute the fast local unit tests first (e.g. `./gradlew testDebugUnitTest`) to verify codebase integrity."
+  - action: "Before initiating any deployment or bundle compile task, always execute the fast local unit tests first (e.g. `./gradlew testDebugUnitTest`) to verify codebase integrity."
 
 environment_setup:
   JAVA_HOME: "C:\\Program Files\\Android\\Android Studio\\jbr"
@@ -37,6 +37,16 @@ steps:
           $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
           ./gradlew bundleRelease
         output_link: "app/build/outputs/bundle/release/app-release.aab"
+      - name: publish_appbundle
+        description: "Build release Android App Bundle (AAB) and push it directly to the Google Play Store internal track using Gradle Play Publisher."
+        command: |
+          $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+          ./gradlew publishReleaseBundle
+      - name: publish_store_listing
+        description: "Only update Play Store listings and release notes without rebuilding the app bundle."
+        command: |
+          $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+          ./gradlew publishListing
   4_fork_mitigation:
     action: "If installation fails with 'can't fork', reboot the emulator using ADB."
     command: |

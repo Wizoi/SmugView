@@ -162,6 +162,9 @@ fun SmugViewNavigation() {
                     },
                     onBackClick = {
                         navController.navigateUp()
+                    },
+                    onNavigateToFolder = {
+                        navController.popBackStack("browser", false)
                     }
                 )
             }
