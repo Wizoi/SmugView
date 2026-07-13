@@ -7,6 +7,7 @@
     ./gradlew compileDebugKotlin
     ```
 *   **Deployment Pre-Requisite**: Before initiating any deployment, emulator install, or App Bundle compilation task, always run the fast local unit tests first (using `./gradlew testDebugUnitTest`) to ensure codebase integrity and compilation stability.
+*   **Minification (R8) & Obfuscation Warning**: Do not enable code minification (`isMinifyEnabled = true`) or resource shrinking (`isShrinkResources = true`) in the release build block of `app/build.gradle.kts` unless comprehensive keep rules are fully verified. Gson, Retrofit, and other reflection-based API components will fail to deserialize network responses at runtime without these rules, returning empty states or failed lookups. Keep minification disabled (`false`) by default for release publications.
 
 ## 🎨 Compose & UI Layout Guidelines
 *   **Flow Layouts**: Standard `FlowRow` is available under `androidx.compose.foundation.layout.FlowRow` and requires `@OptIn(ExperimentalLayoutApi::class)`.

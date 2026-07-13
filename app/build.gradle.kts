@@ -24,8 +24,8 @@ android {
         applicationId = "com.smugview.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.5"
+        versionCode = 11
+        versionName = "0.5.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -56,8 +56,8 @@ android {
             isCrunchPngs = false
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
             isCrunchPngs = false
             val keystorePath = localProperties.getProperty("signing.storeFile")
             if (keystorePath != null) {

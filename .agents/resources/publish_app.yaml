@@ -17,7 +17,7 @@ steps:
   3_review_release_notes:
     action: "Display the release notes content to the user and request their explicit review and confirmation before final publishing."
   4_verify_setup:
-    action: "Verify that release signing configs are present in local.properties and play-service-account.json is in the root."
+    action: "Verify that root local.properties contains a valid 'smugmug.api.key' (not placeholder) and that release signing configs are present in local.properties and play-service-account.json is in the root."
   5_run_tests:
     action: "Run unit tests before compile to ensure stability."
     command: |
