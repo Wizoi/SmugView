@@ -24,8 +24,8 @@ android {
         applicationId = "com.smugview.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.40"
+        versionCode = 9
+        versionName = "0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -153,6 +153,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
+
+    // Google Cast SDK Framework
+    implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

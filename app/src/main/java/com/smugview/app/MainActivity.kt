@@ -99,6 +99,9 @@ fun SmugViewNavigation() {
                     },
                     onNavigateToKeywordImages = {
                         navController.navigate("keyword_images")
+                    },
+                    onNavigateToCastController = { title ->
+                        navController.navigate("cast_controller/$title")
                     }
                 )
             }
@@ -165,6 +168,9 @@ fun SmugViewNavigation() {
                     },
                     onNavigateToFolder = {
                         navController.popBackStack("browser", false)
+                    },
+                    onNavigateToCastController = { title ->
+                        navController.navigate("cast_controller/$title")
                     }
                 )
             }
@@ -197,6 +203,9 @@ fun SmugViewNavigation() {
                     },
                     onNavigateToKeywordImages = {
                         navController.navigate("keyword_images")
+                    },
+                    onNavigateToCastController = { title ->
+                        navController.navigate("cast_controller/$title")
                     }
                 )
             }
@@ -236,6 +245,48 @@ fun SmugViewNavigation() {
                         navController.navigate("keyword_images")
                     }
                 )
+            }
+            composable(
+                route = "cast_controller/{albumTitle}",
+                arguments = listOf(
+                    navArgument("albumTitle") { type = NavType.StringType }
+                )
+            ) { backStackEntry ->
+                val albumTitle = backStackEntry.arguments?.getString("albumTitle") ?: ""
+                val activeDevice by viewModel.activeCastDevice.collectAsState()
+                val currentImageUri by viewModel.currentCastedImageUri.collectAsState()
+                val isSlideshowPlaying by viewModel.isCastSlideshowPlaying.collectAsState()
+                val slideshowInterval by viewModel.castSlideshowInterval.collectAsState()
+                val volume by viewModel.castVolume.collectAsState()
+                val isMuted by viewModel.isCastMuted.collectAsState()
+                val isWebCompanionActive by viewModel.isWebCompanionActive.collectAsState()
+                val localIpAddress = remember { viewModel.getLocalIpAddress() ?: "" }
+
+                activeDevice?.let { device ->
+                    com.smugview.app.ui.component.CastControllerScreen(
+                        activeDevice = device,
+                        albumTitle = albumTitle,
+                        currentImageUri = currentImageUri,
+                        isSlideshowPlaying = isSlideshowPlaying,
+                        slideshowInterval = slideshowInterval,
+                        volume = volume,
+                        isMuted = isMuted,
+                        isWebCompanionActive = isWebCompanionActive,
+                        localIpAddress = localIpAddress,
+                        onPlayPauseToggle = { viewModel.toggleCastSlideshowPlay() },
+                        onNextClick = { viewModel.castNextPhoto() },
+                        onPrevClick = { viewModel.castPreviousPhoto() },
+                        onIntervalChange = { viewModel.setCastSlideshowInterval(it) },
+                        onVolumeChange = { viewModel.setCastVolume(it) },
+                        onToggleMute = { viewModel.toggleCastMute() },
+                        onStopCasting = {
+                            viewModel.disconnectCast()
+                        },
+                        onBackClick = { navController.navigateUp() }
+                    )
+                } ?: LaunchedEffect(Unit) {
+                    navController.navigateUp()
+                }
             }
         }
     }

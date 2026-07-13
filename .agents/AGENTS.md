@@ -48,6 +48,7 @@
     ```kotlin
     val photos = matchingKeys.flatMap { loadedImages[it] ?: emptyList<AlbumImageData>() }
     ```
+*   **Flow Test Imports**: When mock-stubbing flow variables (like `activeDevice` or `discoveredDevices` StateFlows) in test configuration setups, always ensure that `kotlinx.coroutines.flow.MutableStateFlow` or `kotlinx.coroutines.flow.flowOf` imports are explicitly declared rather than using unresolved short references.
 
 ## 🤖 Antigravity Tool Usage Learnings
 *   **Ripgrep Windows File Search**: On Windows systems, ripgrep (`grep_search`) might fail to find matches if `SearchPath` is set directly to a file containing backslashes. Instead, set `SearchPath` to the containing directory and filter using the `Includes` parameter with the filename (e.g., `Includes = ["BrowserScreen.kt"]`).
@@ -87,7 +88,7 @@
 
 ## 📈 Project Manager Scrum & Retro Rules
 *   **Automatic Retrospectives**: Every scenario update or bug fix task must conclude with an automatic retrospective review conducted by the Project Manager.
-*   **Continuous Instruction Refinement**: The Project Manager must trace the log trajectory (in `transcript.jsonl`), locate misdirections, identify gaps in sibling personas (UX, Android, API, QA), and update workspace config/instruction guides to continually prevent repeat mistakes.
+*   **Continuous Instruction Refinement**: The Project Manager must trace the log trajectory (in `transcript.jsonl`), locate misdirections, identify gaps in sibling personas (UX, Android, API, QA, Smart Device), and update workspace config/instruction guides to continually prevent repeat mistakes.
 
 ## 🧠 Critical Product Thinking & Constructive Dissent
 *   **Product-First Advocacy**: Never implement any feature, fix, or workflow purely because another persona or instruction requests it. Critically assess if the action is truly optimal for the product's performance, stability, API limits, security, and user experience.
@@ -96,6 +97,7 @@
     *   *API Specialist*: Does this call pattern risk hitting rate limits or fetch redundant nested fields?
     *   *UX Designer/Reviewer*: Does this compromise standard typography, spacing, navigation segment state preservation, or accessibility guidelines?
     *   *QA/Tester*: Does this implementation allow deterministic automated validation or does it create untestable logic?
+    *   *Smart Device Expert*: Does this integration handle network routing, firewall ports, cleartext traffic policies, and casting security protocols correctly?
 *   **Dissent Record Requirement**: If a sub-optimal approach is requested or observed, explicitly raise the alternative, document the trade-offs, and seek alignment rather than moving forward silently.
 
 ## 📖 Documentation Reference & Maintenance

@@ -6,12 +6,14 @@ import androidx.work.WorkManager
 import com.smugview.app.data.api.*
 import com.smugview.app.data.db.*
 import com.smugview.app.data.repository.SmugMugRepository
+import com.smugview.app.data.cast.CastManager
 import com.smugview.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -32,6 +34,7 @@ class SmugViewModelTest {
     private lateinit var mockPrefs: SharedPreferences
     private lateinit var mockWorkManager: WorkManager
     private lateinit var mockRepository: SmugMugRepository
+    private lateinit var mockCastManager: CastManager
     private lateinit var viewModel: SmugViewModel
 
     @Before
@@ -55,6 +58,14 @@ class SmugViewModelTest {
         
         mockWorkManager = Mockito.mock(WorkManager::class.java)
         mockRepository = Mockito.mock(SmugMugRepository::class.java)
+        mockCastManager = Mockito.mock(CastManager::class.java)
+        
+        Mockito.`when`(mockCastManager.discoveredDevices).thenReturn(MutableStateFlow(emptyList()))
+        Mockito.`when`(mockCastManager.activeDevice).thenReturn(MutableStateFlow(null))
+        Mockito.`when`(mockCastManager.isCasting).thenReturn(MutableStateFlow(false))
+        Mockito.`when`(mockCastManager.currentImageUri).thenReturn(MutableStateFlow(null))
+        Mockito.`when`(mockCastManager.slideshowInterval).thenReturn(MutableStateFlow(5))
+        Mockito.`when`(mockCastManager.isSlideshowPlaying).thenReturn(MutableStateFlow(false))
         
         Mockito.`when`(mockRepository.isAlbumsCacheLoaded)
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(true))
@@ -75,7 +86,7 @@ class SmugViewModelTest {
                 .thenReturn(true)
         }
         
-        viewModel = SmugViewModel(mockApp, mockRepository, mockWorkManager)
+        viewModel = SmugViewModel(mockApp, mockRepository, mockWorkManager, mockCastManager)
     }
 
     @After

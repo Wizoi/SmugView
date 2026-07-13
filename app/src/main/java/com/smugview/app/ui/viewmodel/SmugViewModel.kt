@@ -34,6 +34,9 @@ import com.smugview.app.data.db.SearchHistory
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.data.db.toAlbumImageData
 import com.smugview.app.data.worker.OfflineDownloadWorker
+import com.smugview.app.data.cast.CastDevice
+import com.smugview.app.data.cast.CastManager
+import com.smugview.app.data.cast.ConnectionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -110,7 +113,8 @@ enum class GalleryFilterType {
 class SmugViewModel @Inject constructor(
     application: Application,
     private val repository: SmugMugRepository,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    val castManager: CastManager
 ) : AndroidViewModel(application) {
 
     private val apiKey = BuildConfig.SMUGMUG_API_KEY
@@ -195,6 +199,124 @@ class SmugViewModel @Inject constructor(
             }
             return false
         }
+    }
+
+    // Casting Integration
+    val discoveredDevices = castManager.discoveredDevices
+    val activeCastDevice = castManager.activeDevice
+    val isCasting = castManager.isCasting
+    val currentCastedImageUri = castManager.currentImageUri
+    val castSlideshowInterval = castManager.slideshowInterval
+    val isCastSlideshowPlaying = castManager.isSlideshowPlaying
+    val castVolume = castManager.volume
+    val isCastMuted = castManager.isMuted
+    val isWebCompanionActive = castManager.isWebCompanionActive
+    private val _castedAlbumKey = MutableStateFlow<String?>(null)
+    val castedAlbumKeyFlow: StateFlow<String?> = _castedAlbumKey.asStateFlow()
+
+    var castedAlbumKey: String?
+        get() = _castedAlbumKey.value
+        set(value) {
+            _castedAlbumKey.value = value
+        }
+
+    fun startCastDiscovery() {
+        castManager.startDiscovery()
+    }
+
+    fun stopCastDiscovery() {
+        castManager.stopDiscovery()
+    }
+
+    fun getLocalIpAddress(): String? {
+        return castManager.getLocalIpAddress()
+    }
+
+    fun connectToCastDevice(device: CastDevice) {
+        castManager.connectToDevice(device)
+    }
+
+    fun disconnectCast() {
+        castManager.disconnect()
+        castedAlbumKey = null
+    }
+
+    fun castImage(url: String, title: String) {
+        castManager.castImage(url, title)
+    }
+
+    fun castSlideshow(urls: List<String>, intervalSeconds: Int = 5) {
+        castManager.castSlideshow(urls, intervalSeconds)
+    }
+
+    fun castCollection(collectionId: Long) {
+        viewModelScope.launch {
+            try {
+                val photos = repository.getPhotosInCollection(collectionId).first()
+                val urls = photos.mapNotNull { it.archivedUri ?: it.thumbnailUrl?.replace("/Th/", "/X3/") }.toMutableList()
+
+                val bookmarks = repository.getBookmarksForCollection(collectionId).first()
+
+                // 1. Process Album (Gallery) bookmarks
+                val albumBookmarks = bookmarks.filter { it.type == "Album" }
+                for (albumBookmark in albumBookmarks) {
+                    val albumKey = albumBookmark.itemKey
+                    val password = getUnlockedPassword(albumKey)
+                    try {
+                        val albumPhotos = repository.getAllAlbumImages(albumKey, apiKey, password)
+                        val albumUrls = albumPhotos.mapNotNull { 
+                            if (it.isVideo) {
+                                it.videoUrl ?: it.thumbnailUrl?.replace("/Th/", "/X3/")
+                            } else {
+                                it.thumbnailUrl?.replace("/Th/", "/X3/")
+                            }
+                        }
+                        urls.addAll(albumUrls)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                // 2. Process Image bookmarks
+                val imageBookmarks = bookmarks.filter { it.type == "Image" }
+                for (imageBookmark in imageBookmarks) {
+                    val imgUrl = imageBookmark.thumbnailUrl?.replace("/Th/", "/X3/")
+                    if (imgUrl != null) {
+                        urls.add(imgUrl)
+                    }
+                }
+
+                if (urls.isNotEmpty()) {
+                    castSlideshow(urls)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun toggleCastSlideshowPlay() {
+        castManager.setSlideshowPlaying(!isCastSlideshowPlaying.value)
+    }
+
+    fun setCastSlideshowInterval(seconds: Int) {
+        castManager.setSlideshowInterval(seconds)
+    }
+
+    fun castNextPhoto() {
+        castManager.nextPhoto()
+    }
+
+    fun castPreviousPhoto() {
+        castManager.previousPhoto()
+    }
+
+    fun setCastVolume(volume: Float) {
+        castManager.setVolume(volume)
+    }
+
+    fun toggleCastMute() {
+        castManager.toggleMute()
     }
 
     // Active Navigation Tab

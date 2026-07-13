@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
@@ -115,6 +116,7 @@ fun BrowserScreen(
     onNavigateToSearchPhotoDetail: (imageKey: String, index: Int) -> Unit,
     onNavigateToPhotoDetail: (albumKey: String, imageKey: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
+    onNavigateToCastController: (title: String) -> Unit,
     viewModel: SmugViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.browserState.collectAsState()
@@ -318,7 +320,8 @@ fun BrowserScreen(
                             onNavigateToAlbum = onNavigateToAlbum,
                             onImageClick = { albumKey, imageKey ->
                                 onNavigateToPhotoDetail(albumKey, imageKey)
-                            }
+                            },
+                            onNavigateToCastController = onNavigateToCastController
                         )
                     }
                     BrowserTab.Search -> {
@@ -907,11 +910,25 @@ fun FoldersTabView(
                         Spacer(modifier = Modifier.size(48.dp))
                     }
 
-                    // Action buttons (Bookmark, Share, Refresh)
+                    // Action buttons (Search, Bookmark, Share, Refresh)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Search in current Folder
+                        IconButton(
+                            onClick = {
+                                viewModel.setActiveTab(BrowserTab.Search)
+                            },
+                            modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search in Folder",
+                                tint = Color.White
+                            )
+                        }
+
                         // Bookmark (hide on the root homepage)
                         if (navStack.isNotEmpty()) {
                             IconButton(
@@ -945,20 +962,6 @@ fun FoldersTabView(
                             Icon(
                                 imageVector = Icons.Default.Share,
                                 contentDescription = "Share Folder",
-                                tint = Color.White
-                            )
-                        }
-
-                        // Search in current Folder
-                        IconButton(
-                            onClick = {
-                                viewModel.setActiveTab(BrowserTab.Search)
-                            },
-                            modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search in Folder",
                                 tint = Color.White
                             )
                         }
@@ -1950,13 +1953,21 @@ fun BreadcrumbBar(
 fun CollectionsTabView(
     viewModel: SmugViewModel,
     onNavigateToAlbum: (albumKey: String, albumTitle: String) -> Unit,
-    onImageClick: (albumKey: String, imageKey: String) -> Unit
+    onImageClick: (albumKey: String, imageKey: String) -> Unit,
+    onNavigateToCastController: (title: String) -> Unit
 ) {
     val collections by viewModel.localCollections.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var newCollectionName by remember { mutableStateOf("") }
     var selectedCollectionForShortcuts by remember { mutableStateOf<OfflineCollection?>(null) }
+
+    val activeDevice by viewModel.activeCastDevice.collectAsState()
+    val isCasting by viewModel.isCasting.collectAsState()
+    val discoveredDevices by viewModel.discoveredDevices.collectAsState()
+    var showCastSelector by remember { mutableStateOf(false) }
+    var pendingCastCollectionId by remember { mutableStateOf<Long?>(null) }
+    var pendingCastCollectionName by remember { mutableStateOf("") }
     
     val neonColors = listOf(
         Color(0xFF00E5FF),
@@ -2490,19 +2501,45 @@ fun CollectionsTabView(
                                 }
                         ) {
                             Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                                // Delete Button top-right
-                                IconButton(
-                                    onClick = { viewModel.deleteCollection(col.id) },
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .size(28.dp)
+                                // Action buttons top-right (Cast & Delete)
+                                Row(
+                                    modifier = Modifier.align(Alignment.TopEnd),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Delete Collection",
-                                        tint = Color.White.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    IconButton(
+                                        onClick = {
+                                            if (isCasting) {
+                                                viewModel.castCollection(col.id)
+                                                onNavigateToCastController(col.name)
+                                            } else {
+                                                pendingCastCollectionId = col.id
+                                                pendingCastCollectionName = col.name
+                                                viewModel.startCastDiscovery()
+                                                showCastSelector = true
+                                            }
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Cast,
+                                            contentDescription = "Cast Collection",
+                                            tint = if (isCasting) NeonBlue else Color.White.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { viewModel.deleteCollection(col.id) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Delete Collection",
+                                            tint = Color.White.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
 
                                 // Info details column
@@ -2538,6 +2575,29 @@ fun CollectionsTabView(
                     }
                 }
             }
+        }
+
+        if (showCastSelector) {
+            com.smugview.app.ui.component.CastDeviceSelectorBottomSheet(
+                devices = discoveredDevices,
+                onDeviceSelected = { device ->
+                    viewModel.connectToCastDevice(device)
+                    showCastSelector = false
+                    
+                    pendingCastCollectionId?.let { colId ->
+                        scope.launch {
+                            delay(1200)
+                            viewModel.castCollection(colId)
+                            onNavigateToCastController(pendingCastCollectionName)
+                            pendingCastCollectionId = null
+                        }
+                    }
+                },
+                onDismiss = {
+                    showCastSelector = false
+                    pendingCastCollectionId = null
+                }
+            )
         }
     }
 }

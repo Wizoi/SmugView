@@ -118,6 +118,7 @@ fun PhotoDetailScreen(
     onNavigateToFolder: () -> Unit,
     onNavigateToGallery: (albumKey: String, albumTitle: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
+    onNavigateToCastController: (String) -> Unit,
     viewModel: SmugViewModel = hiltViewModel()
 ) {
     LaunchedEffect(albumKey, targetImageKey) {
@@ -341,28 +342,18 @@ fun PhotoDetailScreen(
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
         ) {
+            val activeDevice by viewModel.activeCastDevice.collectAsState()
+            val isCasting by viewModel.isCasting.collectAsState()
+            val discoveredDevices by viewModel.discoveredDevices.collectAsState()
+            val castedAlbumKey by viewModel.castedAlbumKeyFlow.collectAsState()
+            var showCastSelector by remember { mutableStateOf(false) }
+            var showRecastDialog by remember { mutableStateOf(false) }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(SurfaceGlass)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                }
-
                 BreadcrumbBar(
                     navStack = fullNavStack,
                     onBreadcrumbClick = { index ->
@@ -379,6 +370,109 @@ fun PhotoDetailScreen(
                         }
                     }
                 )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(SurfaceGlass)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+
+                    val cState = activeDevice?.state ?: com.smugview.app.data.cast.ConnectionState.DISCONNECTED
+                    com.smugview.app.ui.component.CastButton(
+                        connectionState = cState,
+                        onClick = {
+                            if (isCasting) {
+                                if (castedAlbumKey != null && castedAlbumKey != albumKey) {
+                                    showRecastDialog = true
+                                } else {
+                                    onNavigateToCastController(albumTitle)
+                                }
+                            } else {
+                                viewModel.startCastDiscovery()
+                                showCastSelector = true
+                            }
+                        }
+                    )
+                }
+
+                if (showRecastDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showRecastDialog = false },
+                        title = { Text("Recast Gallery") },
+                        text = { Text("Do you want to recast using the photos from this gallery?") },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    showRecastDialog = false
+                                    viewModel.castedAlbumKey = albumKey
+                                    currentPhoto?.let { photo ->
+                                        val targetUrl = if (photo.isVideo) {
+                                            photo.videoUrl ?: photo.thumbnailUrl?.replace("/Th/", "/X3/")
+                                        } else {
+                                            photo.thumbnailUrl?.replace("/Th/", "/X3/")
+                                        }
+                                        targetUrl?.let { url ->
+                                            viewModel.castImage(url, photo.title ?: "Casted Media")
+                                        }
+                                    }
+                                    onNavigateToCastController(albumTitle)
+                                }
+                            ) {
+                                Text("Yes")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    showRecastDialog = false
+                                    onNavigateToCastController(albumTitle)
+                                }
+                            ) {
+                                Text("No")
+                            }
+                        }
+                    )
+                }
+
+                if (showCastSelector) {
+                    com.smugview.app.ui.component.CastDeviceSelectorBottomSheet(
+                        devices = discoveredDevices,
+                        onDeviceSelected = { device ->
+                            viewModel.connectToCastDevice(device)
+                            viewModel.castedAlbumKey = albumKey
+                            showCastSelector = false
+                            
+                             // Cast the active single media (photo or video)
+                             currentPhoto?.let { photo ->
+                                 val targetUrl = if (photo.isVideo) {
+                                     photo.videoUrl ?: photo.thumbnailUrl?.replace("/Th/", "/X3/")
+                                 } else {
+                                     photo.thumbnailUrl?.replace("/Th/", "/X3/")
+                                 }
+                                 targetUrl?.let { url ->
+                                     viewModel.castImage(url, photo.title ?: "Casted Media")
+                                 }
+                             }
+                            onNavigateToCastController(albumTitle)
+                        },
+                        onDismiss = {
+                            viewModel.stopCastDiscovery()
+                            showCastSelector = false
+                        }
+                    )
+                }
             }
         }
 
@@ -465,10 +559,10 @@ fun PhotoDetailScreen(
                             )
                         }
 
-                        // Share Link (previous share icon)
+                        // Share Link
                         IconButton(
                             onClick = {
-                                sharePhoto(context, scope, currentPhoto)
+                                currentPhoto?.let { sharePhoto(context, scope, it) }
                             }
                         ) {
                             Icon(

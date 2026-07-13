@@ -1,0 +1,3 @@
+- Smart TV & Smart Display Casting: Cast SmugMug photos and videos directly to Google Nest Hub, Roku, Android, and Amazon Echo Show devices.
+- Saved Collections Casting: Easily stream all images and bookmarked gallery content inside a collection directly to your TV.
+- Streamlined Gallery Controls: Reorganized search, bookmark, share, and casting options for faster navigation.

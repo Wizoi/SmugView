@@ -51,6 +51,11 @@ investigation_procedure:
     methodology: |
       Write a reproduction unit/integration test that triggers the bug deterministically. Verify the test fails on current 
       code before applying any fixes.
+  - role: Smart Device Expert
+    ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/smart_device_expert.yaml"
+    methodology: |
+      Diagnose network discovery issues, analyze SSDP/mDNS packet loss, verify ECP/DIAL/AirPlay HTTP status payloads, 
+      and trace local network cleartext policies or connection caching states.
   - role: Project Manager
     ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/project_manager.yaml"
     methodology: |

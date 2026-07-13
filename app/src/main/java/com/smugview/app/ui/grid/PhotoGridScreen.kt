@@ -71,6 +71,7 @@ fun PhotoGridScreen(
     onNavigateToPhotoDetail: (imageKey: String) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToFolder: () -> Unit,
+    onNavigateToCastController: (String) -> Unit,
     viewModel: SmugViewModel = hiltViewModel()
 ) {
     LaunchedEffect(albumKey) {
@@ -545,11 +546,33 @@ fun PhotoGridScreen(
                     )
                 }
 
-                // Actions (Top Right: Bookmark, Share, Filter)
+                // Actions (Top Right: Search, Bookmark, Share, Cast, Filter)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Search in current Album
+                    IconButton(
+                        onClick = {
+                            viewModel.setSearchScope(
+                                com.smugview.app.ui.viewmodel.SearchScope(
+                                    name = "Gallery: $albumTitle",
+                                    nodeId = null,
+                                    nodeUri = "/api/v2/album/$albumKey"
+                                )
+                            )
+                            viewModel.setActiveTab(com.smugview.app.ui.viewmodel.BrowserTab.Search, updateScopeFromBrowsing = false)
+                            onBackClick()
+                        },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search in Album",
+                            tint = Color.White
+                        )
+                    }
+
                     // Bookmark
                     IconButton(
                         onClick = {
@@ -584,29 +607,127 @@ fun PhotoGridScreen(
                         )
                     }
 
-                    // Search in current Album
-                    IconButton(
-                        onClick = {
-                            viewModel.setSearchScope(
-                                com.smugview.app.ui.viewmodel.SearchScope(
-                                    name = "Gallery: $albumTitle",
-                                    nodeId = null,
-                                    nodeUri = "/api/v2/album/$albumKey"
+                    val activeDevice by viewModel.activeCastDevice.collectAsState()
+                    val isCasting by viewModel.isCasting.collectAsState()
+                    val discoveredDevices by viewModel.discoveredDevices.collectAsState()
+                    val castedAlbumKey by viewModel.castedAlbumKeyFlow.collectAsState()
+                    var showCastSelector by remember { mutableStateOf(false) }
+                    var showRecastDialog by remember { mutableStateOf(false) }
+                    var showAmazonDialog by remember { mutableStateOf(false) }
+
+                    if (showAmazonDialog) {
+                        val ip = viewModel.getLocalIpAddress() ?: "192.168.1.X"
+                        AlertDialog(
+                            onDismissRequest = { showAmazonDialog = false },
+                            title = { Text("Cast to Amazon Echo Show") },
+                            text = {
+                                Text(
+                                    "To cast to this Echo Show, open the Silk browser on the device (say: 'Alexa, open Silk browser') and navigate to:\n\n" +
+                                    "http://$ip:8080"
                                 )
-                            )
-                            viewModel.setActiveTab(com.smugview.app.ui.viewmodel.BrowserTab.Search, updateScopeFromBrowsing = false)
-                            onBackClick()
-                        },
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search in Album",
-                            tint = Color.White
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showAmazonDialog = false }) {
+                                    Text("OK")
+                                }
+                            }
                         )
                     }
 
-                    // Filter
+                    val cState = activeDevice?.state ?: com.smugview.app.data.cast.ConnectionState.DISCONNECTED
+                    com.smugview.app.ui.component.CastButton(
+                        connectionState = cState,
+                        onClick = {
+                            if (isCasting) {
+                                if (castedAlbumKey != null && castedAlbumKey != albumKey) {
+                                    showRecastDialog = true
+                                } else {
+                                    onNavigateToCastController(albumTitle)
+                                }
+                            } else {
+                                viewModel.startCastDiscovery()
+                                showCastSelector = true
+                            }
+                        }
+                    )
+
+                    if (showRecastDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showRecastDialog = false },
+                            title = { Text("Recast Gallery") },
+                            text = { Text("Do you want to recast using the photos from this gallery?") },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        showRecastDialog = false
+                                        viewModel.castedAlbumKey = albumKey
+                                        val urls = mutableListOf<String>()
+                                        for (i in 0 until lazyPhotos.itemCount) {
+                                            val photo = lazyPhotos[i]
+                                            if (photo != null) {
+                                                val url = if (photo.isVideo) {
+                                                    photo.videoUrl ?: photo.thumbnailUrl?.replace("/Th/", "/X3/")
+                                                } else {
+                                                    photo.thumbnailUrl?.replace("/Th/", "/X3/")
+                                                }
+                                                if (url != null) {
+                                                    urls.add(url)
+                                                }
+                                            }
+                                        }
+                                        viewModel.castSlideshow(urls)
+                                        onNavigateToCastController(albumTitle)
+                                    }
+                                ) {
+                                    Text("Yes")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    onClick = {
+                                        showRecastDialog = false
+                                        onNavigateToCastController(albumTitle)
+                                    }
+                                ) {
+                                    Text("No")
+                                }
+                            }
+                        )
+                    }
+
+                    if (showCastSelector) {
+                        com.smugview.app.ui.component.CastDeviceSelectorBottomSheet(
+                            devices = discoveredDevices,
+                            onDeviceSelected = { device ->
+                                viewModel.connectToCastDevice(device)
+                                viewModel.castedAlbumKey = albumKey
+                                showCastSelector = false
+                                
+                                val urls = mutableListOf<String>()
+                                for (i in 0 until lazyPhotos.itemCount) {
+                                    val photo = lazyPhotos[i]
+                                    if (photo != null) {
+                                        val url = if (photo.isVideo) {
+                                            photo.videoUrl ?: photo.thumbnailUrl?.replace("/Th/", "/X3/")
+                                        } else {
+                                            photo.thumbnailUrl?.replace("/Th/", "/X3/")
+                                        }
+                                        if (url != null) {
+                                            urls.add(url)
+                                        }
+                                    }
+                                }
+                                viewModel.castSlideshow(urls)
+                                onNavigateToCastController(albumTitle)
+                            },
+                            onDismiss = {
+                                viewModel.stopCastDiscovery()
+                                showCastSelector = false
+                            }
+                        )
+                    }
+
+                    // Filter (Sort Options)
                     IconButton(
                         onClick = { showFilterSheet = true },
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
