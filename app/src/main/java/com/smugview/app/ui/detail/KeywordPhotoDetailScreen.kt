@@ -95,6 +95,13 @@ fun KeywordPhotoDetailScreen(
     val localCollections by viewModel.localCollections.collectAsState(initial = emptyList())
     val updatedKeywordsMap = remember { mutableStateMapOf<String, String>() }
 
+    DisposableEffect(Unit) {
+        viewModel.setViewingDetail(true)
+        onDispose {
+            viewModel.setViewingDetail(false)
+        }
+    }
+
     // 1. Initial State Resolution
     val totalCount = keywordPhotos.size
     val pagerState = rememberPagerState(

@@ -1,0 +1,1 @@
+- Optimized keyword search results to load immediately and incrementally with a visual progress bar.

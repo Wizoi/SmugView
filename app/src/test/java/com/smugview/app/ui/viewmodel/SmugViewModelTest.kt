@@ -84,6 +84,30 @@ class SmugViewModelTest {
                 .thenReturn(emptyList())
             Mockito.`when`(mockRepository.hasSearchPhotosInDb(Mockito.anyString(), Mockito.anyString()))
                 .thenReturn(true)
+            Mockito.`when`(mockRepository.getImagesByKeywordPage(
+                Mockito.nullable(String::class.java),
+                Mockito.anyString(),
+                Mockito.anyString(),
+                Mockito.anyInt(),
+                Mockito.anyInt(),
+                Mockito.nullable(String::class.java)
+            )).thenAnswer { invocation ->
+                val scope = invocation.arguments[0] as? String
+                val keywords = invocation.arguments[1] as String
+                val apiKey = invocation.arguments[2] as String
+                val count = invocation.arguments[3] as Int
+                val start = invocation.arguments[4] as Int
+                val nextUrl = invocation.arguments[5] as? String
+
+                if (nextUrl == null) {
+                    val list = kotlinx.coroutines.runBlocking {
+                        mockRepository.getImagesByKeyword(scope, keywords, apiKey, count, start)
+                    }
+                    Triple(list, null, list.size)
+                } else {
+                    Triple(emptyList<AlbumImageData>(), null, 0)
+                }
+            }
         }
         
         viewModel = SmugViewModel(mockApp, mockRepository, mockWorkManager, mockCastManager)

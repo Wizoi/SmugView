@@ -57,6 +57,7 @@ fun KeywordImagesScreen(
     val allTags by viewModel.allScopeTags.collectAsState()
     val filteredPhotos by viewModel.tagFilteredPhotos.collectAsState()
     val isLoadingPhotos by viewModel.isLoadingPhotos.collectAsState()
+    val totalPhotos by viewModel.keywordPhotosTotal.collectAsState()
 
     var tagInput by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
@@ -243,17 +244,17 @@ fun KeywordImagesScreen(
             }
 
             // Loader or Results Grid
-            if (isLoadingPhotos) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = NeonBlue)
-                }
-            } else {
-                if (filteredPhotos.isEmpty()) {
+            if (filteredPhotos.isEmpty()) {
+                if (isLoadingPhotos) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = NeonBlue)
+                    }
+                } else {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -267,7 +268,20 @@ fun KeywordImagesScreen(
                             textAlign = TextAlign.Center
                         )
                     }
-                } else {
+                }
+            } else {
+                if (isLoadingPhotos) {
+                    val progress = if (totalPhotos > 0) filteredPhotos.size.toFloat() / totalPhotos.toFloat() else 0f
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .height(2.dp),
+                        color = NeonBlue,
+                        trackColor = Color.White.copy(alpha = 0.1f)
+                    )
+                }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -346,4 +360,3 @@ fun KeywordImagesScreen(
             }
         }
     }
-}

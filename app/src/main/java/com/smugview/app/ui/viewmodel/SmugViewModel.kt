@@ -863,6 +863,21 @@ class SmugViewModel @Inject constructor(
     private val _allScopePhotos = MutableStateFlow<List<AlbumImageData>>(emptyList())
     val allScopePhotos: StateFlow<List<AlbumImageData>> = _allScopePhotos.asStateFlow()
 
+    // Tag Search Optimizations Caching & Pagination
+    private var lastLoadedKeywords: String = ""
+    private var lastLoadedScope: String = ""
+    private var nextStartToLoad: Int = 1
+    private var nextUrlToLoad: String? = null
+    private val _isViewingDetail = MutableStateFlow(false)
+    val isViewingDetail: StateFlow<Boolean> = _isViewingDetail.asStateFlow()
+
+    private val _keywordPhotosTotal = MutableStateFlow(0)
+    val keywordPhotosTotal: StateFlow<Int> = _keywordPhotosTotal.asStateFlow()
+
+    fun setViewingDetail(viewing: Boolean) {
+        _isViewingDetail.value = viewing
+    }
+
     // Tag Search Optimizations Caching
     private val _albumKeywordsMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     private val loadedAlbumImages = ConcurrentHashMap<String, List<AlbumImageData>>()
@@ -1622,55 +1637,136 @@ class SmugViewModel @Inject constructor(
 
     private fun observeSelectedTagsToLoadImages() {
         viewModelScope.launch {
-            _selectedTags.collect { selected ->
+            kotlinx.coroutines.flow.combine(
+                _selectedTags,
+                _searchScope,
+                _isViewingDetail
+            ) { selected, scope, isViewing ->
+                Triple(selected, scope, isViewing)
+            }.collect { (selected, scope, isViewing) ->
                 val included = selected.filter { it.value == TagFilterState.INCLUDED }.keys
                 if (included.isEmpty()) {
+                    imageLoadJob?.cancel()
                     _allScopePhotos.value = emptyList()
+                    _keywordPhotosTotal.value = 0
+                    lastLoadedKeywords = ""
+                    lastLoadedScope = ""
+                    nextStartToLoad = 1
+                    nextUrlToLoad = null
+                    _isLoadingPhotos.value = false
                     return@collect
                 }
 
-                imageLoadJob?.cancel()
+                val nickname = _activeNickname.value ?: return@collect
+                val resolvedRootId = if (scope.nodeUri == null || scope.nodeId == null) {
+                    repository.getUserRootNodeId(nickname = nickname, apiKey = apiKey).first().getOrNull()
+                } else {
+                    null
+                }
+                val scopeUri = scope.nodeUri ?: resolvedRootId?.let { "/api/v2/node/$it" } ?: "/api/v2/user/$nickname"
+                val keywordsQuery = included.joinToString(separator = ",")
+
+                if (isViewing) {
+                    // Halt loading when opening detail view
+                    imageLoadJob?.cancel()
+                    _isLoadingPhotos.value = false
+                    return@collect
+                }
+
+                // If keywords or scope changed, or we are not resuming, reset progress
+                if (keywordsQuery != lastLoadedKeywords || scopeUri != lastLoadedScope) {
+                    imageLoadJob?.cancel()
+                    lastLoadedKeywords = keywordsQuery
+                    lastLoadedScope = scopeUri
+                    nextStartToLoad = 1
+                    nextUrlToLoad = null
+                    _keywordPhotosTotal.value = 0
+                    _allScopePhotos.value = emptyList()
+                } else if (imageLoadJob?.isActive == true) {
+                    // Already loading the correct query, let it continue
+                    return@collect
+                }
+
+                // Start or resume loading
                 _isLoadingPhotos.value = true
                 _scanProgress.value = "Loading photos for selected tags..."
                 imageLoadJob = viewModelScope.launch(context = Dispatchers.IO) imageSearchLaunch@{
                     try {
-                        val nickname = _activeNickname.value ?: return@imageSearchLaunch
-                        val activeScope = _searchScope.value
-                        val resolvedRootId = if (activeScope.nodeUri == null || activeScope.nodeId == null) {
-                            repository.getUserRootNodeId(nickname = nickname, apiKey = apiKey).first().getOrNull()
-                        } else {
-                            null
-                        }
-                        val targetScopeId = activeScope.nodeId ?: resolvedRootId
+                        val targetScopeId = scope.nodeId ?: resolvedRootId
                         if (targetScopeId != null) {
                             val savedPassword = getUnlockedPassword(targetScopeId)
                             if (savedPassword != null) {
                                 repository.unlockInheritedPasswordRoot(targetScopeId, apiKey, savedPassword)
                             }
                         }
-                        val scopeUri = activeScope.nodeUri ?: resolvedRootId?.let { "/api/v2/node/$it" } ?: "/api/v2/user/$nickname"
-                        val keywordsQuery = included.joinToString(separator = ",")
-                        
-                        _allScopePhotos.value = emptyList()
-                        try {
-                            val results = repository.getImagesByKeyword(
+
+                        var currentStart = nextStartToLoad
+                        var currentNextUrl = nextUrlToLoad
+                        var isFirstPage = (currentStart == 1 && currentNextUrl == null)
+
+                        // Load page by page
+                        val (pageImages, nextUrlToken, total) = repository.getImagesByKeywordPage(
+                            scope = scopeUri,
+                            keywords = keywordsQuery,
+                            apiKey = apiKey,
+                            count = 500,
+                            start = currentStart,
+                            nextUrl = currentNextUrl
+                        )
+
+                        val mappedPage = pageImages.map { img ->
+                            if (img.keywordsString.isNullOrEmpty()) {
+                                img.copy(keywordArray = included.toList())
+                            } else {
+                                img
+                            }
+                        }
+
+                        if (isFirstPage) {
+                            _allScopePhotos.value = mappedPage
+                        } else {
+                            _allScopePhotos.value = (_allScopePhotos.value + mappedPage).distinctBy { it.imageKey }
+                        }
+
+                        _keywordPhotosTotal.value = total
+                        currentNextUrl = nextUrlToken
+                        currentStart += pageImages.size
+                        nextStartToLoad = currentStart
+                        nextUrlToLoad = currentNextUrl
+
+                        var pageCount = 1
+                        while (currentNextUrl != null && (!SmugMugRepository.isTesting || pageCount < 2)) {
+                            if (!isActive) break
+
+                            val (nextPageImages, nextPageToken, nextPageTotal) = repository.getImagesByKeywordPage(
                                 scope = scopeUri,
                                 keywords = keywordsQuery,
                                 apiKey = apiKey,
                                 count = 500,
-                                start = 1
+                                start = currentStart,
+                                nextUrl = currentNextUrl
                             )
-                            val mappedResults = results.map { img ->
+
+                            val mappedNextPage = nextPageImages.map { img ->
                                 if (img.keywordsString.isNullOrEmpty()) {
                                     img.copy(keywordArray = included.toList())
                                 } else {
                                     img
                                 }
                             }
-                            _allScopePhotos.value = mappedResults
-                        } catch (e: Exception) {
-                            android.util.Log.e("SmugViewModel", "Failed to load photos for keywords: $keywordsQuery", e)
+
+                            _allScopePhotos.value = (_allScopePhotos.value + mappedNextPage).distinctBy { it.imageKey }
+
+                            _keywordPhotosTotal.value = nextPageTotal
+                            currentNextUrl = nextPageToken
+                            currentStart += nextPageImages.size
+                            nextStartToLoad = currentStart
+                            nextUrlToLoad = currentNextUrl
+                            pageCount++
+                            kotlinx.coroutines.delay(100)
                         }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SmugViewModel", "Failed to load/resume photos for keywords: $keywordsQuery", e)
                     } finally {
                         _isLoadingPhotos.value = false
                     }

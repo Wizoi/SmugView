@@ -391,6 +391,41 @@ class SmugMugRepository @Inject constructor(
         return allImages
     }
 
+    suspend fun getImagesByKeywordPage(
+        scope: String?,
+        keywords: String,
+        apiKey: String,
+        count: Int = 500,
+        start: Int = 1,
+        nextUrl: String? = null
+    ): Triple<List<AlbumImageData>, String?, Int> {
+        val spaceSeparatedText = keywords.replace(",", " ")
+        return try {
+            val response = if (!nextUrl.isNullOrEmpty()) {
+                val overriddenUrl = overrideUrlCountAndStart(nextUrl, count, start)
+                val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
+                api.searchImagesByUri(
+                    url = absoluteUrl,
+                    apiKey = apiKey
+                )
+            } else {
+                api.getImagesByKeyword(
+                    apiKey = apiKey,
+                    scope = scope,
+                    text = spaceSeparatedText,
+                    count = count,
+                    start = start
+                )
+            }
+            val pageImages = response.response.images ?: emptyList()
+            val total = response.response.pages?.total ?: 0
+            Triple(pageImages, response.response.pages?.next, total)
+        } catch (e: Exception) {
+            android.util.Log.e("SmugMugRepository", "Failed to getImagesByKeywordPage", e)
+            Triple(emptyList(), null, 0)
+        }
+    }
+
     suspend fun updateImageMetadata(imageKey: String, apiKey: String, keywords: String): Boolean {
         val body = com.smugview.app.data.api.UpdateImageMetadataRequest(keywords)
         val response = api.updateImageMetadata(imageKey, apiKey, body)

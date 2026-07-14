@@ -2,6 +2,14 @@
   "antigravity.editor.autoOpenAgentEdits": false,
   "antigravity.editor.autoOpenAgentReads": false,
   "antigravity.editor.autoCommitAgentEdits": true,
-  "workbench.editor.enablePreview": true,
-  "workbench.editor.enablePreviewFromQuickOpen": true
+  // 1. Force edits to happen entirely in the background without opening tabs
+  "antigravity.editor.revealAgentEdits": "none",
+  "antigravity.editor.revealAgentFiles": "none",
+  // 2. Turn off VS Code's preview tabs (this stops files from rapidly opening & replacing each other)
+  "workbench.editor.enablePreview": false,
+  "workbench.editor.enablePreviewFromQuickOpen": false,
+  "workbench.editor.enablePreviewFromCodeNavigation": false,
+  // 3. Ensure the Agent panel doesn't constantly steal focus on reload or during runs
+  "antigravity.agent.openOnStartup": false,
+  "antigravity.agent.revealBehavior": "never"
 }
