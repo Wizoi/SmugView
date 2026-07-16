@@ -34,14 +34,20 @@ collaborative_workflow:
   2_collaborate_design:
     action: |
       Instruct the personas to collaboratively formulate a design:
-      - Step A: The UX Designer structures the layout and visual flow.
+      - Step A: The UX Designer structures the layout and visual flow, and generates a visual UI mockup (using generate_image) for any visual/layout adjustments.
       - Step B: The SmugMug API Specialist plans payload queries and filtering optimizations.
       - Step C: The Android Expert structures the Compose/Room caching models and threading constraints.
       - Step D: The UX Reviewer performs a usability review against edge cases (e.g. empty states, back buttons).
-      - Step E: The QA/Tester designs the integration test plan and details snapshot injection requirements.
+      - Step E: The QA/Tester designs the integration test plan, identifies test gaps, and documents that if new fields/models are added, all relevant mock test stubs/snapshots must be updated/requeried.
       - Step F: Critical Assessment & Alternatives: Sibling personas must review each other's plans, highlight trade-offs (e.g., performance vs. feature richness), detail at least one alternative considered, and verify that the combined layout is optimal and robust before generating a proposal.
   3_generate_proposal:
-    action: "Compile the collaborative design into a structured Implementation Plan proposal."
+    action: |
+      Compile the collaborative design into a structured Implementation Plan proposal.
+      The proposal MUST include:
+      - Sibling persona feedback and consensus/critiques.
+      - Embedded UI mockups (if visual changes are involved).
+      - At least one Alternative Considered with detailed trade-offs.
+      - A QA Test Gap & Impact analysis explicitly identifying if existing test stubs/snapshots require updating/requerying due to schema/field additions.
   4_obtain_approval:
     action: "Stop execution and present the proposal to the user for explicit review and approval before starting any code changes."
   5_post_execution_retro:

@@ -12,6 +12,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -446,10 +448,13 @@ fun BrowserScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BrowserNodeItem(
     node: CachedNode,
     isUnlocked: Boolean,
+    hasActiveUpdate: Boolean,
+    onMarkAsViewed: () -> Unit,
     onClick: () -> Unit
 ) {
     val neonColors = listOf(
@@ -462,6 +467,7 @@ fun BrowserNodeItem(
     )
     val glowColor = neonColors[Math.abs(node.nodeId.hashCode()) % neonColors.size]
     val aspectRatio = if (Math.abs(node.nodeId.hashCode()) % 2 == 0) 0.85f else 1.15f
+    var showMenu by remember { mutableStateOf(false) }
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -471,9 +477,25 @@ fun BrowserNodeItem(
             .aspectRatio(aspectRatio)
             .clip(RoundedCornerShape(16.dp))
             .border(1.5.dp, glowColor.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { showMenu = true }
+            )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false },
+                modifier = Modifier.background(SurfaceDark)
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Mark as Viewed", color = Color.White) },
+                    onClick = {
+                        showMenu = false
+                        onMarkAsViewed()
+                    }
+                )
+            }
             // Background Cover Image
             if (!node.highlightImageUrl.isNullOrEmpty()) {
                 AsyncImage(
@@ -520,11 +542,24 @@ fun BrowserNodeItem(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Row (Lock Badge)
+                // Top Row (Active Update Dot & Lock Badge)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (hasActiveUpdate) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .border(2.dp, Color(0xFF00F0FF).copy(alpha = 0.4f), CircleShape)
+                                .clip(CircleShape)
+                                .background(Color(0xFF00F0FF))
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.size(10.dp))
+                    }
+
                     if (node.access == "Password" || node.access == "Inherited") {
                         val lockIcon = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock
                         val lockColor = if (isUnlocked) Color(0xFF00E5FF) else Color(0xFFFFB800)
@@ -690,6 +725,7 @@ fun FoldersTabView(
     val context = LocalContext.current
     val nickname by viewModel.activeNickname.collectAsState()
     val activeUserProfile by viewModel.activeUserProfile.collectAsState()
+    val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
 
     when (uiState) {
         is BrowserUiState.Loading -> {
@@ -773,9 +809,12 @@ fun FoldersTabView(
                     ) {
                         items(uiState.nodes, key = { it.nodeId }) { node ->
                             val isUnlocked = viewModel.isNodeUnlocked(node.nodeId)
+                            val hasActiveUpdate = activeUpdates.contains(node.nodeId)
                             BrowserNodeItem(
                                 node = node,
                                 isUnlocked = isUnlocked,
+                                hasActiveUpdate = hasActiveUpdate,
+                                onMarkAsViewed = { viewModel.markNodeAsViewed(node.nodeId) },
                                 onClick = {
                                     if ((node.access == "Password" || node.access == "Inherited") && !isUnlocked) {
                                         viewModel.promptPassword(node)
@@ -1362,6 +1401,7 @@ fun SearchTabView(
     val isSearchPhotosLoading by viewModel.isSearchPhotosLoading.collectAsState()
     val activeScope by viewModel.searchScope.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
+    val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
     var searchInput by remember { mutableStateOf(viewModel.searchQuery) }
     val selectedResultTab = viewModel.searchResultTab
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -1741,9 +1781,12 @@ fun SearchTabView(
                                                 ) {
                                                     items(state.galleries, key = { it.nodeId }) { gallery ->
                                                         val isUnlocked = viewModel.isNodeUnlocked(gallery.nodeId)
+                                                        val hasActiveUpdate = activeUpdates.contains(gallery.nodeId)
                                                         BrowserNodeItem(
                                                             node = gallery,
                                                             isUnlocked = isUnlocked,
+                                                            hasActiveUpdate = hasActiveUpdate,
+                                                            onMarkAsViewed = { viewModel.markNodeAsViewed(gallery.nodeId) },
                                                             onClick = {
                                                                 if ((gallery.access == "Password" || gallery.access == "Inherited") && !isUnlocked) {
                                                                     viewModel.promptPassword(gallery)
@@ -1773,9 +1816,12 @@ fun SearchTabView(
                                             ) {
                                                 items(state.folders, key = { it.nodeId }) { folder ->
                                                     val isUnlocked = viewModel.isNodeUnlocked(folder.nodeId)
+                                                    val hasActiveUpdate = activeUpdates.contains(folder.nodeId)
                                                     BrowserNodeItem(
                                                         node = folder,
                                                         isUnlocked = isUnlocked,
+                                                        hasActiveUpdate = hasActiveUpdate,
+                                                        onMarkAsViewed = { viewModel.markNodeAsViewed(folder.nodeId) },
                                                         onClick = {
                                                             if ((folder.access == "Password" || folder.access == "Inherited") && !isUnlocked) {
                                                                 viewModel.promptPassword(folder)

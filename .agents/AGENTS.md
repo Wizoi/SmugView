@@ -1,5 +1,9 @@
 # SmugView Developer Rules & Environment Settings
 
+## 🚀 Agent Execution & Planning Guidelines
+*   **Design Proposal Sign-off**: When receiving a new feature, bug fix, or scenario update request, always compile a structured implementation plan and wait for the user's explicit design sign-off/approval.
+*   **Direct Execution Phase (Silent Mode)**: Once the implementation plan is approved by the user, proceed to execute all file edits, terminal commands, and testing tasks in sequence without stopping to prompt the user, ask for file-by-file confirmation, or explain intermediate steps. Provide a single, comprehensive final walkthrough only when execution is complete.
+
 ## ⚙️ Gradle & Compilation Environment
 *   **Java JDK / Runtime Location**: The default shell does not have `JAVA_HOME` or the `java` binary in its `PATH`. Always use the Android Studio bundled JetBrains Runtime (JBR) for executing Gradle commands:
     ```powershell
@@ -79,7 +83,7 @@
 
 ## 🧪 QA/Tester & Data-Layer Snapshot Rules
 *   **Scenario Update Test Planning**: Every workflow or scenario update must begin with a QA/Tester subagent-approved test coverage plan.
-*   **Test Gap & Impact Analysis**: Every implementation plan must detail why a bug was missed by existing tests, how to address it in future tests, and how existing tests or snapshots are impacted (including updating snapshots and expectations).
+*   **Test Gap & Impact Analysis**: Every implementation plan must detail why a bug was missed by existing tests, how to address it in future tests, and how existing tests or snapshots are impacted (including updating snapshots and expectations). If a new field or model property is added to API queries or cache entities, the QA/Tester must explicitly identify and update all related inline mock test stubs or external JSON snapshots to include the new field (preventing mock fields from being parsed as null during test runs).
 *   **Mock Elimination via Snapshots**: Transition test suites away from static mock data layers. Capture raw, live API response JSON payloads and inject them at the lowest data layer (e.g. mock server or network level) to guarantee that all fields, schemas, and relationships (like `Uris` and `WebUri`) are identical to actual server payloads.
 *   **Field Congruency Verification**: Before implementing tests, manually execute the target query against the SmugMug API. The QA/Tester must verify that all fields, URIs, and formats expected in the repository queries exist in the captured raw response before updating snapshots.
 

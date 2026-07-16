@@ -4,6 +4,7 @@ import com.smugview.app.data.api.*
 import com.smugview.app.data.db.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -85,17 +86,78 @@ class SmugMugRepositoryTest {
             return nodes.filter { it.albumUri in albumUris }
         }
 
-        override suspend fun getAllDescendants(nodeId: String): List<CachedNode> = emptyList()
+        val viewedUpdates = mutableMapOf<String, String>()
+
+        override suspend fun getAllDescendants(nodeId: String): List<CachedNode> {
+            val result = mutableListOf<CachedNode>()
+            val queue = ArrayDeque<String>()
+            queue.add(nodeId)
+            while (queue.isNotEmpty()) {
+                val current = queue.removeFirst()
+                val children = nodes.filter { it.parentNodeId == current }
+                for (child in children) {
+                    result.add(child)
+                    queue.add(child.nodeId)
+                }
+            }
+            return result
+        }
+
+        override suspend fun insertViewedUpdates(updates: List<ViewedGalleryUpdate>) {
+            for (u in updates) {
+                viewedUpdates[u.nodeId] = u.lastViewedDateModified
+            }
+        }
+
+        override suspend fun clearViewedUpdates() {
+            viewedUpdates.clear()
+        }
+
+        override fun getNodesWithActiveUpdates(): Flow<List<String>> {
+            val active = mutableSetOf<String>()
+            val nowMs = System.currentTimeMillis()
+            val thirtyDaysAgoMs = nowMs - 30L * 24L * 60L * 60L * 1000L
+            
+            for (n in nodes) {
+                val dm = n.dateModified ?: continue
+                val isRecent = try {
+                    val instant = java.time.Instant.parse(dm)
+                    instant.toEpochMilli() >= thirtyDaysAgoMs
+                } catch (e: Exception) {
+                    true // Fallback for simple unit test date formats
+                }
+                if (!isRecent) continue
+                
+                val lastViewed = viewedUpdates[n.nodeId]
+                val isNewUpdate = lastViewed == null || dm > lastViewed
+                if (isNewUpdate) {
+                    active.add(n.nodeId)
+                }
+            }
+            
+            val result = mutableSetOf<String>()
+            for (actId in active) {
+                var currId: String? = actId
+                while (currId != null && currId != "root") {
+                    result.add(currId)
+                    currId = nodes.find { it.nodeId == currId }?.parentNodeId
+                }
+            }
+            return flowOf(result.toList())
+        }
+
+        override suspend fun removeBookmark(collectionId: Long, type: String, itemKey: String) {}
+        override suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean = false
+        override suspend fun isBookmarkedAnywhere(type: String, itemKey: String): Boolean = false
+
+        // Restored stubs
         override suspend fun removeBookmarkGlobally(itemKey: String) {}
         override fun getPagedSearchResultsDesc(query: String, scope: String, type: String): androidx.paging.PagingSource<Int, SearchResult> = throw Exception()
         override fun getPagedSearchResultsAsc(query: String, scope: String, type: String): androidx.paging.PagingSource<Int, SearchResult> = throw Exception()
-
-        // Dummy implementations for required interface methods
         override suspend fun createCollection(collection: OfflineCollection): Long = 0L
         override fun getCollectionsForSite(siteNickname: String): Flow<List<OfflineCollection>> = flowOf(emptyList())
         override suspend fun getCollectionById(collectionId: Long): OfflineCollection? = null
         override suspend fun deleteCollection(collectionId: Long) {}
-        
         override suspend fun addPhotoToCollection(photo: CollectionPhoto) {}
         override fun getPhotosInCollection(collectionId: Long): Flow<List<CollectionPhoto>> = flowOf(emptyList())
         override suspend fun getCollectionPhoto(imageKey: String, collectionId: Long): CollectionPhoto? = null
@@ -104,12 +166,8 @@ class SmugMugRepositoryTest {
         override suspend fun updateDownloadStatusForAll(imageKey: String, filePath: String?, downloaded: Boolean) {}
         override suspend fun getPendingDownloads(): List<CollectionPhoto> = emptyList()
         override suspend fun renameCollection(collectionId: Long, newName: String) {}
-
         override suspend fun addBookmark(bookmark: CollectionBookmark): Long = 0L
         override fun getBookmarksForCollection(collectionId: Long): Flow<List<CollectionBookmark>> = flowOf(emptyList())
-        override suspend fun removeBookmark(collectionId: Long, type: String, itemKey: String) {}
-        override suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean = false
-        override suspend fun isBookmarkedAnywhere(type: String, itemKey: String): Boolean = false
 
         override suspend fun getBookmarkByItemKey(itemKey: String): CollectionBookmark? = null
         override suspend fun getCollectionPhotoByKey(imageKey: String): CollectionPhoto? = null
@@ -166,6 +224,7 @@ class SmugMugRepositoryTest {
                         "NodeID": "folder2",
                         "Type": "Folder",
                         "Name": "Subfolder",
+                        "DateModified": "2026-07-15T06:07:19+00:00",
                         "Uris": {
                           "ChildNodes": "/api/v2/node/folder2!children"
                         }
@@ -175,6 +234,7 @@ class SmugMugRepositoryTest {
                         "NodeID": "album1",
                         "Type": "Album",
                         "Name": "My Gallery",
+                        "DateModified": "2026-07-15T06:07:19+00:00",
                         "Uris": {
                           "Album": "/api/v2/album/album1"
                         }
@@ -513,6 +573,88 @@ class SmugMugRepositoryTest {
         
         val lineage = repository.resolveAndCacheAlbumLineage("child_node", "dummyKey")
         assertEquals(0, lineage.size)
+    }
+
+    @Test
+    fun testActiveUpdatesDetectionBubblingAndClearing() = runBlocking {
+        val fakeDao = FakeCollectionDao()
+        val mockInterceptor = Interceptor { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(404)
+                .message("Not Found")
+                .body("".toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, mockContext())
+
+        // Insert hierarchy:
+        // root (parentNodeId = null)
+        // -> folder1 (parentNodeId = "root", type = "Folder")
+        //    -> album1 (parentNodeId = "folder1", type = "Album")
+        val now = java.time.Instant.now()
+        val recentDate = now.toString() // within 30 days (current time)
+
+        val nodeFolder = CachedNode(
+            nodeId = "folder1",
+            parentNodeId = "root",
+            type = "Folder",
+            title = "Folder 1",
+            description = null,
+            access = "Public",
+            passwordHint = null,
+            uri = "/node/folder1",
+            childNodesUri = null,
+            albumUri = null
+        )
+        val nodeAlbum = CachedNode(
+            nodeId = "album1",
+            parentNodeId = "folder1",
+            type = "Album",
+            title = "Album 1",
+            description = null,
+            access = "Public",
+            passwordHint = null,
+            uri = "/node/album1",
+            childNodesUri = null,
+            albumUri = "/api/v2/album/album1",
+            dateModified = recentDate
+        )
+
+        fakeDao.insertNodes(listOf(nodeFolder, nodeAlbum))
+
+        // Check active updates: album1 is updated recently and not viewed, folder1 should bubble it up
+        val initialUpdates = repository.getNodesWithActiveUpdates().first()
+        println("DEBUG initialUpdates: $initialUpdates")
+        assertTrue("Album should have active update", initialUpdates.contains("album1"))
+        assertTrue("Folder should bubble up update from album", initialUpdates.contains("folder1"))
+
+        // Satisfy / Mark album1 as viewed
+        repository.markNodeAsViewed("album1")
+
+        // Active updates should now be empty
+        val postViewUpdates = repository.getNodesWithActiveUpdates().first()
+        assertFalse("Album should no longer have active update", postViewUpdates.contains("album1"))
+        assertFalse("Folder should no longer bubble up update", postViewUpdates.contains("folder1"))
+
+        // Add a new update to album1 (date modified is newer than viewed date)
+        val newerDate = now.plus(java.time.Duration.ofHours(2)).toString()
+        val nodeAlbumUpdated = nodeAlbum.copy(dateModified = newerDate)
+        fakeDao.clearAllCachedNodes()
+        fakeDao.insertNodes(listOf(nodeFolder, nodeAlbumUpdated))
+
+        // Active updates should reappear
+        val updatedUpdates = repository.getNodesWithActiveUpdates().first()
+        assertTrue("Album should show active update again after date changes", updatedUpdates.contains("album1"))
+        assertTrue("Folder should bubble up update again", updatedUpdates.contains("folder1"))
+
+        // Long press mark parent folder as viewed, which recursively satisfies album1
+        repository.markNodeAsViewed("folder1")
+        val finalUpdates = repository.getNodesWithActiveUpdates().first()
+        assertFalse("Album should be recursively satisfied", finalUpdates.contains("album1"))
+        assertFalse("Folder should be satisfied", finalUpdates.contains("folder1"))
     }
 }
 

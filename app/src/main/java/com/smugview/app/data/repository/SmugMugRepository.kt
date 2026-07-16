@@ -13,6 +13,7 @@ import com.smugview.app.data.api.ExifData
 import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.api.NodeData
 import com.smugview.app.data.db.CachedNode
+import com.smugview.app.data.db.ViewedGalleryUpdate
 import com.smugview.app.data.db.CollectionDao
 import com.smugview.app.data.db.CollectionPhoto
 import com.smugview.app.data.db.CollectionBookmark
@@ -200,7 +201,8 @@ class SmugMugRepository @Inject constructor(
                         albumUri = node.uris.album,
                         highlightImageUrl = highlightUrl,
                         sortIndex = index,
-                        webUri = node.webUri
+                        webUri = node.webUri,
+                        dateModified = node.dateModified
                     )
                 }
 
@@ -820,7 +822,8 @@ class SmugMugRepository @Inject constructor(
                         albumUri = node.uris.album,
                         highlightImageUrl = highlightUrl,
                         sortIndex = index,
-                        webUri = node.webUri
+                        webUri = node.webUri,
+                        dateModified = node.dateModified
                     )
                 }
                 
@@ -935,7 +938,8 @@ class SmugMugRepository @Inject constructor(
                 albumUri = node.uris.album,
                 highlightImageUrl = null,
                 sortIndex = 0,
-                webUri = node.webUri
+                webUri = node.webUri,
+                dateModified = node.dateModified
             )
             dao.insertNodes(listOf(cachedNode))
             cachedNode
@@ -993,6 +997,7 @@ class SmugMugRepository @Inject constructor(
     // --- Offline Local Collections Room Interface ---
 
     suspend fun getNodeById(nodeId: String): CachedNode? = dao.getNodeById(nodeId)
+    suspend fun getNodeByIdOrKey(idOrKey: String): CachedNode? = dao.getNodeByIdOrKey(idOrKey)
 
     suspend fun insertNodes(nodes: List<CachedNode>) {
         val safeNodes = nodes.map { node ->
@@ -1181,7 +1186,8 @@ class SmugMugRepository @Inject constructor(
                 highlightImageUrl = null,
                 childCount = null,
                 sortIndex = 0,
-                webUri = apiNode.webUri
+                webUri = apiNode.webUri,
+                dateModified = apiNode.dateModified
             )
             dao.insertNodes(listOf(cn))
             cn
@@ -1247,7 +1253,8 @@ class SmugMugRepository @Inject constructor(
                     albumUri = node.uris.album,
                     highlightImageUrl = highlightUrl,
                     sortIndex = index,
-                    webUri = node.webUri
+                    webUri = node.webUri,
+                    dateModified = node.dateModified
                 )
             }
             dao.deleteSearchResultsForQueryAndType(query, scopeKey, "Folder")
@@ -1344,6 +1351,33 @@ class SmugMugRepository @Inject constructor(
             current = dao.getNodeById(parentId)
         }
         return highestPasswordNode
+    }
+
+    fun getNodesWithActiveUpdates(): Flow<List<String>> {
+        return dao.getNodesWithActiveUpdates()
+    }
+
+    suspend fun markNodeAsViewed(nodeId: String) {
+        val node = dao.getNodeById(nodeId) ?: return
+        
+        val updates = mutableListOf<ViewedGalleryUpdate>()
+        val dateModified = node.dateModified
+        if (!dateModified.isNullOrEmpty()) {
+            updates.add(ViewedGalleryUpdate(nodeId, dateModified))
+        }
+        
+        // Also get all descendants to recursively satisfy child updates
+        val descendants = dao.getAllDescendants(nodeId)
+        for (desc in descendants) {
+            val descDate = desc.dateModified
+            if (!descDate.isNullOrEmpty()) {
+                updates.add(ViewedGalleryUpdate(desc.nodeId, descDate))
+            }
+        }
+        
+        if (updates.isNotEmpty()) {
+            dao.insertViewedUpdates(updates)
+        }
     }
 }
 

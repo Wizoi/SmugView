@@ -262,18 +262,8 @@ class DefaultCastManager @Inject constructor(
             while (isActive) {
                 val localDevices = performSsdpDiscovery()
                 
-                if (localDevices.isEmpty()) {
-                    android.util.Log.d("CastManager", "SSDP: Scan returned 0 devices. Using mock fallback targets.")
-                    val initialDevices = listOf(
-                        CastDevice("g1", "Living Room TV (Chromecast)", "192.168.1.15", CastType.GOOGLE),
-                        CastDevice("r1", "Bedroom Roku Express", "192.168.1.28", CastType.ROKU),
-                        CastDevice("a1", "Fire TV Stick 4K", "192.168.1.42", CastType.AMAZON)
-                    )
-                    updateDiscoveredDevices(initialDevices)
-                } else {
-                    android.util.Log.d("CastManager", "SSDP: Scan successfully resolved ${localDevices.size} local devices.")
-                    updateDiscoveredDevices(localDevices)
-                }
+                android.util.Log.d("CastManager", "SSDP: Scan successfully resolved ${localDevices.size} local devices.")
+                updateDiscoveredDevices(localDevices)
                 
                 delay(8000)
             }

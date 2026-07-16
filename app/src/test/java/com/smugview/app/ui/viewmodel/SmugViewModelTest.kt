@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*
@@ -75,6 +76,9 @@ class SmugViewModelTest {
             
         Mockito.`when`(mockRepository.getSearchHistory())
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyList()))
+            
+        Mockito.`when`(mockRepository.getNodesWithActiveUpdates())
+            .thenReturn(flowOf(emptyList()))
             
         Mockito.`when`(mockRepository.getLocalCollections(Mockito.anyString()))
             .thenReturn(flowOf(emptyList()))
@@ -634,6 +638,52 @@ class SmugViewModelTest {
         assertEquals(1, results.size)
         assertEquals("img_redacted", results[0].imageKey)
         assertEquals("dancing", results[0].keywordsString)
+    }
+
+    @Test
+    fun testSelectAlbumMarksAsViewed() = runBlocking {
+        val albumKey = "album1"
+        val mockAlbum = com.smugview.app.data.api.AlbumDetails(
+            uri = "/api/v2/album/$albumKey",
+            albumKey = albumKey,
+            nodeId = "node_album1",
+            name = "Test Album"
+        )
+        
+        val cachedNode = CachedNode(
+            nodeId = "node_album1",
+            parentNodeId = "folder1",
+            type = "Album",
+            title = "Test Album",
+            description = null,
+            access = "Public",
+            passwordHint = null,
+            uri = "/node/album1",
+            childNodesUri = null,
+            albumUri = "/api/v2/album/$albumKey",
+            dateModified = "2026-07-15T06:07:19+00:00"
+        )
+        
+        Mockito.`when`(mockRepository.getNodeByIdOrKey(albumKey))
+            .thenReturn(cachedNode)
+            
+        Mockito.`when`(mockRepository.resolveAndCacheAlbumLineage(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(emptyList())
+
+        Mockito.`when`(mockRepository.getAlbum(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(mockAlbum)
+
+        Mockito.`when`(mockRepository.getAlbumImagesPage(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(com.smugview.app.data.api.AlbumImagesResponse(
+                response = com.smugview.app.data.api.AlbumImagesPayload(
+                    images = emptyList()
+                )
+            ))
+
+        viewModel.selectAlbum(albumKey, "apiKey")
+        
+        Mockito.verify(mockRepository, Mockito.timeout(3000).atLeastOnce())
+            .markNodeAsViewed("node_album1")
     }
 }
 

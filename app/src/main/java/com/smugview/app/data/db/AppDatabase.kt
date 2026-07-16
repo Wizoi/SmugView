@@ -10,9 +10,10 @@ import androidx.room.RoomDatabase
         CollectionPhoto::class,
         CollectionBookmark::class,
         SearchHistory::class,
-        SearchResult::class
+        SearchResult::class,
+        ViewedGalleryUpdate::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

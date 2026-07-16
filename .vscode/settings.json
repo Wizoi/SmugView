@@ -1,4 +1,7 @@
 {
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 1000,
+  "antigravity.autoApplyEdits": true,
   "antigravity.editor.autoOpenAgentEdits": false,
   "antigravity.editor.autoOpenAgentReads": false,
   "antigravity.editor.autoCommitAgentEdits": true,

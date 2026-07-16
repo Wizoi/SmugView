@@ -5,7 +5,10 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "cached_nodes")
+@Entity(
+    tableName = "cached_nodes",
+    indices = [Index(value = ["parentNodeId"])]
+)
 data class CachedNode(
     @PrimaryKey val nodeId: String,
     val parentNodeId: String?, // Root nodes will have null
@@ -20,7 +23,8 @@ data class CachedNode(
     val highlightImageUrl: String? = null,
     val childCount: Int? = null,
     val sortIndex: Int = 0,
-    val webUri: String? = null
+    val webUri: String? = null,
+    val dateModified: String? = null
 ) {
     fun getAlbumKey(): String {
         return if (albumUri?.contains("/album/") == true) {
@@ -30,6 +34,12 @@ data class CachedNode(
         }
     }
 }
+
+@Entity(tableName = "viewed_gallery_updates")
+data class ViewedGalleryUpdate(
+    @PrimaryKey val nodeId: String,
+    val lastViewedDateModified: String
+)
 
 @Entity(tableName = "offline_collections")
 data class OfflineCollection(

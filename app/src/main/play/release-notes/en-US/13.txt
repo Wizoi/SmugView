@@ -1,0 +1,3 @@
+Added folder and gallery update indicators showing recent updates within 30 days.
+Introduced long-press menu to mark folders or galleries as viewed.
+Bubbles up new updates to parent folders recursively.

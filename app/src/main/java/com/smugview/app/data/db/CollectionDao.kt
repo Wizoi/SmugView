@@ -171,4 +171,30 @@ interface CollectionDao {
 
     @Query("SELECT * FROM search_results WHERE searchQuery = :query AND searchScope = :scope AND itemType = :type ORDER BY date ASC")
     fun getPagedSearchResultsAsc(query: String, scope: String, type: String): androidx.paging.PagingSource<Int, SearchResult>
+
+    // Viewed Gallery Updates Operations
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertViewedUpdates(updates: List<ViewedGalleryUpdate>)
+
+    @Query("DELETE FROM viewed_gallery_updates")
+    suspend fun clearViewedUpdates()
+
+    @Query("""
+        WITH RECURSIVE active_nodes(nodeId, parentNodeId) AS (
+            SELECT n.nodeId, n.parentNodeId
+            FROM cached_nodes n
+            LEFT JOIN viewed_gallery_updates v ON n.nodeId = v.nodeId
+            WHERE n.dateModified IS NOT NULL
+              AND datetime(n.dateModified) >= datetime('now', '-30 days')
+              AND (v.lastViewedDateModified IS NULL OR n.dateModified > v.lastViewedDateModified)
+            
+            UNION
+            
+            SELECT p.nodeId, p.parentNodeId
+            FROM cached_nodes p
+            JOIN active_nodes a ON p.nodeId = a.parentNodeId
+        )
+        SELECT DISTINCT nodeId FROM active_nodes
+    """)
+    fun getNodesWithActiveUpdates(): Flow<List<String>>
 }

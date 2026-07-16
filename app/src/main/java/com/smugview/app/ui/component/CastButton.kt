@@ -39,12 +39,12 @@ fun CastButton(
     )
 
     val neonBlue = Color(0xFF00E5FF)
-    val surfaceDark = Color(0xFF121418)
+    val translucentDark = Color.Black.copy(alpha = 0.3f)
     
     val buttonColor = when (connectionState) {
         ConnectionState.CONNECTED -> neonBlue.copy(alpha = 0.2f)
         ConnectionState.CONNECTING -> neonBlue.copy(alpha = 0.1f)
-        else -> surfaceDark
+        else -> translucentDark
     }
 
     val iconColor = when (connectionState) {

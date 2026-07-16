@@ -73,7 +73,8 @@ data class NodeData(
     @SerializedName("Privacy") val privacy: String? = null,
     @SerializedName("PasswordHint") val passwordHint: String? = null,
     @SerializedName("WebUri") val webUri: String? = null,
-    @SerializedName("Uris") val uris: NodeUris
+    @SerializedName("Uris") val uris: NodeUris,
+    @SerializedName("DateModified") val dateModified: String? = null
 )
 data class NodeUris(
     @SerializedName("ChildNodes") val childNodes: String? = null,
@@ -182,7 +183,8 @@ data class AlbumDetails(
     @SerializedName("ImageCount") val imageCount: Int? = null,
     @SerializedName("SecurityType") val securityType: String? = null,
     @SerializedName("PasswordHint") val passwordHint: String? = null,
-    @SerializedName("Uris") val uris: NodeUris? = null
+    @SerializedName("Uris") val uris: NodeUris? = null,
+    @SerializedName("DateModified") val dateModified: String? = null
 )
 
 data class UserAlbumsResponse(

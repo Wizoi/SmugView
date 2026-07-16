@@ -499,6 +499,14 @@ class SmugViewModel @Inject constructor(
     private val _browserState = MutableStateFlow<BrowserUiState>(BrowserUiState.Loading)
     val browserState: StateFlow<BrowserUiState> = _browserState.asStateFlow()
 
+    val activeUpdateNodeIds: StateFlow<Set<String>> = repository.getNodesWithActiveUpdates()
+        .map { it.toSet() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptySet()
+        )
+
     var currentFolderId by mutableStateOf<String?>(null)
         private set
 
@@ -1243,6 +1251,18 @@ class SmugViewModel @Inject constructor(
         }
     }
 
+    fun markNodeAsViewed(nodeId: String) {
+        viewModelScope.launch {
+            try {
+                repository.markNodeAsViewed(nodeId)
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.e("SmugViewModel", "Failed to mark node as viewed: $nodeId", e)
+                }
+            }
+        }
+    }
+
     fun navigateBackFolder(): Boolean {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "navigateBackFolder called: stackSize=${folderNavigationStack.size}")
@@ -1937,6 +1957,16 @@ class SmugViewModel @Inject constructor(
         if (!albumKey.startsWith("local_col_")) {
             viewModelScope.launch {
                 try {
+                    val node = repository.getNodeByIdOrKey(albumKey)
+                    if (node != null) {
+                        repository.markNodeAsViewed(node.nodeId)
+                    }
+                } catch (e: Exception) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.e("SmugViewModel", "Failed to mark album as viewed on selection: $albumKey", e)
+                    }
+                }
+                try {
                     val password = getUnlockedPassword(albumKey)
                     val list = repository.resolveAndCacheAlbumLineage(albumKey, apiKey, password)
                     folderNavigationStack.clear()
@@ -2060,6 +2090,10 @@ class SmugViewModel @Inject constructor(
                 currentAlbumTitle = albumDetails?.name ?: ""
                 currentAlbumStyle = albumDetails?.galleryStyle ?: "Collage"
                 currentAlbumWebUri = albumDetails?.webUri ?: ""
+                val nodeIdToMark = albumDetails?.nodeId
+                if (nodeIdToMark != null) {
+                    repository.markNodeAsViewed(nodeIdToMark)
+                }
             } catch (e: Exception) {
                 // Fallback to Collage
             }
