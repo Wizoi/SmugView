@@ -477,13 +477,15 @@ class SmugMugApiTest {
             actual = "Bio image fetched, ImageKey is '${response.response.bioImage?.imageKey}'"
             success = true
         } catch (e: Exception) {
+            // In playback mode the response is a fixed snapshot, so an exception here is a real
+            // parse/deserialization failure, not "this account has no bio image" (that case
+            // returns a response with bioImage == null, not an exception). Fail loudly.
             actual = "Error: ${e.message}"
-            // BioImage might not be set for some accounts, so let's log it but don't fail the build
-            success = true
-            actual = "No bio image configured or error: ${e.message}"
-        } finally {
+            success = false
             logResult("getUserBioImage", endpoint, expected, actual, success)
+            throw AssertionError("getUserBioImage failed to parse: ${e.message}", e)
         }
+        logResult("getUserBioImage", endpoint, expected, actual, success)
     }
 
     @Test
@@ -592,10 +594,11 @@ class SmugMugApiTest {
             actual = "Exif metadata fetched successfully"
             success = true
         } catch (e: Exception) {
-            actual = "Error: ${e.message}"
-            // Some images might not have metadata if unauthenticated/private
-            success = true
-            actual = "Exif fetch skipped or error: ${e.message}"
+            // Playback snapshot is deterministic; an exception is a real parse failure. Record it
+            // (the finally logs) and fail — don't swallow into success=true.
+            actual = "Exif fetch failed: ${e.message}"
+            success = false
+            throw AssertionError("getImageExif failed to parse: ${e.message}", e)
         } finally {
             logResult("getImageExif", endpoint, expected, actual, success)
         }
@@ -725,9 +728,12 @@ class SmugMugApiTest {
             }
             
             if (!success) {
-                // If no locked album with keywords was found, we mark the test as successful since it's an environment constraint
-                success = true
-                actual = "Skipped visibility verification: No locked albums with keywords found in account."
+                // No locked album with keywords in the fixture — report this as a genuine SKIP
+                // (assumption not met) rather than a false pass, so it shows up honestly.
+                actual = "Skipped visibility verification: No locked albums with keywords found."
+                org.junit.Assume.assumeTrue(
+                    "No locked album with keywords available to verify redaction", false
+                )
             }
         } catch (e: Exception) {
             actual = "Error: ${e.message}"
@@ -958,6 +964,64 @@ class SmugMugApiTest {
             logResult("testPagingSearchImagesUser", endpoint, expected, actual, success)
         }
     }
+
+    @Test
+    fun testFeaturedSitesValidity() {
+        if (!RECORD_MODE) {
+            println("Skipping testFeaturedSitesValidity: Only runs when RECORD_MODE = true (live API verification).")
+            return
+        }
+
+        val ctx = try {
+            resolveTestContext()
+        } catch (e: Exception) {
+            println("Skipping testFeaturedSitesValidity: Test credentials could not be resolved.")
+            return
+        }
+
+        if (ctx.apiKey.isBlank() || ctx.apiKey == "YOUR_API_KEY_HERE") {
+            println("Skipping testFeaturedSitesValidity: API Key is not configured.")
+            return
+        }
+
+        var success = false
+        var actual = "Failed"
+        val endpoint = "user/{nickname}"
+        val expected = "Resolve all hardcoded featured photographer/institution nicknames successfully"
+        
+        val defunctSites = mutableListOf<String>()
+        val testedNicknames = listOf("smugmugfilms", "Tutorial", "uphs", "corvettemuseum", "daemenuniversity")
+
+        try {
+            for (nickname in testedNicknames) {
+                try {
+                    val response = runBlocking {
+                        ctx.api.getUserProfile(nickname, ctx.apiKey)
+                    }
+                    assertNotNull(response.response)
+                    assertNotNull(response.response.user)
+                    assertEquals(nickname.lowercase(), response.response.user.nickName.lowercase())
+                } catch (e: Exception) {
+                    defunctSites.add(nickname)
+                }
+            }
+            
+            if (defunctSites.isEmpty()) {
+                actual = "All featured sites are valid: $testedNicknames"
+                success = true
+            } else {
+                actual = "Defunct featured sites found: $defunctSites"
+                success = false
+            }
+        } catch (e: Exception) {
+            actual = "Error during verification: ${e.message}"
+            throw e
+        } finally {
+            logResult("testFeaturedSitesValidity", endpoint, expected, actual, success)
+        }
+        
+        assertTrue("Defunct featured sites found: $defunctSites", defunctSites.isEmpty())
+    }
 }
 
 class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
@@ -971,6 +1035,8 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, ignoreErrors: String?) = delegate.getAlbumImagesByUri(url, apiKey, password, ignoreErrors)
     override suspend fun searchImages(apiKey: String, scope: String?, text: String?, sortMethod: String?, sortDirection: String?, count: Int, start: Int, filter: String, filterUri: String, expand: String?, verbosity: Int) = delegate.searchImages(apiKey, scope, text, sortMethod, sortDirection, count, start, filter, filterUri, expand, verbosity)
     override suspend fun searchImagesByUri(url: String, apiKey: String) = delegate.searchImagesByUri(url, apiKey)
+    override suspend fun searchUsers(apiKey: String, query: String, verbosity: Int) = delegate.searchUsers(apiKey, query, verbosity)
+    override suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int, filter: String, filterUri: String, verbosity: Int, password: String?) = delegate.getUserRecentImages(nickname, apiKey, count, filter, filterUri, verbosity, password)
     
     override suspend fun searchImagesUser(nickname: String, apiKey: String, text: String, scope: String?, password: String?, count: Int, start: Int, expand: String?, filter: String, filterUri: String, verbosity: Int): ImageSearchResponse {
         val images = List(count) { i ->
@@ -1016,9 +1082,9 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun unlockNode(nodeId: String, apiKey: String, password: String, ignoreErrors: String?) = delegate.unlockNode(nodeId, apiKey, password, ignoreErrors)
     override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String, ignoreErrors: String?) = delegate.unlockAlbum(albumKey, apiKey, password, ignoreErrors)
     override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest) = delegate.updateImageMetadata(imageKey, apiKey, body)
-    override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getUserAlbums(nickname, apiKey, count, expand, filter, filterUri, verbosity)
+    override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int, password: String?, sortMethod: String?, sortDirection: String?) = delegate.getUserAlbums(nickname, apiKey, count, expand, filter, filterUri, verbosity, password, sortMethod, sortDirection)
     override suspend fun getUserAlbumsByUri(url: String, apiKey: String) = delegate.getUserAlbumsByUri(url, apiKey)
     override suspend fun getAlbumKeywords(albumKeys: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getAlbumKeywords(albumKeys, apiKey, password, expand, filter, filterUri, verbosity)
-    override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeId: String?, verbosity: Int) = delegate.getUserTopKeywords(nickname, apiKey, nodeId, verbosity)
+    override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeId: String?, verbosity: Int, password: String?) = delegate.getUserTopKeywords(nickname, apiKey, nodeId, verbosity, password)
     override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, filterUri: String, verbosity: Int) = delegate.getImagesByKeyword(apiKey, scope, text, count, start, filter, filterUri, verbosity)
 }

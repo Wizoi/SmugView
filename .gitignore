@@ -30,4 +30,11 @@ Thumbs.db
 
 # Temporary, Scratch & Local Debug files
 scratch/
-test/
+/test/
+scratch_logcat.txt
+
+# Emulator debug screenshots (local only)
+build-shots/
+
+# Recorded API snapshots contain the (leaked) API key - keep local until redacted
+app/src/test/resources/snapshots/

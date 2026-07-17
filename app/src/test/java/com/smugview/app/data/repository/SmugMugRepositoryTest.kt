@@ -2,6 +2,7 @@ package com.smugview.app.data.repository
 
 import com.smugview.app.data.api.*
 import com.smugview.app.data.db.*
+import com.smugview.app.data.security.FakePasswordStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
@@ -71,8 +72,8 @@ class SmugMugRepositoryTest {
             return result
         }
 
-        override suspend fun searchNodesGlobal(query: String, type: String): List<CachedNode> {
-            return nodes.filter { it.type == type && (it.title.contains(query, true) || it.description?.contains(query, true) == true) }
+        override suspend fun searchNodesGlobal(query: String, type: String, nickname: String): List<CachedNode> {
+            return nodes.filter { it.type == type && (it.title.contains(query, true) || it.description?.contains(query, true) == true) && (it.nickname == nickname || it.nickname.isEmpty()) }
         }
 
         override suspend fun searchNodesInScope(scopeNodeId: String, query: String, type: String): List<CachedNode> {
@@ -81,6 +82,20 @@ class SmugMugRepositoryTest {
         }
 
         override suspend fun getAllCachedNodes(): List<CachedNode> = nodes
+
+        val albumIndex = mutableListOf<CachedAlbum>()
+        override suspend fun upsertAlbums(albums: List<CachedAlbum>) {
+            for (a in albums) {
+                albumIndex.removeAll { it.albumKey == a.albumKey }
+                albumIndex.add(a)
+            }
+        }
+        override suspend fun getAlbumIndex(nickname: String): List<CachedAlbum> =
+            albumIndex.filter { it.nickname == nickname || it.nickname.isEmpty() }.sortedBy { it.sortIndex }
+        override suspend fun getLatestAlbumDateModified(nickname: String): String? =
+            albumIndex.filter { it.nickname == nickname || it.nickname.isEmpty() }.mapNotNull { it.dateModified }.maxOrNull()
+        override suspend fun getAlbumIndexCount(nickname: String): Int =
+            albumIndex.count { it.nickname == nickname || it.nickname.isEmpty() }
 
         override suspend fun getNodesByAlbumUris(albumUris: List<String>): List<CachedNode> {
             return nodes.filter { it.albumUri in albumUris }
@@ -173,9 +188,11 @@ class SmugMugRepositoryTest {
         override suspend fun getCollectionPhotoByKey(imageKey: String): CollectionPhoto? = null
         
         override suspend fun insertSearchQuery(searchHistory: SearchHistory) {}
-        override fun getSearchHistory(): Flow<List<SearchHistory>> = flowOf(emptyList())
-        override suspend fun deleteSearchQuery(query: String) {}
-        override suspend fun clearSearchHistory() {}
+        override fun getSearchHistory(nickname: String): Flow<List<SearchHistory>> = flowOf(emptyList())
+        override suspend fun deleteSearchQuery(query: String, nickname: String) {}
+        override suspend fun clearSearchHistory(nickname: String) {}
+        override suspend fun clearAllSearchHistory() {}
+        override suspend fun updateNodeAccess(nodeId: String, access: String?, passwordHint: String?) {}
         
         override suspend fun insertSearchResults(results: List<SearchResult>) {
             searchResults.addAll(results)
@@ -270,7 +287,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, mockContext())
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // 1. Initially database cache is empty
         val initialAlbums = repository.getAlbumsInScope("folder1")
@@ -327,7 +344,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, mockContext())
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // Call repository keywords batch method
         val response = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
@@ -393,7 +410,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, mockContext())
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // 1. Simulate anonymous/locked state
         val response1 = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
@@ -448,7 +465,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, mockContext())
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // Call performBackgroundSearchImages
         repository.performBackgroundSearchImages(
@@ -506,7 +523,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, mockContext())
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         val result = repository.getImagesByKeyword(
             scope = "/api/v2/user/testUser",
@@ -554,7 +571,7 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, mockContext())
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
         
         fakeDao.insertNodes(listOf(
             CachedNode(
@@ -588,7 +605,7 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, mockContext())
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // Insert hierarchy:
         // root (parentNodeId = null)
@@ -655,6 +672,172 @@ class SmugMugRepositoryTest {
         val finalUpdates = repository.getNodesWithActiveUpdates().first()
         assertFalse("Album should be recursively satisfied", finalUpdates.contains("album1"))
         assertFalse("Folder should be satisfied", finalUpdates.contains("folder1"))
+    }
+
+    @Test
+    fun testSearchPublicSites() = runBlocking {
+        val fakeDao = FakeCollectionDao()
+        
+        val mockInterceptor = Interceptor { chain ->
+            val url = chain.request().url.toString()
+            val json = when {
+                url.contains("user!search") -> {
+                    """
+                    {
+                      "Response": {
+                        "Uri": "/api/v2/user!search",
+                        "Locator": "User",
+                        "LocatorType": "Objects",
+                        "User": [
+                          {
+                            "NickName": "glenncampbell",
+                            "Name": "Glenn Campbell",
+                            "WebUri": "https://glenncampbell.smugmug.com",
+                            "Uris": {
+                              "UserAlbums": "/api/v2/user/glenncampbell!albums"
+                            }
+                          },
+                          {
+                            "NickName": "uphs",
+                            "Name": "Union Pacific Historical Society",
+                            "WebUri": "https://uphs.smugmug.com",
+                            "Uris": {
+                              "UserAlbums": "/api/v2/user/uphs!albums"
+                            }
+                          }
+                        ]
+                      },
+                      "Code": 200,
+                      "Message": "Ok"
+                    }
+                    """.trimIndent()
+                }
+                url.contains("glenncampbell!recentimages") -> {
+                    """
+                    {
+                      "Response": {
+                        "Uri": "/api/v2/user/glenncampbell!recentimages",
+                        "Locator": "Image",
+                        "LocatorType": "Objects",
+                        "Image": [
+                          {
+                            "ImageKey": "img1",
+                            "Title": "Sunset",
+                            "Caption": "Nice sunset",
+                            "ThumbnailUrl": "https://photos.smugmug.com/img1-th.jpg",
+                            "WebUri": "https://glenncampbell.smugmug.com/Nature/Sunset/i-img1"
+                          },
+                          {
+                            "ImageKey": "img2",
+                            "Title": "Forest",
+                            "Caption": "Deep forest",
+                            "ThumbnailUrl": "https://photos.smugmug.com/img2-th.jpg",
+                            "WebUri": "https://glenncampbell.smugmug.com/Nature/Forest/i-img2"
+                          }
+                        ]
+                      },
+                      "Code": 200,
+                      "Message": "Ok"
+                    }
+                    """.trimIndent()
+                }
+                url.contains("uphs!recentimages") -> {
+                    """
+                    {
+                      "Response": {
+                        "Uri": "/api/v2/user/uphs!recentimages",
+                        "Locator": "Image",
+                        "LocatorType": "Objects",
+                        "Image": [
+                          {
+                            "ImageKey": "img3",
+                            "Title": "Depot History",
+                            "Caption": "Union Pacific Depot",
+                            "ThumbnailUrl": "https://photos.smugmug.com/img3-th.jpg",
+                            "WebUri": "https://uphs.smugmug.com/UP-Facilities/1922-UP-Depots/i-img3"
+                          }
+                        ]
+                      },
+                      "Code": 200,
+                      "Message": "Ok"
+                    }
+                    """.trimIndent()
+                }
+                else -> """{"Code": 404, "Message": "Not found"}"""
+            }
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+        
+        val mockApi = createMockApi(mockInterceptor)
+        val repo = SmugMugRepository(mockApi, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        
+        val result = repo.searchPublicSites("nature", "fakeApiKey").first()
+        val sites = result.getOrThrow()
+        assertEquals(2, sites.size)
+        
+        val glenn = sites.find { it.nickname == "glenncampbell" }
+        assertNotNull(glenn)
+        assertEquals(2, glenn!!.previewPhotos.size)
+        assertEquals("https://glenncampbell.smugmug.com", glenn.webUri)
+        
+        val uphs = sites.find { it.nickname == "uphs" }
+        assertNotNull(uphs)
+        assertEquals(1, uphs!!.previewPhotos.size)
+        assertEquals("https://uphs.smugmug.com", uphs.webUri)
+    }
+
+    @Test
+    fun testRepositoryGetNodeCachingPrioritizesSecurityType() = runBlocking {
+        val fakeDao = FakeCollectionDao()
+        val mockNodeData = com.smugview.app.data.api.NodeData(
+            uri = "/api/v2/node/testNodeId",
+            nodeId = "testNodeId",
+            type = "Folder",
+            name = "Test Locked Folder",
+            description = null,
+            securityType = "Password",
+            privacy = "Public",
+            passwordHint = "Hint",
+            webUri = "https://test.weburi",
+            uris = com.smugview.app.data.api.NodeUris(
+                parentNode = "/api/v2/node/root"
+            ),
+            dateModified = null
+        )
+        
+        val mockInterceptor = Interceptor { chain ->
+            val request = chain.request()
+            val json = if (request.method == "POST") {
+                "{}"
+            } else {
+                com.google.gson.Gson().toJson(com.smugview.app.data.api.SingleNodeResponse(com.smugview.app.data.api.SingleNodePayload(mockNodeData)))
+            }
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+        
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        
+        // Call unlockInheritedPasswordRoot which fetches and caches the node
+        repository.unlockInheritedPasswordRoot("testNodeId", "dummy_key", "password")
+        
+        // Verify the node was saved into the fake database with the correct "Password" access parameter
+        // rather than the "Public" privacy parameter.
+        val cached = fakeDao.getNodeById("testNodeId")
+        assertNotNull(cached)
+        assertEquals("Password", cached?.access)
     }
 }
 
