@@ -198,123 +198,59 @@ class SmugViewModel @Inject constructor(
         return folderNavigationStack.any { savedKeys.contains(it.nodeId) }
     }
 
-    // Casting Integration
-    val discoveredDevices = castManager.discoveredDevices
-    val activeCastDevice = castManager.activeDevice
-    val isCasting = castManager.isCasting
-    val currentCastedImageUri = castManager.currentImageUri
-    val castSlideshowInterval = castManager.slideshowInterval
-    val isCastSlideshowPlaying = castManager.isSlideshowPlaying
-    val castVolume = castManager.volume
-    val isCastMuted = castManager.isMuted
-    val isWebCompanionActive = castManager.isWebCompanionActive
-    private val _castedAlbumKey = MutableStateFlow<String?>(null)
-    val castedAlbumKeyFlow: StateFlow<String?> = _castedAlbumKey.asStateFlow()
+    // Casting Integration — delegated to CastController (facade decomposition).
+    private val cast = CastController(
+        castManager = castManager,
+        repository = repository,
+        apiKey = apiKey,
+        scope = viewModelScope,
+        getUnlockedPassword = { albumKey -> getUnlockedPassword(albumKey) }
+    )
+
+    val discoveredDevices = cast.discoveredDevices
+    val activeCastDevice = cast.activeCastDevice
+    val isCasting = cast.isCasting
+    val currentCastedImageUri = cast.currentCastedImageUri
+    val castSlideshowInterval = cast.castSlideshowInterval
+    val isCastSlideshowPlaying = cast.isCastSlideshowPlaying
+    val castVolume = cast.castVolume
+    val isCastMuted = cast.isCastMuted
+    val isWebCompanionActive = cast.isWebCompanionActive
+    val castedAlbumKeyFlow: StateFlow<String?> = cast.castedAlbumKeyFlow
 
     var castedAlbumKey: String?
-        get() = _castedAlbumKey.value
+        get() = cast.castedAlbumKey
         set(value) {
-            _castedAlbumKey.value = value
+            cast.castedAlbumKey = value
         }
 
-    fun startCastDiscovery() {
-        castManager.startDiscovery()
-    }
+    fun startCastDiscovery() = cast.startCastDiscovery()
 
-    fun stopCastDiscovery() {
-        castManager.stopDiscovery()
-    }
+    fun stopCastDiscovery() = cast.stopCastDiscovery()
 
-    fun getLocalIpAddress(): String? {
-        return castManager.getLocalIpAddress()
-    }
+    fun getLocalIpAddress(): String? = cast.getLocalIpAddress()
 
-    fun connectToCastDevice(device: CastDevice) {
-        castManager.connectToDevice(device)
-    }
+    fun connectToCastDevice(device: CastDevice) = cast.connectToCastDevice(device)
 
-    fun disconnectCast() {
-        castManager.disconnect()
-        castedAlbumKey = null
-    }
+    fun disconnectCast() = cast.disconnectCast()
 
-    fun castImage(url: String, title: String) {
-        castManager.castImage(url, title)
-    }
+    fun castImage(url: String, title: String) = cast.castImage(url, title)
 
-    fun castSlideshow(urls: List<String>, intervalSeconds: Int = 5) {
-        castManager.castSlideshow(urls, intervalSeconds)
-    }
+    fun castSlideshow(urls: List<String>, intervalSeconds: Int = 5) = cast.castSlideshow(urls, intervalSeconds)
 
-    fun castCollection(collectionId: Long) {
-        viewModelScope.launch {
-            try {
-                val photos = repository.getPhotosInCollection(collectionId).first()
-                val urls = photos.mapNotNull { it.archivedUri ?: it.thumbnailUrl?.replace("/Th/", "/X3/") }.toMutableList()
+    fun castCollection(collectionId: Long) = cast.castCollection(collectionId)
 
-                val bookmarks = repository.getBookmarksForCollection(collectionId).first()
+    fun toggleCastSlideshowPlay() = cast.toggleCastSlideshowPlay()
 
-                // 1. Process Album (Gallery) bookmarks
-                val albumBookmarks = bookmarks.filter { it.type == "Album" }
-                for (albumBookmark in albumBookmarks) {
-                    val albumKey = albumBookmark.itemKey
-                    val password = getUnlockedPassword(albumKey)
-                    try {
-                        val albumPhotos = repository.getAllAlbumImages(albumKey, apiKey, password)
-                        val albumUrls = albumPhotos.mapNotNull { 
-                            if (it.isVideo) {
-                                it.videoUrl ?: it.thumbnailUrl?.replace("/Th/", "/X3/")
-                            } else {
-                                it.thumbnailUrl?.replace("/Th/", "/X3/")
-                            }
-                        }
-                        urls.addAll(albumUrls)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
+    fun setCastSlideshowInterval(seconds: Int) = cast.setCastSlideshowInterval(seconds)
 
-                // 2. Process Image bookmarks
-                val imageBookmarks = bookmarks.filter { it.type == "Image" }
-                for (imageBookmark in imageBookmarks) {
-                    val imgUrl = imageBookmark.thumbnailUrl?.replace("/Th/", "/X3/")
-                    if (imgUrl != null) {
-                        urls.add(imgUrl)
-                    }
-                }
+    fun castNextPhoto() = cast.castNextPhoto()
 
-                if (urls.isNotEmpty()) {
-                    castSlideshow(urls)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
+    fun castPreviousPhoto() = cast.castPreviousPhoto()
 
-    fun toggleCastSlideshowPlay() {
-        castManager.setSlideshowPlaying(!isCastSlideshowPlaying.value)
-    }
+    fun setCastVolume(volume: Float) = cast.setCastVolume(volume)
 
-    fun setCastSlideshowInterval(seconds: Int) {
-        castManager.setSlideshowInterval(seconds)
-    }
-
-    fun castNextPhoto() {
-        castManager.nextPhoto()
-    }
-
-    fun castPreviousPhoto() {
-        castManager.previousPhoto()
-    }
-
-    fun setCastVolume(volume: Float) {
-        castManager.setVolume(volume)
-    }
-
-    fun toggleCastMute() {
-        castManager.toggleMute()
-    }
+    fun toggleCastMute() = cast.toggleCastMute()
 
     // Active Navigation Tab
     private val _activeTab = MutableStateFlow(BrowserTab.Folders)
@@ -2788,116 +2724,51 @@ class SmugViewModel @Inject constructor(
 
     // --- Local Collections & Sync ---
 
-    fun createCollection(name: String) {
-        viewModelScope.launch {
-            val nickname = _activeNickname.value ?: ""
-            repository.createLocalCollection(name, nickname)
-        }
-    }
+    // Saved content (collections, bookmarks, offline) — delegated to CollectionsController.
+    private val collections = CollectionsController(
+        application = getApplication(),
+        repository = repository,
+        workManager = workManager,
+        sharedPrefs = sharedPrefs,
+        apiKey = apiKey,
+        scope = viewModelScope,
+        backgroundLoadingStatus = _backgroundLoadingStatus,
+        isBackgroundLoading = _isBackgroundLoading,
+        getActiveNickname = { _activeNickname.value },
+        getCurrentAlbumKey = { _currentAlbumKey.value },
+        getUnlockedPassword = { key -> getUnlockedPassword(key) }
+    )
 
-    fun deleteCollection(collectionId: Long) {
-        viewModelScope.launch {
-            repository.deleteLocalCollection(collectionId)
-        }
-    }
+    fun createCollection(name: String) = collections.createCollection(name)
 
-    fun renameCollection(collectionId: Long, newName: String) {
-        viewModelScope.launch {
-            repository.renameLocalCollection(collectionId, newName)
-        }
-    }
+    fun deleteCollection(collectionId: Long) = collections.deleteCollection(collectionId)
 
-    fun getBookmarksForCollection(collectionId: Long): Flow<List<CollectionBookmark>> {
-        return repository.getBookmarksForCollection(collectionId)
-    }
+    fun renameCollection(collectionId: Long, newName: String) = collections.renameCollection(collectionId, newName)
 
-    fun addBookmark(collectionId: Long, type: String, itemKey: String, title: String, albumKey: String = "", albumTitle: String = "", thumbnailUrl: String? = null, imageUrl: String? = null) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "addBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey, title='$title'")
-        }
-        viewModelScope.launch {
-            val bookmark = CollectionBookmark(
-                collectionId = collectionId,
-                type = type,
-                itemKey = itemKey,
-                title = title,
-                albumKey = albumKey,
-                albumTitle = albumTitle,
-                thumbnailUrl = thumbnailUrl
-            )
-            repository.addBookmark(bookmark)
+    fun getBookmarksForCollection(collectionId: Long): Flow<List<CollectionBookmark>> =
+        collections.getBookmarksForCollection(collectionId)
 
-            // Automatically mark as offline (download)
-            if (type == "Image" && !imageUrl.isNullOrEmpty()) {
-                downloadPhotoOffline(itemKey, imageUrl)
-            } else if (type == "Album") {
-                downloadAlbumOffline(itemKey, apiKey, getUnlockedPassword(itemKey))
-            }
-        }
-    }
+    fun addBookmark(collectionId: Long, type: String, itemKey: String, title: String, albumKey: String = "", albumTitle: String = "", thumbnailUrl: String? = null, imageUrl: String? = null) =
+        collections.addBookmark(collectionId, type, itemKey, title, albumKey, albumTitle, thumbnailUrl, imageUrl)
 
-    fun removeBookmark(collectionId: Long, type: String, itemKey: String) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "removeBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey")
-        }
-        viewModelScope.launch {
-            repository.removeBookmark(collectionId, type, itemKey)
+    fun removeBookmark(collectionId: Long, type: String, itemKey: String) =
+        collections.removeBookmark(collectionId, type, itemKey)
 
-            // If not bookmarked anywhere else, clear the offline file
-            val isBookmarkedAnywhere = repository.isBookmarkedAnywhere(type, itemKey)
-            if (!isBookmarkedAnywhere) {
-                if (type == "Image") {
-                    deleteOfflinePhoto(itemKey)
-                } else if (type == "Album") {
-                    deleteOfflineAlbum(itemKey, apiKey)
-                }
-            }
-        }
-    }
+    fun downloadPhotoOffline(imageKey: String, imageUrl: String) = collections.downloadPhotoOffline(imageKey, imageUrl)
 
-    fun downloadPhotoOffline(imageKey: String, imageUrl: String) {
-        downloadPhotoOffline(imageKey, imageUrl, {}, {})
-    }
+    fun deleteOfflinePhoto(imageKey: String) = collections.deleteOfflinePhoto(imageKey)
 
-    fun deleteOfflinePhoto(imageKey: String) {
-        deleteOfflinePhoto(imageKey, {})
-    }
+    suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean =
+        collections.isBookmarked(collectionId, type, itemKey)
 
-    suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean {
-        return repository.isBookmarked(collectionId, type, itemKey)
-    }
+    suspend fun isBookmarkedAnywhere(type: String, itemKey: String): Boolean =
+        collections.isBookmarkedAnywhere(type, itemKey)
 
-    suspend fun isBookmarkedAnywhere(type: String, itemKey: String): Boolean {
-        return repository.isBookmarkedAnywhere(type, itemKey)
-    }
+    fun addPhotoToCollection(photo: AlbumImageData, collectionId: Long) =
+        collections.addPhotoToCollection(photo, collectionId)
 
-    fun addPhotoToCollection(photo: AlbumImageData, collectionId: Long) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "addPhotoToCollection: imageKey=${photo.imageKey}, collectionId=$collectionId")
-        }
-        viewModelScope.launch {
-            val dbPhoto = CollectionPhoto(
-                imageKey = photo.imageKey,
-                collectionId = collectionId,
-                albumKey = _currentAlbumKey.value,
-                title = photo.title ?: photo.caption,
-                thumbnailUrl = photo.thumbnailUrl,
-                archivedUri = photo.archivedUri,
-                localFilePath = null,
-                dateTaken = photo.date,
-                keywords = photo.keywordsString,
-                isDownloaded = false
-            )
-            repository.addPhotoToCollection(dbPhoto)
-            
-            val syncRequest = OneTimeWorkRequestBuilder<OfflineDownloadWorker>().build()
-            workManager.enqueue(syncRequest)
-        }
-    }
-
-    fun getPhotosInCollection(collectionId: Long): Flow<List<CollectionPhoto>> {
-        return repository.getPhotosInCollection(collectionId)
-    }
+    fun getPhotosInCollection(collectionId: Long): Flow<List<CollectionPhoto>> =
+        collections.getPhotosInCollection(collectionId)
 
     fun navigateToHome() {
         _activeTab.value = BrowserTab.Folders
@@ -2924,155 +2795,22 @@ class SmugViewModel @Inject constructor(
         }
     }
 
-    fun isAlbumDownloaded(albumKey: String): Boolean {
-        return sharedPrefs.getBoolean("offline_album_$albumKey", false)
-    }
+    fun isAlbumDownloaded(albumKey: String): Boolean = collections.isAlbumDownloaded(albumKey)
 
-    fun downloadAlbumOffline(albumKey: String, apiKey: String, password: String? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                _backgroundLoadingStatus.value = "Starting album download..."
-                _isBackgroundLoading.value = true
-                val photos = repository.getAllAlbumImages(albumKey, apiKey, password)
-                if (photos.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(getApplication(), "No photos to download", Toast.LENGTH_SHORT).show()
-                    }
-                    return@launch
-                }
-                val directory = File(getApplication<Application>().filesDir, "offline_photos")
-                if (!directory.exists()) {
-                    directory.mkdirs()
-                }
-                val client = okhttp3.OkHttpClient()
-                var successCount = 0
-                photos.forEachIndexed { index, photo ->
-                    _backgroundLoadingStatus.value = "Downloading ${index + 1}/${photos.size}..."
-                    val url = photo.archivedUri ?: photo.thumbnailUrl
-                    if (!url.isNullOrEmpty()) {
-                        try {
-                            val request = okhttp3.Request.Builder().url(url).build()
-                            val response = client.newCall(request).execute()
-                            if (response.isSuccessful) {
-                                val body = response.body
-                                if (body != null) {
-                                    val file = File(directory, "${photo.imageKey}.jpg")
-                                    body.byteStream().use { input ->
-                                        FileOutputStream(file).use { output ->
-                                            input.copyTo(output)
-                                        }
-                                    }
-                                    repository.updateDownloadStatusForAll(photo.imageKey, file.absolutePath, true)
-                                    successCount++
-                                }
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-                sharedPrefs.edit().putBoolean("offline_album_$albumKey", true).apply()
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(getApplication(), "Album downloaded offline ($successCount photos)", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(getApplication(), "Album download failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                }
-            } finally {
-                _backgroundLoadingStatus.value = null
-                _isBackgroundLoading.value = false
-            }
-        }
-    }
+    fun downloadAlbumOffline(albumKey: String, apiKey: String, password: String? = null) =
+        collections.downloadAlbumOffline(albumKey, apiKey, password)
 
-    fun deleteOfflineAlbum(albumKey: String, apiKey: String, password: String? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                _backgroundLoadingStatus.value = "Deleting offline files..."
-                _isBackgroundLoading.value = true
-                val photos = repository.getAllAlbumImages(albumKey, apiKey, password)
-                val directory = File(getApplication<Application>().filesDir, "offline_photos")
-                photos.forEach { photo ->
-                    val file = File(directory, "${photo.imageKey}.jpg")
-                    if (file.exists()) {
-                        file.delete()
-                    }
-                    repository.updateDownloadStatusForAll(photo.imageKey, null, false)
-                }
-                sharedPrefs.edit().remove("offline_album_$albumKey").apply()
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(getApplication(), "Offline files deleted", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                _backgroundLoadingStatus.value = null
-                _isBackgroundLoading.value = false
-            }
-        }
-    }
+    fun deleteOfflineAlbum(albumKey: String, apiKey: String, password: String? = null) =
+        collections.deleteOfflineAlbum(albumKey, apiKey, password)
 
-    fun downloadPhotoOffline(imageKey: String, imageUrl: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val client = okhttp3.OkHttpClient()
-                val request = okhttp3.Request.Builder().url(imageUrl).build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    withContext(Dispatchers.Main) { onFailure("Download failed: HTTP ${response.code}") }
-                    return@launch
-                }
-                val body = response.body
-                if (body == null) {
-                    withContext(Dispatchers.Main) { onFailure("Empty response body") }
-                    return@launch
-                }
-                val directory = File(getApplication<Application>().filesDir, "offline_photos")
-                if (!directory.exists()) {
-                    directory.mkdirs()
-                }
-                val file = File(directory, "$imageKey.jpg")
-                body.byteStream().use { input ->
-                    FileOutputStream(file).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                repository.updateDownloadStatusForAll(imageKey, file.absolutePath, true)
-                withContext(Dispatchers.Main) {
-                    onSuccess()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    onFailure(e.localizedMessage ?: "Unknown error")
-                }
-            }
-        }
-    }
+    fun downloadPhotoOffline(imageKey: String, imageUrl: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) =
+        collections.downloadPhotoOffline(imageKey, imageUrl, onSuccess, onFailure)
 
-    fun deleteOfflinePhoto(imageKey: String, onSuccess: () -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val directory = File(getApplication<Application>().filesDir, "offline_photos")
-                val file = File(directory, "$imageKey.jpg")
-                if (file.exists()) {
-                    file.delete()
-                }
-                repository.updateDownloadStatusForAll(imageKey, null, false)
-                withContext(Dispatchers.Main) {
-                    onSuccess()
-                }
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-    }
+    fun deleteOfflinePhoto(imageKey: String, onSuccess: () -> Unit) =
+        collections.deleteOfflinePhoto(imageKey, onSuccess)
 
-    fun removePhotoFromCollection(imageKey: String, collectionId: Long) {
-        viewModelScope.launch {
-            repository.removePhotoFromCollection(imageKey, collectionId)
-        }
-    }
+    fun removePhotoFromCollection(imageKey: String, collectionId: Long) =
+        collections.removePhotoFromCollection(imageKey, collectionId)
 
     private var _userAlbums: List<com.smugview.app.data.api.AlbumDetails>? = null
 
