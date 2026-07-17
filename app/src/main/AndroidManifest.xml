@@ -8,9 +8,20 @@
     <!-- Scoped storage is used for Android 10+, so write permission is only requested for legacy compatibility -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
+    <!--
+      allowBackup=false: app data includes the cached Room DB of private gallery/photo metadata
+      and the encrypted password store. Neither should be copied off-device by system/cloud backup.
+
+      usesCleartextTraffic=true is required for local-network casting (the Web Companion server on
+      port 8080, Roku ECP, Amazon DIAL) which are plain HTTP on the LAN. NOTE: this cannot be
+      narrowed with a network-security-config, because that only matches hostnames/IP literals and
+      does not support private-IP CIDR ranges. SmugMug API traffic is HTTPS by construction
+      (Retrofit baseUrl), and the companion server itself is restricted to the cast target's IP.
+    -->
     <application
         android:name=".SmugViewApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
