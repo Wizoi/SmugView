@@ -198,35 +198,7 @@ fun PhotoDetailScreen(
         }
     }
 
-    // Dynamic background color state extracted using Palette API
-    var dominantColor by remember { mutableStateOf(Color.Black) }
-    val animatedBgColor by animateColorAsState(
-        targetValue = dominantColor.copy(alpha = 0.85f),
-        animationSpec = tween(durationMillis = 500),
-        label = "bgColor"
-    )
-
-    // Trigger Palette extraction when current photo changes
-    LaunchedEffect(currentPhoto) {
-        currentPhoto?.thumbnailUrl?.let { url ->
-            val loader = context.imageLoader
-            val req = ImageRequest.Builder(context)
-                .data(url)
-                .allowHardware(false) // Crucial for pixel reading
-                .build()
-            val result = loader.execute(req)
-            if (result is SuccessResult) {
-                val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
-                if (bitmap != null) {
-                    withContext(Dispatchers.Default) {
-                        val palette = Palette.from(bitmap).generate()
-                        val dom = palette.getDominantColor(Color.Black.toArgb())
-                        dominantColor = Color(dom)
-                    }
-                }
-            }
-        }
-    }
+    val animatedBgColor = rememberDominantBackgroundColor(currentPhoto?.thumbnailUrl)
 
     // Overlays & sheets state
     var showExifSheet by remember { mutableStateOf(false) }
@@ -258,61 +230,16 @@ fun PhotoDetailScreen(
         ) { page ->
             val photo = lazyPhotos[page]
             if (photo != null) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (photo.isVideo) {
-                        val rawUrl = photo.videoUrl ?: photo.archivedUri ?: photo.thumbnailUrl ?: ""
-                        val videoUrl = remember(rawUrl) {
-                            getAuthenticatedMediaUrl(rawUrl, albumKey, viewModel)
-                        }
-                        val isActive = pagerState.currentPage == page
-                        VideoPlayerView(
-                            videoUrl = videoUrl,
-                            isActive = isActive,
-                            modifier = Modifier.fillMaxSize(),
-                            onClick = { showControls = !showControls }
-                        )
-                    } else {
-                        val pagerImageModel = remember(photo.thumbnailUrl, photo.archivedUri) {
-                            photo.thumbnailUrl?.replace("/Th/", "/L/")
-                                ?.replace("/th/", "/l/")
-                                ?.replace("-Th.", "-L.")
-                                ?.replace("-th.", "-l.")
-                                ?: photo.archivedUri
-                        }
-
-                        var currentDetailUrl by remember(photo.thumbnailUrl, pagerImageModel) {
-                            mutableStateOf(pagerImageModel)
-                        }
-
-                        AsyncImage(
-                            model = currentDetailUrl,
-                            contentDescription = photo.title ?: "Immersive photo details",
-                            contentScale = ContentScale.Fit,
-                            onError = {
-                                currentDetailUrl = photo.archivedUri ?: photo.thumbnailUrl
-                            },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .combinedClickable(
-                                    onClick = { showControls = !showControls },
-                                    onLongClick = { showExifSheet = true },
-                                    onDoubleClick = {
-                                        // Default quick-action: Add to Favorites collection (if exists)
-                                        val fav = localCollections.find { it.name.lowercase() == "favorites" }
-                                        if (fav != null) {
-                                            viewModel.addPhotoToCollection(photo, fav.id)
-                                            Toast.makeText(context, "Added to Favorites!", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            showAddToCollectionDialog = true
-                                        }
-                                    }
-                                )
-                        )
-                    }
-                }
+                ImmersivePhotoPage(
+                    photo = photo,
+                    isActive = pagerState.currentPage == page,
+                    fallbackAlbumKey = albumKey,
+                    localCollections = localCollections,
+                    viewModel = viewModel,
+                    onToggleControls = { showControls = !showControls },
+                    onLongPress = { showExifSheet = true },
+                    onRequestAddToCollection = { showAddToCollectionDialog = true }
+                )
             }
         }
 
@@ -530,79 +457,14 @@ fun PhotoDetailScreen(
                         )
                     }
 
-                    // Capsule Row container matching photo_viewer_rework capsule
-                    Row(
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(32.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(32.dp))
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(28.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Bookmark (Save) Button
-                        IconButton(
-                            onClick = {
-                                val fav = localCollections.find { it.name.lowercase() == "favorites" }
-                                if (fav != null) {
-                                    viewModel.addPhotoToCollection(currentPhoto, fav.id)
-                                    Toast.makeText(context, "Added to Favorites!", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    showAddToCollectionDialog = true
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.BookmarkBorder,
-                                contentDescription = "Save",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-
-                        // Share Link
-                        IconButton(
-                            onClick = {
-                                currentPhoto?.let { sharePhoto(context, scope, it) }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Share Link",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-
-                        // Download Photo
-                        IconButton(
-                            onClick = {
-                                if (currentPhoto != null) {
-                                    scope.launch {
-                                        downloadPhotoToGallery(context, currentPhoto, viewModel)
-                                    }
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Download,
-                                contentDescription = "Download Photo",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-
-                        // Info (i) Button
-                        IconButton(
-                            onClick = { showExifSheet = true }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = "Info Details",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                    }
+                    PhotoActionCapsule(
+                        photo = currentPhoto,
+                        localCollections = localCollections,
+                        viewModel = viewModel,
+                        scope = scope,
+                        onShowExif = { showExifSheet = true },
+                        onRequestAddToCollection = { showAddToCollectionDialog = true }
+                    )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -637,170 +499,15 @@ fun PhotoDetailScreen(
             }
         }
 
-        // EXIF Bottom Sheet Overlay (Redesigned matching photo_viewer_mockup)
+        // EXIF Bottom Sheet Overlay
         if (showExifSheet && currentPhoto != null) {
-            val exifState by viewModel.getImageExif(currentPhoto.imageKey).collectAsState()
-
-            ModalBottomSheet(
-                onDismissRequest = { showExifSheet = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = SurfaceDark
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
-                ) {
-
-
-                    when (val result = exifState) {
-                        null -> {
-                            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = NeonBlue)
-                            }
-                        }
-                        else -> {
-                            result.fold(
-                                onSuccess = { exif ->
-                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                            // Camera
-                                            val cam = exif.camera
-                                            ExifCardItem(
-                                                icon = Icons.Default.CameraAlt,
-                                                label = "Camera:",
-                                                value = cam ?: "Unknown",
-                                                modifier = Modifier.weight(1f),
-                                                iconContent = if (!cam.isNullOrEmpty()) {
-                                                    { CameraLogo(exif.make ?: cam) }
-                                                } else null
-                                            )
-                                            // Aperture
-                                            ExifCardItem(
-                                                icon = Icons.Default.Lens,
-                                                label = "Aperture:",
-                                                value = exif.aperture ?: "N/A",
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                            // Shutter Speed
-                                            ExifCardItem(
-                                                icon = Icons.Default.Speed,
-                                                label = "Shutter Speed:",
-                                                value = exif.exposure ?: "N/A",
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            // ISO
-                                            ExifCardItem(
-                                                icon = Icons.Default.LightMode,
-                                                label = "ISO:",
-                                                value = exif.iso?.toString() ?: "N/A",
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                            // Focal Length
-                                            ExifCardItem(
-                                                icon = Icons.Default.ZoomIn,
-                                                label = "Focal Length:",
-                                                value = exif.focalLength ?: "N/A",
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            // Date Taken
-                                            ExifCardItem(
-                                                icon = Icons.Default.Event,
-                                                label = "Date Taken:",
-                                                value = formatToLocalTime(exif.dateTimeCreated ?: exif.dateCreated ?: currentPhoto.dateTime ?: currentPhoto.date),
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                            val fileName = currentPhoto.fileName ?: currentPhoto.title ?: "Unknown"
-                                            ExifCardItem(
-                                                icon = Icons.Default.InsertDriveFile,
-                                                label = "File Name:",
-                                                value = fileName,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                            val dims = if (currentPhoto.originalWidth != null && currentPhoto.originalHeight != null) {
-                                                "${currentPhoto.originalWidth} x ${currentPhoto.originalHeight}"
-                                            } else "Unknown"
-                                            ExifCardItem(
-                                                icon = Icons.Default.AspectRatio,
-                                                label = "Dimensions:",
-                                                value = dims,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            val sizeStr = formatPhotoFileSize(currentPhoto.originalSize)
-                                            ExifCardItem(
-                                                icon = Icons.Default.DataUsage,
-                                                label = "File Size:",
-                                                value = sizeStr,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                    }
-                                },
-                                onFailure = { error ->
-                                    Text(
-                                        text = "Failed to load specifications: ${error.localizedMessage}",
-                                        color = MaterialTheme.colorScheme.error,
-                                        fontSize = 14.sp
-                                    )
-                                }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "Tags",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-
-
-                    val tags = remember(currentPhoto, updatedKeywordsMap[currentPhoto.imageKey]) {
-                        val keywordsStr = updatedKeywordsMap[currentPhoto.imageKey] ?: currentPhoto.keywordsString ?: ""
-                        keywordsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                    }
-
-                    if (tags.isNotEmpty()) {
-                        com.smugview.app.ui.grid.OptInFlowRow(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            tags.forEach { tag ->
-                                Box(
-                                    modifier = Modifier
-                                        .padding(4.dp)
-                                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-                                        .clickable {
-                                            viewModel.selectSingleTag(tag)
-                                            showExifSheet = false
-                                            onNavigateToKeywordImages()
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text(text = tag, color = Color.White, fontSize = 11.sp)
-                                }
-                            }
-                        }
-                    } else {
-                        Text(text = "No tags available.", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp)
-                    }
-
-                    // Add Tag section removed as requested
-
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
-            }
+            PhotoExifSheet(
+                currentPhoto = currentPhoto,
+                detailedPhoto = null,
+                viewModel = viewModel,
+                onDismiss = { showExifSheet = false },
+                onNavigateToKeywordImages = onNavigateToKeywordImages
+            )
         }
 
         // Add to Collection Dialog overlay
