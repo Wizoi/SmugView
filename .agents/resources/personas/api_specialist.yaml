@@ -39,18 +39,32 @@ api_skills_and_knowledge:
   payload_optimizations:
     - name: Search Filter Payload Shrink
       doc_url: "https://api.smugmug.com/api/v2/doc/reference/image-search.html"
+      canonical_source: "AGENTS.md -> 'Search Filter Payload Shrink'"
       rule: |
-        Optimize the `_filter` query parameter on search endpoints to omit large fields (ArchivedUri, WebUri, 
-        OriginalWidth/Height/Size, and the nested Uris dictionary). This shrinks payloads by 60-70%; detail 
-        views must load these fields dynamically on-demand via the single image endpoint.
+        Optimize the `_filter` query parameter on search endpoints to omit genuinely heavy fields
+        (ArchivedUri, OriginalWidth/OriginalHeight/OriginalSize).
+
+        DO NOT strip `WebUri` or the nested `Uris` dictionary. They are required to resolve the
+        parent gallery (albumKey) for locked/anonymous media; removing them breaks photo-detail
+        navigation. Keep `ImageAlbum` in `_filteruri` on search endpoints.
+
+        Ground truth: SmugMugApi.kt search endpoints use
+        `_filter=...,Uris,WebUri` together with `_filteruri=ImageAlbum`.
+
+        (This entry previously instructed the opposite — omitting WebUri/Uris — which contradicted
+        AGENTS.md and the shipping code.)
     - name: Payload Optimization & URI Suppression (_filteruri)
       doc_url: "https://api.smugmug.com/api/v2/doc/reference/image.html"
       rule: |
-        To suppress the massive `Uris` navigational block on list or search endpoints (such as `image!search`, 
-        `user!imagesearch`, `getAlbumKeywords`, and keyword tag queries), append the query parameter `_filteruri` 
-        with an empty string value (`_filteruri=`). Standard field filtering (`_filter`) does not affect the 
-        navigation `Uris` block as the backend treats it as a separate navigational entity, so explicit 
-        suppression is required to avoid large, unneeded payloads.
+        `_filteruri` controls the `Uris` navigational block independently of `_filter`. Passing an
+        empty value (`_filteruri=`) suppresses it entirely.
+
+        Only do this for endpoints whose results are never used for parent-gallery navigation
+        (e.g. `getAlbumKeywords`, which uses `_filter=Uri&_verbosity=1`).
+
+        NEVER suppress it on `image!search` / `user!imagesearch` or keyword tag queries — those
+        results feed photo-detail navigation and require `_filteruri=ImageAlbum`. See the
+        "Search Filter Payload Shrink" rule above and AGENTS.md 'API Filter Navigation Integrity'.
     - name: Retrofit Query Encoding
       doc_url: "https://api.smugmug.com/api/v2/doc/reference"
       rule: |
@@ -121,6 +135,14 @@ api_skills_and_knowledge:
       rule: |
         When querying password-protected galleries in batches, group the galleries by their saved/unlocked passwords and 
         execute one batch query per unique password.
+    - name: Privacy vs SecurityType Coexistence
+      doc_url: "https://api.smugmug.com/api/v2/doc/reference/node.html"
+      rule: |
+        SmugMug API payloads for password-protected folders and galleries return `"Privacy": "Public"` (or `"Unlisted"`) 
+        alongside `"SecurityType": "Password"`. When mapping raw API responses to database or local cache entity models, 
+        always prioritize mapping `securityType` over `privacy` to determine the visibility access level (e.g. `"Password"` 
+        or `"Inherited"`). If `privacy` is prioritized first, locked nodes will incorrectly be cached as `"Public"`, 
+        bypassing password prompts and causing downstream API load errors.
     - name: ExoPlayer CDN Redirection & Authentication (HTTP 403/401)
       doc_url: "https://api.smugmug.com/api/v2/doc/reference"
       rule: |

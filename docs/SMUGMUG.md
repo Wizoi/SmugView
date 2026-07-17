@@ -120,10 +120,21 @@ To maintain a resilient and high-performing integration, any future changes or o
     2. If the GET request succeeds, return the results immediately (using existing OkHttp CookieJar session cookies).
     3. If the GET request fails with an `HTTP 401` or `HTTP 404` error and a password is cached locally, invoke the POST `!unlock` endpoint *exactly once* to establish a new session, then retry the original GET request.
 
-### 6. Deprecated user-level imagesearch vs. Modern image!search
-* **Deprecation Warning**: The user-level image search (`GET user/{nickname}!imagesearch`) is a legacy/deprecated SmugMug API. Do not use it.
-* **Modern Standard**: Always use the unified **`GET image!search`** endpoint for all photo search operations.
-* **Scope Requirement**: Pass the user's root node URI (e.g. `/api/v2/node/4zqWw`) to the `Scope` query parameter to query across the entire account scope. Passing a specific gallery/folder node URI restricts the search to that container scope.
+### 6. user-level imagesearch vs. image!search — both are used, deliberately
+> Corrected: this section previously claimed `user/{nickname}!imagesearch` was "legacy/deprecated —
+> do not use it". That contradicted `DESIGN.md` §D and the shipping code, which calls **both**
+> endpoints on purpose (`SmugMugRepository.searchImages` -> `image!search`, and
+> `searchImagesUserByUri` -> `user!imagesearch`). Treat `DESIGN.md` §D as canonical.
+
+* **`GET user/{nickname}!imagesearch` (primary, scoped)**: user-scoped and supports the `Password`
+  parameter. Required for searching inside password-protected or `Searchable: No` albums. This is
+  the main search path for the SmugView use case.
+* **`GET image!search` (secondary, global index)**: queries SmugMug's global search index. Does
+  **not** return results from albums marked `Searchable: No` or password-protected albums, even if
+  unlocked in the session.
+* **Scope Requirement**: Pass the user's root node URI (e.g. `/api/v2/node/4zqWw`) to the `Scope`
+  query parameter to query the whole account. Passing a specific gallery/folder node URI restricts
+  the search to that container.
 
 ### 7. Scoped Searches and Password Access
 * **Problem**: Scoped searches on password-protected folders or galleries (even if unlocked via `!unlock` previously in the session) fail or return 0 images if the password query parameter is omitted on the search call.
@@ -182,7 +193,21 @@ To maintain a resilient and high-performing integration, any future changes or o
 
 ### 2. Room Database Columns and Schema Instability
 *   **Symptom**: Introducing columns (like `webUri` to `CachedNode` in `Entities.kt`) causes the Room database build helper to throw runtime migration errors if the schema version is not updated.
-*   **Resolution**: The `@Database` annotation version inside `AppDatabase.kt` must be incremented. Because `AppModule.kt` configures the Room instance with `fallbackToDestructiveMigration()`, Room automatically recreates the tables on app startup, avoiding manual migration script writes for cached data.
+*   **Resolution**: The `@Database` annotation version inside `AppDatabase.kt` must be incremented **and a real `Migration` must be written and registered** in `AppModule.provideDatabase`.
+
+> [!WARNING]
+> This section previously stated that `AppModule.kt` uses `fallbackToDestructiveMigration()` so no
+> migration scripts are needed. **That is no longer true**, and following it will destroy user data.
+> Blanket destructive fallback was removed because `offline_collections`, `collection_photos`, and
+> `collection_bookmarks` hold user-created personal data that must survive schema changes.
+>
+> Current policy (`AppModule.provideDatabase`):
+> * Real migrations are registered via `addMigrations(...)` — e.g. `AppDatabase.MIGRATION_12_13`.
+> * `fallbackToDestructiveMigrationFrom(1..11)` covers only the legacy pre-v12 releases, which
+>   shipped with destructive fallback and therefore have no upgrade path. Without this, users on
+>   those versions crash on launch with "A migration from N to 13 was required but not found".
+> * `exportSchema = true`; schemas land in `app/schemas` so migrations can be validated with
+>   `MigrationTestHelper`. Write a migration test for every new migration.
 
 ### 3. Strict Compile Warnings-as-Errors (`-Werror`)
 *   **Symptom**: Jetpack Compose experimental components (such as `SwipeToDismissBox` in Material 3) generate compiler warnings. If the Gradle compiler is set to treat warnings as errors (`-Werror`), the build will fail.

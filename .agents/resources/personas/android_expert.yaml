@@ -81,6 +81,19 @@ android_skills_and_knowledge:
       rule: |
         ExoPlayer and other system resource handles must be explicitly released using a Composable `DisposableEffect` 
         on `onDispose` block to prevent leaks when navigating away from video items or detail screens.
+    - name: Compose Annotations Target Boundaries
+      doc_url: "https://developer.android.com/develop/ui/compose/modifiers"
+      rule: |
+        Never place annotations like `@OptIn` or `@Composable` directly on data classes or standard Kotlin objects. 
+        These annotations are only applicable to functions, file levels, or local declarations, and placing them 
+        on classes will cause immediate compiler errors.
+    - name: Folder/Album Navigation Routing
+      doc_url: "https://developer.android.com/develop/ui/compose/layouts"
+      rule: |
+        When resolving keys for gallery navigation, always distinguish between Folder nodes and Album nodes. 
+        If the target key corresponds to a Folder node, navigate the user to the folder explorer root (`"browser"`) 
+        and update the active folder via `navigateToChildFolder(node)` rather than navigating to the media grid 
+        (`"photo_grid"`), preventing endpoint query failures.
 
   room_and_threading_guidelines:
     - name: Startup & UI Thread Room Queries (ANR Prevention)
@@ -95,6 +108,12 @@ android_skills_and_knowledge:
       rule: |
         Apply `.conflate()` or `.debounce(300)` to high-frequency database emissions collected by UI flows to bypass 
         stale layout frames and prevent blocking the Main UI Thread.
+    - name: Album Key Helper Consistency (getAlbumKey)
+      doc_url: "https://developer.android.com/training/data-storage/room"
+      rule: |
+        Always use the helper method `node.getAlbumKey()` instead of inline calculations like `node.albumUri?.substringAfterLast("/") ?: node.nodeId`. 
+        The helper method handles stripping sub-resource suffixes (e.g. `!keys` or `!images`), avoiding key mismatches 
+        in downstream database lookups or API calls. Avoid writing inline substring logic to prevent parallel agent refactoring thrashing.
 
   search_and_local_filtering:
     - name: Local Caching Fallback for Folders/Galleries

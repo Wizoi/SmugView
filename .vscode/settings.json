@@ -14,5 +14,7 @@
   "workbench.editor.enablePreviewFromCodeNavigation": false,
   // 3. Ensure the Agent panel doesn't constantly steal focus on reload or during runs
   "antigravity.agent.openOnStartup": false,
-  "antigravity.agent.revealBehavior": "never"
+  "antigravity.agent.revealBehavior": "never",
+  "antigravity.providers.anthropic.customEndpoint": null,
+  "antigravity.agent.defaultPartnerProvider": "anthropic"
 }

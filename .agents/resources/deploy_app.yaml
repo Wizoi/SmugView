@@ -39,11 +39,26 @@ steps:
         output_link: "app/build/outputs/bundle/release/app-release.aab"
       - name: publish_appbundle
         description: "Build release Android App Bundle (AAB) and push it directly to the Google Play Store internal track using Gradle Play Publisher."
+        # SAFETY GATE: this uploads to Google Play. It is an irreversible, outward-facing action
+        # and is therefore EXEMPT from AGENTS.md 'Silent/Direct Execution' mode.
+        requires_explicit_confirmation: true
+        gate: |
+          STOP. Do not run this as part of a silent/batched execution sequence.
+          Before running, you MUST:
+            1. Confirm with the user, in this turn, that they want to publish to Google Play.
+            2. Verify the versionCode was incremented in app/build.gradle.kts.
+            3. Verify release notes exist for that versionCode under
+               app/src/main/play/release-notes/en-US/<versionCode>.txt and have been reviewed.
+          Prefer `build_appbundle` (local artifact, no upload) unless the user explicitly asked to publish.
+          The dedicated `/publish_app` skill applies these same gates — use it for real releases.
         command: |
           $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
           ./gradlew publishReleaseBundle
       - name: publish_store_listing
         description: "Only update Play Store listings and release notes without rebuilding the app bundle."
+        # Also outward-facing: mutates the public Play Store listing.
+        requires_explicit_confirmation: true
+        gate: "Confirm with the user before running; this changes the live Play Store listing."
         command: |
           $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
           ./gradlew publishListing

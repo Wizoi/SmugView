@@ -3,6 +3,16 @@
 ## 🚀 Agent Execution & Planning Guidelines
 *   **Design Proposal Sign-off**: When receiving a new feature, bug fix, or scenario update request, always compile a structured implementation plan and wait for the user's explicit design sign-off/approval.
 *   **Direct Execution Phase (Silent Mode)**: Once the implementation plan is approved by the user, proceed to execute all file edits, terminal commands, and testing tasks in sequence without stopping to prompt the user, ask for file-by-file confirmation, or explain intermediate steps. Provide a single, comprehensive final walkthrough only when execution is complete.
+*   **Silent Mode EXCLUSIONS (always stop and confirm first)**: Silent Mode covers local, reversible work only. It NEVER authorizes irreversible or outward-facing actions. Plan approval is **not** approval for any of the following — confirm each one explicitly, in the moment:
+    *   Publishing/uploading to Google Play (`publishReleaseBundle`, `publishListing`, the `/publish_app` skill).
+    *   `git push`, force-push, history rewrites (`filter-repo`/BFG), tag/release creation, or anything that mutates a remote.
+    *   Destructive git/data operations (`reset --hard`, `clean -fd`, branch/stash deletion, dropping or wiping database tables).
+    *   Rotating, revoking, or writing credentials/secrets.
+    *   Deleting files the agent did not create.
+
+    Rationale: this repo pairs Silent Mode with `.vscode/settings.json` auto-save (1s) and a reachable
+    one-command Play upload. Without these exclusions, an approved plan could ship to production with no
+    human checkpoint.
 
 ## ⚙️ Gradle & Compilation Environment
 *   **Java JDK / Runtime Location**: The default shell does not have `JAVA_HOME` or the `java` binary in its `PATH`. Always use the Android Studio bundled JetBrains Runtime (JBR) for executing Gradle commands:
@@ -107,8 +117,20 @@
 
 ## 📖 Documentation Reference & Maintenance
 *   **Referencing Docs**: Respective developer agents must refer to the documentation files in the [docs](file:///c:/src/kidzi/GitHub/SmugView/docs) directory (including [DESIGN.md](file:///c:/src/kidzi/GitHub/SmugView/docs/DESIGN.md), [SMUGMUG.md](file:///c:/src/kidzi/GitHub/SmugView/docs/SMUGMUG.md), and [README.md](file:///c:/src/kidzi/GitHub/SmugView/docs/README.md)) to understand system design, SmugMug API specifications, and codebase setup.
-*   **Maintenance**: Respective agents are responsible for keeping these files up to date during any edits, features, or architectural modifications.
 
+## 📈 Site Discovery & Autocomplete Learnings (2026-07-16/17 Retro)
+*   **Compose Annotations Target Boundaries**: In Kotlin/Compose, never place annotations like `@OptIn` or `@Composable` directly on data classes or standard objects. These annotations are only applicable to functions, file levels, or local declarations, and placing them on classes will cause immediate compiler errors.
+*   **GSON Mock Schema Key Congruency**: When writing unit test mock JSON responses for SmugMug API endpoints (e.g. `image!search`), verify that the JSON keys in the mocked payload match the `@SerializedName` annotations in the production models (e.g., `"Image"` instead of `"AlbumImage"`). Failure to match these exactly results in GSON silently parsing the payload to an empty list, causing unit test assertions to fail.
 
+## 📈 Refined Gallery Hub & Suspend Mocking Learnings (2026-07-17 Retro)
+*   **API Filter Navigation Integrity**: When applying a custom `_filter` query on endpoints (like `user!recentimages`), ensure the `Uris` envelope is preserved if downstream navigation requires parent gallery details (like `ImageAlbum` / `albumKey`). Stripping `Uris` breaks photo detail clicks.
+*   **Kotlin Suspend Function Mocking inside Unit Tests**: To stub Kotlin suspend functions with arguments in Mockito tests, wrap the stubs in `kotlinx.coroutines.runBlocking { ... }` and use standard `Mockito.when(...)` with exact Kotlin argument types. Avoid calling `doReturn().when(mock).suspendMethod(any())` from outside coroutine scopes as it causes compilation errors due to hidden Continuation parameter mismatches.
 
+## 📈 Password Caching & Mockito Matchers Corruption Learnings (2026-07-17 Retro v2)
+*   **Privacy vs SecurityType Mapping Coexistence**: SmugMug API responses for password-protected items can return `"Privacy": "Public"` (or `"Unlisted"`) alongside `"SecurityType": "Password"`. When parsing API response nodes to cache models, always prioritize `securityType` over `privacy` to prevent storing locked items with public access values.
+*   **Mockito Suspend Verification Gotcha**: Verifying suspend functions using standard Mockito `verify(...)` is fragile due to the hidden `Continuation` parameter appended by the Kotlin compiler. Avoid verifying suspend functions with Mockito matchers; prefer testing via concrete fakes (e.g., `FakeCollectionDao`) or checking state/return value results directly.
+*   **Mockito Global State Corruption**: Any mismatched/unfinished matcher in a Mockito test (like mixing matchers and concrete arguments or incomplete verification statements) corrupts Mockito's global thread-local state. This causes unrelated subsequent tests in the suite to fail with `UnfinishedVerificationException` or `InvalidUseOfMatchersException`. Ensure every Mockito stubbing/verification call uses matchers for all parameters and completes correctly.
 
+## 📈 Featured Sites Selection & Live API Validation Learnings (2026-07-17 Retro v3)
+*   **Onboarding / Exploration Hardcoded Portfolios**: When curating featured portfolios or onboarding sites on the client-side (such as carousels in `BrowserScreen.kt`), do not use individual photographers who are prone to profile deletion or nickname updates. Instead, select official company-managed portals (`smugmugfilms`, `Tutorial`) and established public institutions (`uphs`, `corvettemuseum`, `daemenuniversity`).
+*   **Live Configuration Regression Safeguards**: To protect hardcoded onboarding configurations from decaying over time, implement a target integration test in the live API test suite (`SmugMugApiTest.kt`) that queries each nickname. Wrap the test in credentials and network capability checks so that it skips gracefully in offline CI environments instead of causing build failure.

@@ -56,3 +56,17 @@ testing_patterns_and_reliability:
     rule: |
       To verify asynchronous StateFlows or SharedFlows that utilize `SharingStarted.WhileSubscribed()`, 
       tests must launch an active collector job in a background coroutine before asserting flow values.
+  - name: Mock Schema Congruency & API Redactions
+    rule: |
+      When writing unit test mock JSON responses or stubs for SmugMug API nodes, ensure mock payloads mirror 
+      realistic API visibility structures (such as both Privacy and SecurityType values coexisting) to catch 
+      mapping defects before runtime.
+  - name: Kotlin Suspend Function Mocking
+    rule: |
+      Do not verify suspend functions with Mockito matchers due to compiler-added Continuation parameters. 
+      Prefer testing via concrete fakes (like FakeCollectionDao) or asserting returned data/states.
+  - name: Mockito Global State Matchers Integrity
+    rule: |
+      Ensure all parameters in Mockito stubs or verifications use matchers (never mix matchers and concrete arguments). 
+      Any incomplete or mismatched matcher call corrupts Mockito's global thread-local state, failing subsequent 
+      tests in the suite.
