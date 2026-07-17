@@ -43,6 +43,30 @@ class DefaultCastManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) : CastManager {
 
+    /**
+     * Dispatcher backing the internal [scope] (discovery, connect simulation, slideshow timer).
+     * Overridable via the test-only secondary constructor so unit tests can drive the timing with
+     * a [kotlinx.coroutines.test.TestDispatcher] and virtual time instead of real Thread.sleep.
+     */
+    private var workDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
+
+    /**
+     * Dispatcher for blocking network I/O (Roku ECP, DIAL, SSDP). Separate from [workDispatcher]
+     * only so production uses Dispatchers.IO; the test constructor points both at one
+     * TestDispatcher so the connect/discovery flow runs entirely under virtual time.
+     */
+    private var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
+
+    @androidx.annotation.VisibleForTesting
+    constructor(
+        context: Context,
+        dispatcher: kotlinx.coroutines.CoroutineDispatcher
+    ) : this(context) {
+        workDispatcher = dispatcher
+        ioDispatcher = dispatcher
+        scope = CoroutineScope(SupervisorJob() + dispatcher)
+    }
+
     private val _discoveredDevices = MutableStateFlow<List<CastDevice>>(emptyList())
     override val discoveredDevices: StateFlow<List<CastDevice>> = _discoveredDevices.asStateFlow()
 
@@ -72,7 +96,7 @@ class DefaultCastManager @Inject constructor(
     private var useWebCompanion = false
 
     private var discoveryJob: Job? = null
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var slideshowJob: Job? = null
     private var slideshowUrls: List<String> = emptyList()
     private var slideshowIndex = 0
@@ -337,7 +361,8 @@ class DefaultCastManager @Inject constructor(
                     } else {
                         useWebCompanion = true
                         _isWebCompanionActive.value = true
-                        webCompanionServer.start(port = 8080)
+                        // Only the cast target device may fetch the (potentially private) media.
+                        webCompanionServer.start(port = 8080, allowedClientIp = device.ipAddress)
                     }
                 } else {
                     useWebCompanion = false
@@ -399,7 +424,7 @@ class DefaultCastManager @Inject constructor(
         scope.launch {
             when (active.type) {
                 CastType.GOOGLE -> {
-                    runBlocking(Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         castToGoogle(url, title)
                     }
                 }
@@ -425,7 +450,9 @@ class DefaultCastManager @Inject constructor(
 
         stopSlideshow()
         slideshowUrls = urls
-        _slideshowInterval.value = intervalSeconds
+        // Clamp to the same bounds as setSlideshowInterval so a bad caller can't create a
+        // zero/negative delay tight-loop in startSlideshowLoop().
+        _slideshowInterval.value = intervalSeconds.coerceIn(2, 30)
         _isSlideshowPlaying.value = true
         slideshowIndex = 0
         startSlideshowLoop()
@@ -524,7 +551,7 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
-    private suspend fun sendRokuKeypress(ip: String, key: String) = withContext(Dispatchers.IO) {
+    private suspend fun sendRokuKeypress(ip: String, key: String) = withContext(ioDispatcher) {
         try {
             val urlString = "http://$ip:8060/keypress/$key"
             val url = java.net.URL(urlString)
@@ -561,7 +588,7 @@ class DefaultCastManager @Inject constructor(
         slideshowIndex = 0
     }
 
-    private suspend fun performSsdpDiscovery(): List<CastDevice> = withContext(Dispatchers.IO) {
+    private suspend fun performSsdpDiscovery(): List<CastDevice> = withContext(ioDispatcher) {
         val discovered = mutableListOf<CastDevice>()
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
         val lock = wifiManager?.createMulticastLock("SmugViewCastLock")
@@ -720,7 +747,7 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
-    private suspend fun checkRokuCastingSupport(ip: String): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun checkRokuCastingSupport(ip: String): Boolean = withContext(ioDispatcher) {
         if (isUnitTest) return@withContext true
         try {
             val url = java.net.URL("http://$ip:8060/query/device-info")
@@ -744,7 +771,7 @@ class DefaultCastManager @Inject constructor(
 
     private suspend fun checkAmazonCastingSupport(ip: String): Boolean = true
 
-    private suspend fun checkAmazonDialSupport(ip: String): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun checkAmazonDialSupport(ip: String): Boolean = withContext(ioDispatcher) {
         if (isUnitTest) return@withContext true
         try {
             val url = java.net.URL("http://$ip:8008/apps/Fireweb")
@@ -760,7 +787,7 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
-    private suspend fun fetchDeviceFriendlyName(locationUrl: String): DeviceDetails = withContext(Dispatchers.IO) {
+    private suspend fun fetchDeviceFriendlyName(locationUrl: String): DeviceDetails = withContext(ioDispatcher) {
         try {
             val targetUrl = if (locationUrl.contains("8060")) {
                 val base = locationUrl.substringBeforeLast(":8060")
@@ -813,7 +840,7 @@ class DefaultCastManager @Inject constructor(
         val manufacturer: String?
     )
 
-    private suspend fun castToRoku(ip: String, imageUrl: String) = withContext(Dispatchers.IO) {
+    private suspend fun castToRoku(ip: String, imageUrl: String) = withContext(ioDispatcher) {
         try {
             val encodedUrl = java.net.URLEncoder.encode(imageUrl, "UTF-8")
             val mimeType = getMimeType(imageUrl)
@@ -837,7 +864,7 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
-    private suspend fun castToAmazon(ip: String, imageUrl: String) = withContext(Dispatchers.IO) {
+    private suspend fun castToAmazon(ip: String, imageUrl: String) = withContext(ioDispatcher) {
         if (useWebCompanion) return@withContext
         try {
             val urlString = "http://$ip:8008/apps/Fireweb"

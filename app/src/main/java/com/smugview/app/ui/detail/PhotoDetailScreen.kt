@@ -735,11 +735,7 @@ fun PhotoDetailScreen(
                                                 value = dims,
                                                 modifier = Modifier.weight(1f)
                                             )
-                                            val sizeBytes = currentPhoto.originalSize
-                                            val sizeStr = if (sizeBytes != null) {
-                                                if (sizeBytes > 1024 * 1024) String.format(java.util.Locale.US, "%.2f MB", sizeBytes / (1024.0 * 1024.0))
-                                                else String.format(java.util.Locale.US, "%.2f KB", sizeBytes / 1024.0)
-                                            } else "Unknown"
+                                            val sizeStr = formatPhotoFileSize(currentPhoto.originalSize)
                                             ExifCardItem(
                                                 icon = Icons.Default.DataUsage,
                                                 label = "File Size:",

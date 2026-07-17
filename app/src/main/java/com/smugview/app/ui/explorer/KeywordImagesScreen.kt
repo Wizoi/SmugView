@@ -53,6 +53,12 @@ fun KeywordImagesScreen(
     onNavigateToPhotoDetail: (String, Int) -> Unit,
     viewModel: SmugViewModel
 ) {
+    // Resume scoped image loading when this screen (re)enters composition — it is suppressed while
+    // the user navigates away to a gallery so the keyword pagination doesn't starve that load.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.setScopeLoadingSuppressed(false)
+    }
+
     val selectedTags by viewModel.selectedTags.collectAsState()
     val allTags by viewModel.allScopeTags.collectAsState()
     val filteredPhotos by viewModel.tagFilteredPhotos.collectAsState()

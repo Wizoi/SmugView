@@ -134,12 +134,19 @@ fun SmugViewNavigation() {
                         navController.navigateUp()
                     },
                     onNavigateToGallery = { key, targetKey ->
+                        // Halt the keyword loader's multi-thousand-image pagination so it doesn't
+                        // starve the destination gallery's load (it resumes when the keyword screen
+                        // is shown again).
+                        viewModel.setScopeLoadingSuppressed(true)
                         coroutineScope.launch {
                             val node = viewModel.getCachedNodeById(key)
                             if (node != null && node.type == "Folder") {
                                 viewModel.navigateToChildFolder(node)
                                 navController.popBackStack("browser", false)
                             } else {
+                                // Navigate straight to the gallery grid. If the album is
+                                // password-protected, PhotoGridScreen's selectAlbum path renders the
+                                // password prompt (the detail screen has no prompt dialog).
                                 val title = viewModel.getAlbumName(key)
                                 navController.navigate("photo_grid/$key/$title")
                             }
@@ -236,6 +243,8 @@ fun SmugViewNavigation() {
                                 viewModel.navigateToChildFolder(node)
                                 navController.popBackStack("browser", false)
                             } else {
+                                // Navigate straight to the gallery grid; PhotoGridScreen prompts
+                                // for a password if the album is locked (see handleAlbumLoadError).
                                 val title = viewModel.getAlbumName(albumKey)
                                 navController.navigate("photo_grid/$albumKey/$title")
                             }
