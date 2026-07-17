@@ -38,8 +38,26 @@ verification_methodology:
 testing_patterns_and_reliability:
   - name: Coroutine Test Dispatcher Isolation
     rule: |
-      Avoid Thread.sleep or random delay pacing in tests. Use standard test dispatchers (`runTest` and 
-      `StandardTestDispatcher`) combined with `advanceUntilIdle()` to control flow timing deterministically.
+      Avoid Thread.sleep or random delay pacing in tests. Use standard test dispatchers (`runTest` and
+      `StandardTestDispatcher`) to control flow timing deterministically. If the class under test hardcodes
+      `Dispatchers.Default/IO`, add a test-only constructor that injects a `CoroutineDispatcher` and pass a
+      TestDispatcher (backed by the `runTest` scheduler) — otherwise virtual time can't drive its coroutines
+      and you'll be tempted back into `Thread.sleep`.
+      CAUTION (verified 2026-07-17): `advanceUntilIdle()` HANGS if the object runs a perpetual coroutine
+      (e.g. a `while(isActive){ ...; delay() }` discovery loop). Use bounded `advanceTimeBy(ms); runCurrent()`
+      for the specific delay you're exercising instead.
+  - name: "Mockito anyString() does NOT match null"
+    rule: |
+      For a nullable parameter (e.g. `password: String?`) that is null in the scenario, `Mockito.anyString()`
+      does not match, so the stub silently misses and returns null. This leaked a NullPointerException out of a
+      coroutine into the NEXT test in the suite. Use `Mockito.nullable(String::class.java)` for nullable args.
+  - name: "Robolectric for real Room SQL (don't trust hand-rolled fake DAOs)"
+    rule: |
+      Complex SQL — recursive CTEs (`getNodesWithActiveUpdates`, `getAlbumsInScope`), date comparisons, the album
+      index — must be tested against REAL SQLite via Robolectric + an in-memory Room DB, not only a Kotlin
+      `FakeCollectionDao`. The fake reimplements the algorithm and DIVERGES from the SQL (different NULL/date
+      semantics, a hardcoded "root" stop the SQL lacks), so it can pass while the shipped query is wrong. See
+      `CollectionDaoTest` (`@RunWith(RobolectricTestRunner)`).
   - name: API Error Injection Verification
     rule: |
       Include test coverage for failure modes. Inject simulated HTTP 503, 401, and timeout exceptions 
@@ -67,6 +85,25 @@ testing_patterns_and_reliability:
       Prefer testing via concrete fakes (like FakeCollectionDao) or asserting returned data/states.
   - name: Mockito Global State Matchers Integrity
     rule: |
-      Ensure all parameters in Mockito stubs or verifications use matchers (never mix matchers and concrete arguments). 
-      Any incomplete or mismatched matcher call corrupts Mockito's global thread-local state, failing subsequent 
+      Ensure all parameters in Mockito stubs or verifications use matchers (never mix matchers and concrete arguments).
+      Any incomplete or mismatched matcher call corrupts Mockito's global thread-local state, failing subsequent
       tests in the suite.
+  - name: "No live-network tests / no hardcoded secrets in the unit suite"
+    rule: |
+      Tests that build a real Retrofit client and hit api.smugmug.com do not belong in `testDebugUnitTest`:
+      they are flaky, fail on offline CI, and (as found 2026-07-17) embedded the live API key in source. Delete
+      them or move behind an explicit record-mode/network gate. Never put a real API key, gallery password, or
+      provider key in a test file — use a dummy constant.
+  - name: "Recorded API snapshots embed the API key — redact before committing"
+    rule: |
+      The `PlaybackInterceptor` snapshots under `app/src/test/resources/snapshots/` echo request URLs that
+      contain `APIKey=<real key>` (101 of ~170 files). They are gitignored and must be redacted (key →
+      placeholder) before they can be committed, or CI playback tests can't run. Matching is by sanitized
+      filename, not the raw URL, so redacting the response BODY is safe. Also: the `.gitignore` once had a broad
+      `test/` rule that silently ignored the ENTIRE `app/src/test` tree — if new test files "don't show up",
+      run `git check-ignore <path>`.
+  - name: "assertion-free tests are worse than no test"
+    rule: |
+      A `catch { success = true }` (or returning early in playback mode) makes a test that can never fail. In
+      deterministic playback, an exception is a real parse failure — `fail(...)`/rethrow. For genuinely-absent
+      fixtures use JUnit `Assume.assumeTrue(...)` (honest SKIP), not a false pass.

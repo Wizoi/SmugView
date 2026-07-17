@@ -84,9 +84,24 @@ android_skills_and_knowledge:
     - name: Compose Annotations Target Boundaries
       doc_url: "https://developer.android.com/develop/ui/compose/modifiers"
       rule: |
-        Never place annotations like `@OptIn` or `@Composable` directly on data classes or standard Kotlin objects. 
-        These annotations are only applicable to functions, file levels, or local declarations, and placing them 
+        Never place annotations like `@OptIn` or `@Composable` directly on data classes or standard Kotlin objects.
+        These annotations are only applicable to functions, file levels, or local declarations, and placing them
         on classes will cause immediate compiler errors.
+    - name: "StateFlow used in an init block must be declared BEFORE it"
+      doc_url: "https://kotlinlang.org/docs/classes.html#constructors"
+      rule: |
+        Property initializers and init blocks run top-to-bottom. If an `init` block (e.g. line ~985 in
+        SmugViewModel) wires a `MutableStateFlow` into a `combine`, but that flow is declared LOWER in the class,
+        it is still `null` when the init runs → `NullPointerException` in `CombineKt$combineInternal` at
+        construction, crashing the app on first ViewModel access. Declare any flow referenced by the init block
+        above it. Verified crash 2026-07-17.
+    - name: "Password prompt renders only in BrowserScreen + PhotoGridScreen"
+      doc_url: "https://developer.android.com/develop/ui/compose/navigation"
+      rule: |
+        `PasswordPromptDialog` (driven by `viewModel.passwordPromptNode`) is hosted ONLY by BrowserScreen and
+        PhotoGridScreen. The detail screens do not host it. To prompt for a password from a detail-screen action
+        (e.g. "Jump to Gallery"), navigate to the grid and let `selectAlbum` detect the lock and prompt — do not
+        call `promptPassword` from a screen with no dialog (it silently sets state nobody renders).
     - name: Folder/Album Navigation Routing
       doc_url: "https://developer.android.com/develop/ui/compose/layouts"
       rule: |
@@ -99,10 +114,29 @@ android_skills_and_knowledge:
     - name: Startup & UI Thread Room Queries (ANR Prevention)
       doc_url: "https://developer.android.com/training/data-storage/room/async-queries"
       rule: |
-        Any Room database query executed during application startup, view initialization, or UI rendering must use 
-        targeted index-based queries (e.g. `getNodeByIdOrKey` or matching primary keys). Unbounded queries (such 
-        as `getAllCachedNodes()`) are strictly prohibited in loops or init blocks to prevent Main-thread blockages 
-        and database lock congestion (ANRs).
+        Any Room database query executed during application startup, view initialization, OR a navigation/hot path
+        must use targeted index-based queries (e.g. `getNodeById` by primary key). Prohibited in hot paths:
+        `getAllCachedNodes()` (full-table `SELECT *`) AND leading-wildcard `LIKE` (`albumUri LIKE '%'||key`) —
+        BOTH do full-table scans. Verified 2026-07-17: under concurrent load these blocked >20s (a lookup that
+        should be instant) while other fetches ran and the main thread sat idle — i.e. Room's query executor was
+        starved, not the main thread. `getNodeByIdOrKey`'s leading-wildcard LIKE is itself a full scan; prefer a
+        primary-key lookup, or add a proper index/exact-match column if you must query by album key.
+    - name: "Persist + incremental-sync (don't re-crawl on every launch)"
+      doc_url: "https://developer.android.com/training/data-storage/room"
+      rule: |
+        Large remote lists (the full gallery index) must be persisted to Room and refreshed incrementally, not
+        re-fetched in full on every launch. Pattern (implemented for albums in `cached_albums`): on launch load
+        the persisted rows instantly and publish them, then delta-sync newest-first (SortMethod=LastUpdated) and
+        stop at the first already-cached item. Keep the flat index in its OWN table separate from the browsable
+        `cached_nodes` tree (albums are parentNodeId="root" and would pollute the folder view). Sync metadata +
+        cover only; load item CONTENTS on demand. Result: a warm launch made 2 requests instead of 26.
+    - name: "Eager pagination + blocking retry = OkHttp dispatcher starvation"
+      doc_url: "https://square.github.io/okhttp/"
+      rule: |
+        Do not eagerly page whole result sets (all keyword images, all albums). Combined with the retry
+        interceptor's blocking `Thread.sleep` on 429s, it saturates the OkHttp dispatcher so unrelated calls
+        (e.g. a single getAlbum for a navigation target) queue for tens of seconds. When you must run a heavy
+        background load, cancel/suppress it when the user navigates away from the screen that needs it.
     - name: Flow Collection Conflation & Debounce
       doc_url: "https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.flow/conflate/"
       rule: |
@@ -151,5 +185,13 @@ android_skills_and_knowledge:
     - name: Coroutine Exception Safety in ViewModels
       doc_url: "https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-coroutine-exception-handler/"
       rule: |
-        Wrap all launched scopes in ViewModels with a `CoroutineExceptionHandler` to log and map unexpected 
+        Wrap all launched scopes in ViewModels with a `CoroutineExceptionHandler` to log and map unexpected
         API exceptions into UserMessage UI-states rather than letting uncaught exceptions crash the process.
+    - name: "Inject dispatchers; bound starvation-prone preambles"
+      doc_url: "https://developer.android.com/kotlin/coroutines/test"
+      rule: |
+        Hardcoded `Dispatchers.Default/IO` inside a class means `runTest` virtual time can't drive it, forcing
+        real `Thread.sleep` in tests. Provide a test-only secondary constructor taking a `CoroutineDispatcher`
+        (see DefaultCastManager) so tests use a TestDispatcher. Separately: if a step before a critical action can
+        be starved (e.g. a hierarchy password walk before showing a grid), wrap it in `withTimeoutOrNull(...)` so
+        the flow still proceeds (detect-lock → prompt) instead of spinning forever under load.

@@ -5,6 +5,8 @@ purpose: |
 
 pre_requisite:
   - action: "Before initiating any deployment or bundle compile task, always execute the fast local unit tests first (e.g. `./gradlew testDebugUnitTest`) to verify codebase integrity."
+  - action: "VERIFY the build actually succeeded — do not trust a piped command's exit code. `./gradlew ... | tail` reports tail's status, not Gradle's; grep for an explicit `BUILD SUCCESSFUL` line. A false 'build passed' before a Play upload ships broken bits."
+  - action: "R8 is ENABLED for release (proguard-rules.pro keeps the reflective model packages). `assembleRelease` compiling clean does NOT prove JSON parses — smoke-test the release build on a device (load galleries + a search image) before publishing. See AGENTS.md 'Minification (R8)'."
 
 environment_setup:
   JAVA_HOME: "C:\\Program Files\\Android\\Android Studio\\jbr"

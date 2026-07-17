@@ -32,8 +32,8 @@ pre_analysis_steps:
     name: Git Status & Environment Audit
     action: "Check `git status` in the repository root and verify Java/Gradle version variables ($env:JAVA_HOME) to prevent compile environment mismatches."
   - step: 2
-    name: Review Sibling Agent Logs
-    action: "Review sibling developer transcripts under `C:\\Users\\kidzi\\.gemini\\antigravity-ide\\brain\\<sibling-conversation-id>\\.system_generated\\logs\\transcript.jsonl` using PowerShell commands (Get-Content) to prevent regressions in shared files."
+    name: Review Sibling Agent Logs (legacy Antigravity only)
+    action: "Under Antigravity, review sibling transcripts at `C:\\Users\\kidzi\\.gemini\\antigravity-ide\\brain\\<sibling-conversation-id>\\.system_generated\\logs\\transcript.jsonl`. Under Claude Code (the current primary environment) this does not apply — use `git status`/`git log`/branches to avoid regressing shared files."
 
 investigation_procedure:
   - role: SmugMug API Specialist
@@ -54,13 +54,36 @@ investigation_procedure:
   - role: Smart Device Expert
     ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/smart_device_expert.yaml"
     methodology: |
-      Diagnose network discovery issues, analyze SSDP/mDNS packet loss, verify ECP/DIAL/AirPlay HTTP status payloads, 
+      Diagnose network discovery issues, analyze SSDP/mDNS packet loss, verify ECP/DIAL/AirPlay HTTP status payloads,
       and trace local network cleartext policies or connection caching states.
+  - role: Security Reviewer
+    ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/security_reviewer.yaml"
+    methodology: |
+      Check whether the flow exposes a secret, private media, or an unauthenticated surface; whether anything
+      sensitive is committed, logged, or stored unencrypted; and whether a fix needs credential rotation or a
+      history scrub (removal ≠ unpublish). Scan staged content for secrets before any commit.
   - role: Project Manager
     ref_file: "file:///c:/src/kidzi/GitHub/SmugView/.agents/resources/personas/project_manager.yaml"
     methodology: |
       Analyze the overall conversation trajectory. Collect execution diagnostics, and run the automatic post-fix retrospective 
       to continuously refine agents and persona instructions.
+
+emulator_verification_playbook:
+  note: "UI-tap automation for multi-screen flows is unreliable (auto-hiding controls, the keyboard shifting buttons, taps desyncing). Prefer EVIDENCE over taps. Set MSYS_NO_PATHCONV=1 for adb device-path commands."
+  techniques:
+    - "Log tracing: add temporary `if (BuildConfig.DEBUG) Log.d(\"<tag>\", ...)` checkpoints around the suspect flow, then `adb logcat -c` before the action and `adb logcat -d | grep <tag>` after — this is how you find WHERE a coroutine stalls (the last checkpoint printed is the line before the hang)."
+    - "Screenshots: `adb exec-out screencap -p > shot.png` then read the image (do NOT commit these; build-shots/ is gitignored)."
+    - "DB inspection: `adb shell \"run-as com.smugview.app sqlite3 /data/data/com.smugview.app/databases/smugview_db '<SQL>'\"` — e.g. row counts to check a table's real size (a query hanging on a 130-row table is a lock/executor issue, not size)."
+    - "ANR vs starvation: `adb shell \"cat /proc/$(pidof com.smugview.app)/status | grep State\"`. Main thread `S` (sleeping) while a coroutine won't progress = executor/dispatcher starvation, NOT a main-thread ANR."
+    - "Network: `adb logcat -d | grep -oE 'GET https://api.smugmug.com/api/v2/[a-zA-Z0-9!/]+' | sort | uniq -c` shows what's actually being fetched (and whether a runaway pagination is flooding)."
+    - "Exact tap bounds when you must tap: `adb shell uiautomator dump` then read the node bounds. `force-stop` between runs for a clean state. A RELEASE install requires uninstalling the debug build first (signature mismatch) and wipes app data."
+    - "Live API ground-truth: curl the endpoint directly with the key from local.properties (never echo the key) to confirm what the API actually returns before blaming the client."
+
+investigation_discipline:
+  rules:
+    - "Regression vs pre-existing: explicitly classify each finding as a regression YOU introduced vs a latent bug your change EXPOSED (removing a crutch can surface a bug that only looks new). State which, with evidence."
+    - "Know when to stabilize: if one fix keeps revealing deeper pre-existing issues (a feature spiraling through many layers), land the safe/verified pieces, document the precise blocker, and STOP. Do not destabilize verified work chasing the tail."
+    - "Prove it end-to-end: 'assembleRelease compiled' or 'unit tests pass' is not proof a runtime flow works — drive the actual flow (or curl the API / query the DB) and observe the result."
 
 options_decision_framework:
   requirement: "Outline and document at least 1-3 design options with their respective Pros and Cons before proposing code edits. Have all agent personas (UX, Android, API, QA) explicitly weigh in on these options in the analysis."

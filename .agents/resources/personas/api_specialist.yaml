@@ -94,10 +94,43 @@ api_skills_and_knowledge:
     - name: AlbumKeywords Expansion Map URI Parsing
       doc_url: "https://api.smugmug.com/api/v2/doc/reference/album-keywords.html"
       rule: |
-        When reading expansions from `album/{albumKeys}?_expand=AlbumKeywords`, SmugMug maps expansions by the 
-        fully expanded sub-resource URI (e.g. `/api/v2/album/{key}!keywords`). To map this back to the clean 
-        album key correctly, clean the key by stripping everything after the `!` symbol (e.g., 
+        When reading expansions from `album/{albumKeys}?_expand=AlbumKeywords`, SmugMug maps expansions by the
+        fully expanded sub-resource URI (e.g. `/api/v2/album/{key}!keywords`). To map this back to the clean
+        album key correctly, clean the key by stripping everything after the `!` symbol (e.g.,
         `uri.substringAfterLast("/").substringBefore("!")`). Failure to do this results in invalid lookup keys.
+    - name: "image!search has NO containing-album reference (verified 2026-07-17)"
+      doc_url: "https://api.smugmug.com/api/v2/doc/reference/image-search.html"
+      rule: |
+        `image!search` (keyword + text search) results OMIT `Album`, `ImageAlbum`, and `WebUri` entirely —
+        even for public images, and even when you request them via `_filteruri=ImageAlbum`. You CANNOT
+        resolve the containing gallery of a search-result image from the search response. The single-image
+        endpoint also withholds these for password-locked galleries until a session unlock.
+        Consequence: "jump to gallery from a search image" must resolve the album by matching the photo's
+        `ThumbnailUrl` PATH against the cached album index (getAlbumKeyFromWebUri) — which requires the
+        album index to be populated first. Do not assume the API hands back the album.
+    - name: "Album/gallery METADATA is public; only CONTENTS are gated"
+      doc_url: "https://api.smugmug.com/api/v2/doc/reference/album.html"
+      rule: |
+        `GET album/{key}` and `user/{nickname}!albums` return Name, AlbumKey, UrlPath, SecurityType,
+        ImageCount, LastUpdated, and the HighlightImage reference WITHOUT a password — even for
+        SecurityType=Password galleries (ResponseLevel comes back as "Password" but metadata is present).
+        Only the images / ImageAlbum are withheld until unlock. → You can detect a locked album and prompt
+        for its password without already having it (fetch metadata, check SecurityType, then prompt).
+    - name: "Incremental album sync via SortMethod=LastUpdated"
+      doc_url: "https://api.smugmug.com/api/v2/doc/reference/user-albums.html"
+      rule: |
+        `user/{nickname}!albums` supports `SortMethod=LastUpdated&SortDirection=Descending` (newest-first).
+        Use it for delta sync: fetch newest-first and STOP at the first album whose LastUpdated is already
+        cached. This turns a full 26-page crawl every launch into a light delta. Persist the flat index in
+        the `cached_albums` table; load it instantly on launch; only metadata + cover is synced, gallery
+        contents stay on demand. (Deletions are not detected by a newest-first delta — needs a periodic
+        full reconcile.)
+    - name: "NodeID vs AlbumKey are different namespaces"
+      doc_url: "https://api.smugmug.com/api/v2/doc/reference/node.html"
+      rule: |
+        An AlbumKey is NOT a NodeID. `GET node/{albumKey}` 404s. Never feed an album key to a node endpoint;
+        resolve the node id from the album (or cache) first. This also means indexed cache lookups by album
+        key must query `albumUri`, not `nodeId`.
 
   rate_limiting_and_scoping:
     - name: Batch Scoped Search HTTP 429 Rate Limiting & Jittered Backoff
@@ -127,9 +160,14 @@ api_skills_and_knowledge:
     - name: Password-Protected Sub-resource Queries
       doc_url: "https://api.smugmug.com/api/v2/doc/reference/image.html"
       rule: |
-        Direct API calls to sub-resources (like `image/{image_key}!metadata`) within password-locked albums require passing 
-        the `Password` parameter query. Ensure the repository's `getImageExif` signature accepts `password: String? = null` 
+        Direct API calls to sub-resources (like `image/{image_key}!metadata`) within password-locked albums require passing
+        the `Password` parameter query. Ensure the repository's `getImageExif` signature accepts `password: String? = null`
         and forwards it as a `@Query("Password")` parameter in the Retrofit endpoint definition.
+        NOTE (verified 2026-07-17): a bare `?Password=` on the single-IMAGE endpoint does NOT reveal a locked
+        gallery's ImageAlbum/WebUri. Full unlock uses the reactive-retry pattern: POST `{album|node}/{key}!unlock`
+        to establish a session cookie (OkHttp CookieJar), then GET. Resolve the correct password via the node
+        hierarchy — never brute-force every saved password against the endpoint (cross-contaminates credentials
+        and trips 429).
     - name: Security/Password Grouping
       doc_url: "https://api.smugmug.com/api/v2/doc/reference/album.html"
       rule: |

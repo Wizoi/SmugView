@@ -20,8 +20,26 @@
     $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
     ./gradlew compileDebugKotlin
     ```
+    From the **Git Bash** tool, export a POSIX path and invoke `gradlew.bat`:
+    ```bash
+    export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+    ./gradlew.bat testDebugUnitTest
+    ```
+*   **Shell gotchas that have burned agents (verify results, don't trust exit codes blindly)**:
+    *   **Piping masks exit codes.** `./gradlew.bat ... | tail` reports the exit status of `tail`, not Gradle. Never conclude "build passed" from a piped command — grep for an explicit `BUILD SUCCESSFUL`/`BUILD FAILED` line, or check `${PIPESTATUS[0]}`.
+    *   **`MSYS_NO_PATHCONV=1` for adb.** Git Bash rewrites `/data/...` and `/sdcard/...` into Windows paths, so `adb shell` commands with device paths silently target the wrong path. Prefix with `export MSYS_NO_PATHCONV=1`. But note this ALSO stops the JBR POSIX path from being converted — set `JAVA_HOME` in a shell where path-conv is on (i.e. don't combine `MSYS_NO_PATHCONV=1` with the JBR export in the same command).
+    *   **Avoid `./gradlew clean` while the emulator/app is running.** It triggers file-lock failures (`Unable to delete .../R.jar`). If you hit one, `./gradlew.bat --stop` then delete the locked intermediate dir and retry without `clean`.
+    *   **`cd` into a subdir persists across Bash calls.** A stray `cd app/build/...` will make later `./gradlew.bat` invocations fail with "No such file". Prefer absolute paths / `cd` back to the repo root.
+    *   **Never `git stash` to get a "baseline" mid-task.** Stashing untracked/staged work (e.g. `git rm --cached` deletions) and popping can silently re-add files you intended to remove. Compare against `HEAD` with read-only diffs instead.
 *   **Deployment Pre-Requisite**: Before initiating any deployment, emulator install, or App Bundle compilation task, always run the fast local unit tests first (using `./gradlew testDebugUnitTest`) to ensure codebase integrity and compilation stability.
-*   **Minification (R8) & Obfuscation Warning**: Do not enable code minification (`isMinifyEnabled = true`) or resource shrinking (`isShrinkResources = true`) in the release build block of `app/build.gradle.kts` unless comprehensive keep rules are fully verified. Gson, Retrofit, and other reflection-based API components will fail to deserialize network responses at runtime without these rules, returning empty states or failed lookups. Keep minification disabled (`false`) by default for release publications.
+*   **Minification (R8) is ENABLED — keep it that way**: As of the 2026-07-17 review, `isMinifyEnabled`/`isShrinkResources` are **true** for release, guarded by `app/proguard-rules.pro` which keeps the reflective `com.smugview.app.data.api.**` and `data.db.**` packages plus Gson/Retrofit attributes. Do NOT disable R8 to "fix" JSON parsing — that ships an unshrunk, unobfuscated APK with the compiled-in API key trivially extractable. If you add a new reflection-based (Gson) model package, add a `-keep` for it in `proguard-rules.pro` instead. Caveat: `assembleRelease` compiling clean proves shrinking works, NOT that JSON still parses — smoke-test a release build on a device (load galleries + a search image) before shipping.
+
+## 🔒 Security & Secret Hygiene (owned by the Security Reviewer persona)
+*   **Never commit secrets.** The SmugMug API key, the signing keystore/passwords, `play-service-account.json`, gallery passwords, and any provider key (e.g. Anthropic in `.vscode/settings.json`) must never be tracked. Before committing, scan staged content: `git diff --cached | grep -iE "api.?key|password|sk-ant|oauth"`. The API key lives in `local.properties` (gitignored) and is injected via `buildConfigField` — reference `BuildConfig.SMUGMUG_API_KEY`, never a literal.
+*   **Recorded API snapshots embed the live API key** in echoed response URLs. They are gitignored (`app/src/test/resources/snapshots/`) and must be **redacted** (replace the key with a placeholder) before they can be committed. Redaction must not break the `PlaybackInterceptor` request→file matching (matching is by sanitized filename, not the raw URL, so redacting the body is safe).
+*   **Gallery passwords are stored encrypted** via `PasswordStore` (`EncryptedSharedPreferences`), not plaintext `SharedPreferences`. Route all password reads/writes through the injected `PasswordStore` interface. Never resolve a locked album by brute-forcing every saved password against the API — resolve the correct one via the node hierarchy.
+*   **HTTP body logging must be gated on `BuildConfig.DEBUG`** (request URLs carry `APIKey`/`Password` query params). The Web Companion LAN server must stay restricted to the cast-target IP with a socket timeout and bounded pool — it serves potentially-private photo URLs over cleartext.
+*   **Rotation is the user's job.** If a secret leaked into git history, removing it from HEAD does not unpublish it — flag that the key/password must be rotated and history scrubbed. Never `git push`, rotate, or scrub history without explicit per-action confirmation (see Silent Mode exclusions).
 
 ## 🎨 Compose & UI Layout Guidelines
 *   **Flow Layouts**: Standard `FlowRow` is available under `androidx.compose.foundation.layout.FlowRow` and requires `@OptIn(ExperimentalLayoutApi::class)`.
@@ -34,12 +52,14 @@
 
 
 
+## 🧭 Primary Agent Environment: Claude Code
+This project is now worked on primarily via the **Claude Code** extension (not Antigravity). Translate the older "Antigravity tool" instructions below accordingly:
+*   File search → `Glob`; content search → `Grep` (ripgrep-backed, pass a repo-relative `path` and `glob`); read → `Read`; edit → `Edit`/`Write`. Prefer these over shell `find`/`grep`/`cat`.
+*   There is **no `.gemini/antigravity-ide/brain` sibling-transcript coordination** under Claude Code. Coordinate via git (`git status`, `git log`, branches) and this `AGENTS.md`. The Antigravity-specific sections further down are retained for reference but do not apply here.
+*   Environment: Windows 11, Git Bash + PowerShell tools. See the Gradle shell-gotchas above before running builds/adb.
+
 ## 🤝 Parallel Workspace Coordination
-*   **Coordination**: Since there may be concurrent developer agents working on the codebase, always check the git status and look up the logs in the sibling agent directories:
-    ```
-    C:\Users\kidzi\.gemini\antigravity-ide\brain\<sibling-conversation-id>\.system_generated\logs\transcript.jsonl
-    ```
-    Ensure you do not regress their features when making changes to shared files like `BrowserScreen.kt` or `SmugViewModel.kt`.
+*   **Coordination (legacy Antigravity note)**: If concurrent developer agents are working the codebase under Antigravity, their logs live at `C:\Users\kidzi\.gemini\antigravity-ide\brain\<sibling-conversation-id>\.system_generated\logs\transcript.jsonl`. Under Claude Code this does not apply — use git. Either way, take care not to regress features when editing shared god-files like `BrowserScreen.kt` (~4k lines) or `SmugViewModel.kt` (~3.2k lines).
 
 ## 🚀 SmugMug API Optimization Guidelines
 *   **AlbumKeywords Expansion**: To fetch all keywords for an album without downloading heavy image payloads, use `GET album/{albumKey}?_expand=AlbumKeywords&_filter=Uri&_verbosity=1`.
@@ -113,6 +133,7 @@
     *   *UX Designer/Reviewer*: Does this compromise standard typography, spacing, navigation segment state preservation, or accessibility guidelines?
     *   *QA/Tester*: Does this implementation allow deterministic automated validation or does it create untestable logic?
     *   *Smart Device Expert*: Does this integration handle network routing, firewall ports, cleartext traffic policies, and casting security protocols correctly?
+    *   *Security Reviewer*: Does this expose a secret (key/password/token), private media, or an unauthenticated surface? Is anything sensitive being committed, logged, or stored unencrypted?
 *   **Dissent Record Requirement**: If a sub-optimal approach is requested or observed, explicitly raise the alternative, document the trade-offs, and seek alignment rather than moving forward silently.
 
 ## 📖 Documentation Reference & Maintenance
@@ -134,3 +155,31 @@
 ## 📈 Featured Sites Selection & Live API Validation Learnings (2026-07-17 Retro v3)
 *   **Onboarding / Exploration Hardcoded Portfolios**: When curating featured portfolios or onboarding sites on the client-side (such as carousels in `BrowserScreen.kt`), do not use individual photographers who are prone to profile deletion or nickname updates. Instead, select official company-managed portals (`smugmugfilms`, `Tutorial`) and established public institutions (`uphs`, `corvettemuseum`, `daemenuniversity`).
 *   **Live Configuration Regression Safeguards**: To protect hardcoded onboarding configurations from decaying over time, implement a target integration test in the live API test suite (`SmugMugApiTest.kt`) that queries each nickname. Wrap the test in credentials and network capability checks so that it skips gracefully in offline CI environments instead of causing build failure.
+
+## 📈 Full-Codebase Review & Album-Sync Learnings (2026-07-17 Retro v4)
+Distilled from a large security/quality review + the incremental album-index feature. These are the highest-leverage, most non-obvious facts for this project.
+
+### SmugMug API — hard limits verified against the live API
+*   **`image!search` (keyword + search) returns NO containing-album reference.** `Album`, `ImageAlbum`, and `WebUri` are all absent from results — even for public images. You **cannot** resolve which gallery a search-result image belongs to from the search response. The app resolves it heuristically by matching the photo's `ThumbnailUrl` **path** against the cached album index (`getAlbumKeyFromWebUri`). This only works if the album index is populated (see album-index sync). Design "jump to gallery from a search image" around this limit.
+*   **Album/gallery METADATA is public; only CONTENTS are gated.** `GET album/{key}` (and `user/{nickname}!albums`) return `Name`, `AlbumKey`, `UrlPath`, `SecurityType`, `ImageCount`, `LastUpdated`, and the `HighlightImage` reference **without a password**, even for `SecurityType=Password` galleries. The images/`ImageAlbum` are withheld until a session unlock. → You can detect a locked album and prompt for its password *without* already having it.
+*   **`user/{nickname}!albums` supports `SortMethod=LastUpdated&SortDirection=Descending`** (newest-first). Use it for incremental sync: fetch newest-first and stop at the first album whose `LastUpdated` you already have cached.
+*   **NodeID vs AlbumKey are different namespaces.** `GET node/{albumKey}` 404s (an album key is not a node id). Don't feed album keys to node endpoints.
+*   **Session unlock ≠ `?Password=` query param.** The single-image endpoint does not honor `?Password=` for locked galleries; the app unlocks via a POST `!unlock` that establishes a session cookie (OkHttp CookieJar), then GETs. Don't expect a bare `Password` query param to unlock image detail.
+
+### Room / DB performance — full-table scans STARVE under load
+*   **`getAllCachedNodes()` (`SELECT *`) AND leading-wildcard `LIKE` (`albumUri LIKE '%'||key`) both do full-table scans.** Under concurrent load they hang for many seconds (verified: a lookup that should be instant blocked >20s while other fetches ran, main thread idle). Primary-key/indexed lookups (`getNodeById`) stay instant. Never use `getAllCachedNodes()` or leading-wildcard `LIKE` in a hot/navigation path — use indexed queries (extends the existing "Startup & UI Thread Room Queries" rule to ALL hot paths, not just init/render).
+*   **Blocking `Thread.sleep` retry interceptor + eager pagination = dispatcher starvation.** The OkHttp retry interceptor sleeps the calling thread on 429s; combined with loading whole result sets eagerly (all keyword images / all albums), it saturates the OkHttp dispatcher and starves unrelated calls (e.g. a single `getAlbum` queues behind it). Two levers: (a) don't eagerly page huge result sets — persist + load on demand; (b) the retry interceptor should eventually move to suspending `delay`.
+*   **Persist + incremental-sync pattern (implemented for albums, reuse it):** the gallery index lives in `cached_albums` (flat, separate from the browsable `cached_nodes` tree). On launch: load from Room instantly, then delta-sync newest-first and stop at known data. Only metadata + cover is synced; gallery **contents** stay on demand. Result: a warm launch made 2 album requests instead of 26.
+
+### Kotlin / Compose / coroutine traps hit this session
+*   **StateFlow used in an `init`-block `combine` must be declared BEFORE the `init` block.** Property initializers run top-to-bottom; an `init` at line N that references a `MutableStateFlow` declared at line >N sees `null` → `NullPointerException` in `combineInternal` at construction (crashes the ViewModel/app). Declare such flows above the `init` block.
+*   **The password prompt only renders in `BrowserScreen` and `PhotoGridScreen`** (they host `PasswordPromptDialog`). Detail screens do not. To prompt from a detail-screen action, navigate to the grid and let `selectAlbum` → prompt handle it — don't call `promptPassword` from a screen with no dialog.
+*   **Bound starvation-prone work with `withTimeoutOrNull`.** If a preamble (e.g. hierarchy password resolution) can be starved, wrap it so the flow still proceeds (detect-lock → prompt) instead of spinning forever.
+*   **Inject dispatchers for testability.** `Dispatchers.Default/IO` hardcoded inside a class means `runTest` virtual time can't drive it (forces `Thread.sleep` in tests). Add a test-only constructor taking a `CoroutineDispatcher`.
+
+### Verifying on the emulator (playbook — UI taps are unreliable)
+*   `input tap` for multi-screen flows desyncs constantly (auto-hiding controls, keyboard shifting buttons). Prefer **evidence over taps**: (1) sprinkle temporary `BuildConfig.DEBUG` `Log.d` tags and `adb logcat -d | grep <tag>` to trace execution; (2) `adb exec-out screencap -p > f.png` then read the image; (3) inspect the DB with `adb shell "run-as com.smugview.app sqlite3 /data/data/com.smugview.app/databases/smugview_db '<SQL>'"` (needs `MSYS_NO_PATHCONV=1`); (4) `uiautomator dump` for exact tappable bounds; (5) `cat /proc/$(pidof com.smugview.app)/status | grep State` to tell an ANR (blocked) from executor starvation (main thread `S` sleeping). `force-stop` between runs for a clean state; a **release** install requires uninstalling the debug build first (signature mismatch) and wipes app data.
+
+### Investigation discipline
+*   **Separate "regression I introduced" from "pre-existing bug my change exposed."** Removing a crutch (e.g. a brute-force password replay) can surface a latent bug that only *looked* like a new regression. State which it is, with evidence.
+*   **Know when to stabilize vs keep digging.** A single feature (locked-gallery jump) spiraled through 5+ layers of pre-existing issues. When a fix keeps revealing deeper pre-existing problems, land the safe/verified pieces, document the blocker precisely, and stop — don't destabilize verified work chasing the tail.

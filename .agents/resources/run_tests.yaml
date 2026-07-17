@@ -31,4 +31,23 @@ execution_steps:
   1: Check if the Android emulator is active before running integration tests.
   2: Define JAVA_HOME explicitly in the command block to avoid Gradle compile/sync toolchain errors.
   3: Set a timer or listen to async task notifications for command termination.
-  4: Note that in this project, both unit and functional (live network) tests are located under the `src/test/` directory, so they are executed together via the `testDebugUnitTest` Gradle task.
+  4: Note that in this project, unit tests + a Robolectric DAO test (real Room SQL) live under `src/test/`. Live-network tests should NOT live here (flaky/offline-CI/secret-leaking) — they were removed 2026-07-17.
+
+shell_gotchas:
+  note: "These have caused false 'tests passed' conclusions and wasted cycles."
+  git_bash: |
+    From the Git Bash tool, export a POSIX JAVA_HOME and call gradlew.bat:
+      export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+      ./gradlew.bat testDebugUnitTest
+  do_not_trust_piped_exit_codes: |
+    `./gradlew.bat ... | tail` reports tail's exit code, not Gradle's. NEVER conclude a build/test
+    passed from a piped command — grep for an explicit `BUILD SUCCESSFUL`/`BUILD FAILED` line, or check
+    `${PIPESTATUS[0]}`. A green pipe with a red build is the classic false pass.
+  avoid_clean_with_emulator: |
+    `./gradlew clean` while the app/emulator is running throws file-lock errors (Unable to delete R.jar).
+    `--stop` the daemons, delete the locked intermediate dir, and retry WITHOUT clean.
+  adb_paths: |
+    Set `MSYS_NO_PATHCONV=1` for adb commands using device paths (/data, /sdcard) — Git Bash rewrites them.
+    But that same setting breaks the POSIX JAVA_HOME export, so don't combine them in one command.
+  robolectric_first_run: |
+    The first Robolectric run downloads android-all jars (~1-2 min). Not a hang — allow a longer timeout.
