@@ -65,7 +65,7 @@ interface SmugMugApi {
         @Path("album_key") albumKey: String,
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
-        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,DateModified",
+        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated",
         @Query("_filteruri") filterUri: String = "HighlightImage",
         @Query("_verbosity") verbosity: Int = 1,
         @Header("X-Ignore-Errors") ignoreErrors: String? = null
@@ -112,6 +112,24 @@ interface SmugMugApi {
     suspend fun searchImagesByUri(
         @Url url: String,
         @Query("APIKey") apiKey: String
+    ): ImageSearchResponse
+
+    @GET("user!search")
+    suspend fun searchUsers(
+        @Query("APIKey") apiKey: String,
+        @Query("q") query: String,
+        @Query("_verbosity") verbosity: Int = 1
+    ): UserSearchResponse
+
+    @GET("user/{nickname}!recentimages")
+    suspend fun getUserRecentImages(
+        @Path("nickname") nickname: String,
+        @Query("APIKey") apiKey: String,
+        @Query("count") count: Int = 4,
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,Uris",
+        @Query("_filteruri") filterUri: String = "ImageAlbum",
+        @Query("_verbosity") verbosity: Int = 1,
+        @Query("Password") password: String? = null
     ): ImageSearchResponse
 
     @GET("user/{nickname}!imagesearch")
@@ -191,9 +209,14 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("count") count: Int = 100,
         @Query("_expand") expand: String = "HighlightImage",
-        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,DateModified",
+        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated",
         @Query("_filteruri") filterUri: String = "HighlightImage",
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("_verbosity") verbosity: Int = 1,
+        @Query("Password") password: String? = null,
+        // Sorting by last-modified (newest first) enables the incremental album-index sync:
+        // fetch newest-first and stop once we reach an album we already have cached.
+        @Query("SortMethod") sortMethod: String? = null,
+        @Query("SortDirection") sortDirection: String? = null
     ): UserAlbumsResponse
 
     @GET
@@ -218,7 +241,8 @@ interface SmugMugApi {
         @Path("nickname") nickname: String,
         @Query("APIKey") apiKey: String,
         @Query("NodeID") nodeId: String? = null,
-        @Query("_verbosity") verbosity: Int = 1
+        @Query("_verbosity") verbosity: Int = 1,
+        @Query("Password") password: String? = null
     ): TopKeywordsResponse
 
     @GET("image!search")

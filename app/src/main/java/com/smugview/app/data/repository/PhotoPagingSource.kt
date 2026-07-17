@@ -14,8 +14,12 @@ class PhotoPagingSource(
 ) : PagingSource<String, AlbumImageData>() {
 
     override fun getRefreshKey(state: PagingState<String, AlbumImageData>): String? {
-        // Return null to load from the start during refresh
-        return null
+        // Resume from the page closest to the user's current position rather than always
+        // restarting at page 1 (which snapped the user back to the top of the album on any
+        // invalidation). Falling back to null simply reloads from the start.
+        val anchorPosition = state.anchorPosition ?: return null
+        val anchorPage = state.closestPageToPosition(anchorPosition) ?: return null
+        return anchorPage.prevKey ?: anchorPage.nextKey
     }
 
     override suspend fun load(params: LoadParams<String>): LoadResult<String, AlbumImageData> {
@@ -53,6 +57,10 @@ class PhotoPagingSource(
                 prevKey = null, // Only paging forward
                 nextKey = nextKey
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Never convert cancellation into a load error — it must propagate so structured
+            // concurrency can unwind (e.g. when the user navigates away mid-load).
+            throw e
         } catch (e: Exception) {
             LoadResult.Error(e)
         }

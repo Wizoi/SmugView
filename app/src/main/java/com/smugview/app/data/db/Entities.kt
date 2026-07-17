@@ -4,10 +4,11 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
 
 @Entity(
     tableName = "cached_nodes",
-    indices = [Index(value = ["parentNodeId"])]
+    indices = [Index(value = ["parentNodeId"]), Index(value = ["nickname"])]
 )
 data class CachedNode(
     @PrimaryKey val nodeId: String,
@@ -15,7 +16,7 @@ data class CachedNode(
     val type: String,          // "Folder" or "Album"
     val title: String,
     val description: String?,
-    val access: String?,       // "Public" or "Password"
+    val access: String?,       // "Public", "Password", or "Inherited"
     val passwordHint: String?,
     val uri: String,
     val childNodesUri: String?,
@@ -24,7 +25,8 @@ data class CachedNode(
     val childCount: Int? = null,
     val sortIndex: Int = 0,
     val webUri: String? = null,
-    val dateModified: String? = null
+    val dateModified: String? = null,
+    @ColumnInfo(defaultValue = "") val nickname: String = ""  // Site nickname for cross-site isolation
 ) {
     fun getAlbumKey(): String {
         return if (albumUri?.contains("/album/") == true) {
@@ -40,6 +42,50 @@ data class ViewedGalleryUpdate(
     @PrimaryKey val nodeId: String,
     val lastViewedDateModified: String
 )
+
+/**
+ * Persisted flat index of ALL of a user's galleries (metadata only — no photos). Separate from
+ * [CachedNode] because these are a flat list (not part of the browsable folder tree), used for
+ * path/album-key resolution and search. Synced incrementally by `LastUpdated` so the app doesn't
+ * re-crawl every album on every launch. Gallery *contents* are still loaded on demand.
+ */
+@Entity(tableName = "cached_albums", indices = [Index(value = ["nickname"])])
+data class CachedAlbum(
+    @PrimaryKey val albumKey: String,
+    val nodeId: String,
+    val name: String,
+    val securityType: String?,
+    val passwordHint: String?,
+    val uri: String,
+    val webUri: String?,
+    val urlPath: String?,
+    val imageCount: Int?,
+    val dateModified: String?,       // SmugMug "LastUpdated"
+    val galleryStyle: String?,
+    val highlightImageUrl: String?,
+    val sortIndex: Int = 0,
+    @ColumnInfo(defaultValue = "") val nickname: String = ""
+) {
+    /** Maps to the flat [CachedNode] shape the rest of the app consumes via albumsCache. */
+    fun toCachedNode(): CachedNode = CachedNode(
+        nodeId = nodeId,
+        parentNodeId = "root",
+        type = "Album",
+        title = name,
+        description = null,
+        access = securityType ?: "Public",
+        passwordHint = passwordHint,
+        uri = uri,
+        childNodesUri = null,
+        albumUri = uri,
+        highlightImageUrl = highlightImageUrl,
+        childCount = imageCount,
+        sortIndex = sortIndex,
+        webUri = webUri,
+        dateModified = dateModified,
+        nickname = nickname
+    )
+}
 
 @Entity(tableName = "offline_collections")
 data class OfflineCollection(
@@ -99,9 +145,13 @@ data class CollectionBookmark(
     val extraData: String? = null // Any other serialized/extra metadata
 )
 
-@Entity(tableName = "search_history")
+@Entity(
+    tableName = "search_history",
+    primaryKeys = ["query", "nickname"]
+)
 data class SearchHistory(
-    @PrimaryKey val query: String,
+    val query: String,
+    @ColumnInfo(defaultValue = "") val nickname: String = "",  // Site nickname — scopes history per site
     val timestamp: Long = System.currentTimeMillis()
 )
 

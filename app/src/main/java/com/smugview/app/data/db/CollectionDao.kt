@@ -13,6 +13,20 @@ interface CollectionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNodes(nodes: List<CachedNode>)
 
+    // --- Persisted flat album index (see CachedAlbum) ---
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAlbums(albums: List<CachedAlbum>)
+
+    @Query("SELECT * FROM cached_albums WHERE nickname = :nickname OR nickname = '' ORDER BY sortIndex ASC")
+    suspend fun getAlbumIndex(nickname: String): List<CachedAlbum>
+
+    /** Most-recent LastUpdated we have cached — the stop marker for the incremental sync. */
+    @Query("SELECT MAX(dateModified) FROM cached_albums WHERE nickname = :nickname OR nickname = ''")
+    suspend fun getLatestAlbumDateModified(nickname: String): String?
+
+    @Query("SELECT COUNT(*) FROM cached_albums WHERE nickname = :nickname OR nickname = ''")
+    suspend fun getAlbumIndexCount(nickname: String): Int
+
     @Query("SELECT * FROM cached_nodes WHERE parentNodeId = :parentNodeId AND nodeId NOT LIKE 'virtual:%' ORDER BY sortIndex ASC")
     fun getCachedNodesByParent(parentNodeId: String?): Flow<List<CachedNode>>
 
@@ -60,8 +74,9 @@ interface CollectionDao {
         WHERE (title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%')
           AND type = :type
           AND nodeId NOT LIKE 'virtual:%'
+          AND (nickname = :nickname OR nickname = '')
     """)
-    suspend fun searchNodesGlobal(query: String, type: String): List<CachedNode>
+    suspend fun searchNodesGlobal(query: String, type: String, nickname: String = ""): List<CachedNode>
 
     @Query("""
         WITH RECURSIVE descendants(nodeId) AS (
@@ -80,6 +95,9 @@ interface CollectionDao {
 
     @Query("SELECT * FROM cached_nodes WHERE albumUri IN (:albumUris)")
     suspend fun getNodesByAlbumUris(albumUris: List<String>): List<CachedNode>
+
+    @Query("UPDATE cached_nodes SET access = :access, passwordHint = :passwordHint WHERE nodeId = :nodeId")
+    suspend fun updateNodeAccess(nodeId: String, access: String?, passwordHint: String?)
 
     // Offline Collections Operations
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -148,14 +166,17 @@ interface CollectionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSearchQuery(searchHistory: SearchHistory)
 
-    @Query("SELECT * FROM search_history ORDER BY timestamp DESC LIMIT 20")
-    fun getSearchHistory(): Flow<List<SearchHistory>>
+    @Query("SELECT * FROM search_history WHERE nickname = :nickname ORDER BY timestamp DESC LIMIT 20")
+    fun getSearchHistory(nickname: String): Flow<List<SearchHistory>>
 
-    @Query("DELETE FROM search_history WHERE `query` = :query")
-    suspend fun deleteSearchQuery(query: String)
+    @Query("DELETE FROM search_history WHERE `query` = :query AND nickname = :nickname")
+    suspend fun deleteSearchQuery(query: String, nickname: String)
+
+    @Query("DELETE FROM search_history WHERE nickname = :nickname")
+    suspend fun clearSearchHistory(nickname: String)
 
     @Query("DELETE FROM search_history")
-    suspend fun clearSearchHistory()
+    suspend fun clearAllSearchHistory()
 
     // Search Results Cache Operations
     @Insert(onConflict = OnConflictStrategy.REPLACE)

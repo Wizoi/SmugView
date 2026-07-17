@@ -184,7 +184,7 @@ data class AlbumDetails(
     @SerializedName("SecurityType") val securityType: String? = null,
     @SerializedName("PasswordHint") val passwordHint: String? = null,
     @SerializedName("Uris") val uris: NodeUris? = null,
-    @SerializedName("DateModified") val dateModified: String? = null
+    @SerializedName("LastUpdated") val dateModified: String? = null
 )
 
 data class UserAlbumsResponse(
@@ -273,4 +273,28 @@ data class SingleNodeResponse(
 data class SingleNodePayload(
     @SerializedName("Node") val node: NodeData
 )
+
+// User Search Response & Expansions
+data class UserSearchResponse(
+    @SerializedName("Response") val response: UserSearchPayload,
+    @SerializedName("Expansions") val expansions: Map<String, UserSearchExpansion>? = null
+)
+
+data class UserSearchPayload(
+    @SerializedName("User") val users: List<UserData>? = emptyList(),
+    @SerializedName("Pages") val pages: PagesData? = null
+)
+
+data class UserSearchExpansion(
+    @SerializedName("UserAlbums") val userAlbums: UserAlbumsExpansion? = null,
+    @SerializedName("HighlightImage") val highlightImage: AlbumImageData? = null
+)
+
+data class UserAlbumsExpansion(
+    @SerializedName("Album") val albums1: List<AlbumDetails>? = null,
+    @SerializedName("AlbumDetail") val albums2: List<AlbumDetails>? = null
+) {
+    val albums: List<AlbumDetails>
+        get() = albums1 ?: albums2 ?: emptyList()
+}
 

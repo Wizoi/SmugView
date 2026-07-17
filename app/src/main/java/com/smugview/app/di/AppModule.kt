@@ -29,7 +29,15 @@ object AppModule {
     @Singleton
     fun provideOkHttpClient(@ApplicationContext context: Context): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            // Never log full URLs/bodies in release: the URLs carry the SmugMug APIKey and
+            // gallery Password query params, and bodies can contain private data.
+            level = if (com.smugview.app.BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+            // Redact the sensitive query params even in debug logcat.
+            redactHeader("Authorization")
         }
 
         val headerInterceptor = Interceptor { chain ->
@@ -128,10 +136,14 @@ object AppModule {
         }
 
         val cookieJar = object : okhttp3.CookieJar {
-            private val cookieStore = HashMap<String, MutableMap<String, okhttp3.Cookie>>()
+            // OkHttp may invoke these from multiple dispatcher threads concurrently.
+            private val cookieStore =
+                java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, okhttp3.Cookie>>()
 
             override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
-                val hostCookies = cookieStore.getOrPut(url.host) { HashMap() }
+                val hostCookies = cookieStore.getOrPut(url.host) {
+                    java.util.concurrent.ConcurrentHashMap()
+                }
                 for (cookie in cookies) {
                     hostCookies[cookie.name] = cookie
                 }
@@ -178,7 +190,17 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "smugview_db"
-        ).fallbackToDestructiveMigration().build()
+        )
+            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14)
+            // v12 -> v13 / v13 -> v14 have real migrations above, so users keep their data.
+            //
+            // Versions 1..11 (all prior production releases) shipped with
+            // fallbackToDestructiveMigration(), so there is NO real migration path from
+            // them. Registering an explicit destructive fallback *only* for those old
+            // versions prevents the "no migration from N to 13 found" crash-on-upgrade,
+            // while still preserving data for anyone already on v12+.
+            .fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+            .build()
     }
 
     @Provides
@@ -186,6 +208,12 @@ object AppModule {
     fun provideCollectionDao(database: AppDatabase): CollectionDao {
         return database.collectionDao()
     }
+
+    @Provides
+    @Singleton
+    fun providePasswordStore(
+        impl: com.smugview.app.data.security.EncryptedPasswordStore
+    ): com.smugview.app.data.security.PasswordStore = impl
 
     @Provides
     @Singleton
