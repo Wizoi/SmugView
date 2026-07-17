@@ -56,8 +56,11 @@ android {
             isCrunchPngs = false
         }
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // Re-enabled: the reflective Gson/Retrofit surfaces are preserved via explicit keep
+            // rules in proguard-rules.pro. Do NOT disable these again to "fix" JSON parsing —
+            // add the missing -keep rule for the affected model package instead.
+            isMinifyEnabled = true
+            isShrinkResources = true
             isCrunchPngs = false
             val keystorePath = localProperties.getProperty("signing.storeFile")
             if (keystorePath != null) {
@@ -89,12 +92,24 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+            isIncludeAndroidResources = true // required by Robolectric
         }
+    }
+    // Room migration tests read the exported schema JSONs from this directory.
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
     bundle {
         language { enableSplit = true }
         density { enableSplit = true }
         abi { enableSplit = true }
+    }
+}
+
+// Export Room schemas to app/schemas/ so migrations can be validated with MigrationTestHelper.
+kapt {
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas")
     }
 }
 
@@ -142,6 +157,9 @@ dependencies {
     kapt("com.google.dagger:hilt-compiler:$hiltVersion")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
+    // Encrypted storage for gallery passwords
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     // Coil Image Loading
     implementation("io.coil-kt:coil-compose:2.5.0")
 
@@ -161,6 +179,14 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    // Real org.json for unit tests (Android's bundled org.json is stubbed in JVM tests)
+    testImplementation("org.json:json:20231013")
+    // Robolectric so Room's real SQLite (and the recursive-CTE queries) run in JVM unit tests
+    testImplementation("org.robolectric:robolectric:4.11.1")
+    testImplementation("androidx.test:core:1.5.0")
+    // In-memory Room + migration testing (used by DAO and MigrationTestHelper tests)
+    testImplementation("androidx.room:room-testing:$roomVersion")
+    androidTestImplementation("androidx.room:room-testing:$roomVersion")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.04.00"))
