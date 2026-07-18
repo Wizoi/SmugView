@@ -38,9 +38,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.palette.graphics.Palette
@@ -49,6 +51,7 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.data.api.ImageSizeDetailsPayload
 import com.smugview.app.data.db.OfflineCollection
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.ui.theme.NeonBlue
@@ -155,8 +158,8 @@ fun ImmersivePhotoPage(
             var currentDetailUrl by remember(photo.thumbnailUrl, pagerImageModel) {
                 mutableStateOf(pagerImageModel)
             }
-            // Full-resolution source, fetched only once the user pinches to zoom.
-            val highResUrl = remember(photo.archivedUri, photo.thumbnailUrl) {
+            // Instant guess shown as tier 1 while the real ImageSizeDetails call is in flight.
+            val fallbackHalfwayUrl = remember(photo.archivedUri, photo.thumbnailUrl) {
                 photo.archivedUri
                     ?: photo.thumbnailUrl?.replace("/Th/", "/X3/")?.replace("/th/", "/x3/")
                         ?.replace("-Th.", "-X3.")?.replace("-th.", "-x3.")
@@ -164,28 +167,70 @@ fun ImmersivePhotoPage(
 
             var scale by remember(photo.imageKey) { mutableStateOf(1f) }
             var offset by remember(photo.imageKey) { mutableStateOf(Offset.Zero) }
+            var boxSizePx by remember(photo.imageKey) { mutableStateOf(IntSize.Zero) }
+            var sizeDetailsFlow by remember(photo.imageKey) {
+                mutableStateOf<kotlinx.coroutines.flow.StateFlow<Result<ImageSizeDetailsPayload>?>?>(null)
+            }
+            var committedOriginalPx by remember(photo.imageKey) { mutableStateOf(0) }
 
             // Reset the zoom whenever this page stops being the active pager page.
             LaunchedEffect(isActive) {
                 if (!isActive) {
                     scale = 1f
                     offset = Offset.Zero
+                    sizeDetailsFlow = null
+                    committedOriginalPx = 0
+                }
+            }
+
+            val isZoomed = scale > 1.01f
+
+            // Kick off the real (accurate) size lookup on first pinch, once, per photo.
+            val sizeDetailsUri = photo.uris?.imageSizeDetails
+            LaunchedEffect(isZoomed, isActive) {
+                if (isZoomed && isActive && sizeDetailsUri != null && sizeDetailsFlow == null) {
+                    sizeDetailsFlow = viewModel.getImageSizeDetails(photo.imageKey, sizeDetailsUri)
+                }
+            }
+            val sizeDetails = sizeDetailsFlow?.collectAsState()?.value?.getOrNull()
+
+            // Tier 1 ("halfway"): the largest non-original rendition SmugMug actually generated.
+            val halfwayEntry = sizeDetails?.bestHalfway
+            val halfwayUrl = halfwayEntry?.url ?: fallbackHalfwayUrl
+            val loadHalfway = isZoomed && isActive && halfwayUrl != null
+
+            // Max zoom is derived from the real original resolution once known, so the user can zoom
+            // to native pixel resolution and no further. Falls back to a flat cap until that resolves.
+            val maxScale = remember(sizeDetails, boxSizePx) {
+                val originalWidth = sizeDetails?.original?.width
+                if (originalWidth != null && boxSizePx.width > 0) {
+                    (originalWidth.toFloat() / boxSizePx.width).coerceIn(1f, 10f)
+                } else {
+                    5f
+                }
+            }
+
+            // Tier 2 ("largest"): swap to the true original once zoom exceeds what tier 1 can show.
+            val originalEntry = sizeDetails?.original
+            val neededPx = boxSizePx.width * scale
+            val loadOriginal = loadHalfway && halfwayEntry != null && neededPx > halfwayEntry.width.toFloat()
+            val originalRequestUrl = originalEntry?.url ?: photo.archivedUri
+            val targetOriginalPx = originalEntry?.width?.let { ow -> neededPx.toInt().coerceAtMost(ow) } ?: neededPx.toInt()
+            LaunchedEffect(targetOriginalPx, loadOriginal) {
+                if (loadOriginal && (committedOriginalPx == 0 || targetOriginalPx > committedOriginalPx * 1.2f)) {
+                    committedOriginalPx = targetOriginalPx
                 }
             }
 
             val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-                scale = (scale * zoomChange).coerceIn(1f, 5f)
+                scale = (scale * zoomChange).coerceIn(1f, maxScale)
                 offset = if (scale > 1f) offset + panChange else Offset.Zero
             }
-            val isZoomed = scale > 1.01f
-            // Load the high-res source in the background once zoomed; it decodes off-screen and
-            // crossfades on top of the standard image when ready ("flips to sharper"). Leaving the
-            // page (isActive=false / composition exit) cancels the in-flight Coil request.
-            val loadHighRes = isZoomed && isActive && highResUrl != null
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .onSizeChanged { boxSizePx = it }
                     // Pan is only consumed while zoomed, so a 1x page still swipes to the next photo.
                     .transformable(state = transformState, canPan = { scale > 1f })
                     .pointerInput(photo.imageKey) {
@@ -219,11 +264,23 @@ fun ImmersivePhotoPage(
                     onError = { currentDetailUrl = photo.archivedUri ?: photo.thumbnailUrl },
                     modifier = zoomModifier
                 )
-                if (loadHighRes) {
+                if (loadHalfway) {
                     AsyncImage(
                         model = ImageRequest.Builder(context)
-                            .data(highResUrl)
-                            .size(2560)
+                            .data(halfwayUrl)
+                            .size(halfwayEntry?.width ?: 2560)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = zoomModifier
+                    )
+                }
+                if (loadOriginal && committedOriginalPx > 0 && originalRequestUrl != null) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(originalRequestUrl)
+                            .size(committedOriginalPx)
                             .crossfade(true)
                             .build(),
                         contentDescription = null,

@@ -126,7 +126,33 @@ data class AlbumImageData(
 data class AlbumImageUris(
     @SerializedName("LargestVideo") val largestVideo: String? = null,
     @SerializedName("Album") val album: String? = null,
-    @SerializedName("ImageAlbum") val imageAlbum: String? = null
+    @SerializedName("ImageAlbum") val imageAlbum: String? = null,
+    @SerializedName("ImageSizeDetails") val imageSizeDetails: String? = null
+)
+
+// Image Size Details Response
+data class ImageSizeDetailsResponse(
+    @SerializedName("Response") val response: ImageSizeDetailsResponseWrapper
+)
+data class ImageSizeDetailsResponseWrapper(
+    @SerializedName("ImageSizeDetails") val details: ImageSizeDetailsPayload
+)
+data class ImageSizeDetailsPayload(
+    @SerializedName("ImageSizeMedium") val medium: ImageSizeEntry? = null,
+    @SerializedName("ImageSizeLarge") val large: ImageSizeEntry? = null,
+    @SerializedName("ImageSizeXLarge") val xLarge: ImageSizeEntry? = null,
+    @SerializedName("ImageSizeX2Large") val x2Large: ImageSizeEntry? = null,
+    @SerializedName("ImageSizeX3Large") val x3Large: ImageSizeEntry? = null,
+    @SerializedName("ImageSizeOriginal") val original: ImageSizeEntry? = null
+) {
+    /** Largest non-original rendition SmugMug actually generated for this image. */
+    val bestHalfway: ImageSizeEntry?
+        get() = x3Large ?: x2Large ?: xLarge ?: large ?: medium
+}
+data class ImageSizeEntry(
+    @SerializedName("Url") val url: String,
+    @SerializedName("Width") val width: Int,
+    @SerializedName("Height") val height: Int
 )
 
 // Image Metadata (EXIF) Response

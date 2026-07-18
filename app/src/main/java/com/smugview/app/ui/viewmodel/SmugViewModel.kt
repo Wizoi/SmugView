@@ -24,6 +24,7 @@ import androidx.work.WorkManager
 import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.ExifData
+import com.smugview.app.data.api.ImageSizeDetailsPayload
 import com.smugview.app.data.api.UserData
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.data.db.CachedNode
@@ -476,6 +477,9 @@ class SmugViewModel @Inject constructor(
 
     // Image details cache
     private val _imageDetailsStates = mutableMapOf<String, MutableStateFlow<Result<AlbumImageData>?>>()
+
+    // Image size details cache (used by pinch-to-zoom to pick real tiers)
+    private val _imageSizeDetailsStates = mutableMapOf<String, MutableStateFlow<Result<ImageSizeDetailsPayload>?>>()
 
     // --- Dynamic Explorer & Validation States ---
     private val _activeNickname = MutableStateFlow<String?>(null)
@@ -1811,6 +1815,21 @@ class SmugViewModel @Inject constructor(
                 val albumKey = _currentAlbumKey.value
                 val password = getUnlockedPassword(albumKey)
                 repository.getImageExif(imageKey, apiKey, password).collect {
+                    stateFlow.value = it
+                }
+            }
+            stateFlow
+        }
+        return flow.asStateFlow()
+    }
+
+    fun getImageSizeDetails(imageKey: String, uri: String): StateFlow<Result<ImageSizeDetailsPayload>?> {
+        val flow = _imageSizeDetailsStates.getOrPut(imageKey) {
+            val stateFlow = MutableStateFlow<Result<ImageSizeDetailsPayload>?>(null)
+            viewModelScope.launch {
+                val albumKey = _currentAlbumKey.value
+                val password = getUnlockedPassword(albumKey)
+                repository.getImageSizeDetails(uri, apiKey, password).collect {
                     stateFlow.value = it
                 }
             }

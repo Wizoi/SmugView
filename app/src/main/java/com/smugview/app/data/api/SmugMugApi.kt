@@ -93,6 +93,13 @@ interface SmugMugApi {
         @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): AlbumImagesResponse
 
+    @GET
+    suspend fun getImageSizeDetailsByUri(
+        @Url url: String,
+        @Query("APIKey") apiKey: String,
+        @Query("Password") password: String? = null
+    ): ImageSizeDetailsResponse
+
     @GET("image!search")
     suspend fun searchImages(
         @Query("APIKey") apiKey: String,

@@ -1066,6 +1066,23 @@ class SmugMugRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
+    // Fetches the real generated sizes/urls/dimensions for a single image, used by pinch-to-zoom
+    fun getImageSizeDetails(
+        uri: String,
+        apiKey: String,
+        password: String? = null
+    ): Flow<Result<com.smugview.app.data.api.ImageSizeDetailsPayload>> = flow {
+        try {
+            val absoluteUrl = if (uri.startsWith("http")) uri else "https://api.smugmug.com$uri"
+            val response = api.getImageSizeDetailsByUri(absoluteUrl, apiKey, password)
+            emit(Result.success(response.response.details))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emit(Result.failure(e))
+        }
+    }.flowOn(Dispatchers.IO)
+
     suspend fun fetchNodeFromApi(nodeId: String, apiKey: String, password: String? = null): CachedNode? {
         if (nodeId == "root") return null
         return try {
