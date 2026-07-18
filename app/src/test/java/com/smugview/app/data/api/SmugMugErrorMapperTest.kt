@@ -41,6 +41,15 @@ class SmugMugErrorMapperTest {
         assertTrue(msg.contains("Terms of Service"))
     }
 
+    @Test
+    fun deepPaginationError_mapsToFriendlyHintNotRawJson() {
+        // SmugMug's search backend returns an Elasticsearch error body when paging past ~10k.
+        val body = """{"error":{"root_cause":[{"type":"illegal_argument_exception","reason":"Result window is too large, from + size must be less than or equal to: [10000]"}]},"status":400}"""
+        val msg = SmugMugErrorMapper.getFriendlyMessage(400, "Bad Request", body)
+        assertTrue(msg.contains("too many results", ignoreCase = true))
+        assertTrue(!msg.contains("root_cause"))
+    }
+
     // --- JSON Message parsing (needs real org.json) ---
 
     @Test

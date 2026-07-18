@@ -307,6 +307,15 @@ class TagSearchController(
                         var currentNextUrl = nextUrlToLoad
                         var isFirstPage = (currentStart == 1 && currentNextUrl == null)
 
+                        // SmugMug's Elasticsearch-backed search refuses pagination past ~10,000
+                        // results (from + size <= 10000). If we've already loaded up to that window,
+                        // stop rather than triggering the "Result window is too large" error.
+                        if (currentStart > MAX_SEARCH_START) {
+                            _keywordPhotosTotal.value = _allScopePhotos.value.size
+                            _isLoadingPhotos.value = false
+                            return@imageSearchLaunch
+                        }
+
                         // Load page by page
                         val (pageImages, nextUrlToken, total) = repository.getImagesByKeywordPage(
                             scope = scopeUri,
@@ -338,7 +347,7 @@ class TagSearchController(
                         nextUrlToLoad = currentNextUrl
 
                         var pageCount = 1
-                        while (currentNextUrl != null && pageCount < repository.maxPagesPerFetch) {
+                        while (currentNextUrl != null && currentStart <= MAX_SEARCH_START && pageCount < repository.maxPagesPerFetch) {
                             if (!isActive) break
 
                             val (nextPageImages, nextPageToken, nextPageTotal) = repository.getImagesByKeywordPage(
@@ -367,6 +376,13 @@ class TagSearchController(
                             nextUrlToLoad = currentNextUrl
                             pageCount++
                             kotlinx.coroutines.delay(100)
+                        }
+
+                        // If we stopped at the result-window cap rather than the true end of
+                        // results, report the loaded count as the total so the determinate progress
+                        // bar settles instead of stalling short of 100%.
+                        if (currentNextUrl != null && currentStart > MAX_SEARCH_START) {
+                            _keywordPhotosTotal.value = _allScopePhotos.value.size
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("SmugViewModel", "Failed to load/resume photos for keywords: $keywordsQuery", e)
@@ -473,5 +489,11 @@ class TagSearchController(
                 _isScanningTags.value = false
             }
         }
+    }
+
+    companion object {
+        // SmugMug's Elasticsearch search backend caps deep pagination at from + size <= 10000.
+        // With a page size of 500, the last safe 1-indexed start is 9501.
+        private const val MAX_SEARCH_START = 9501
     }
 }

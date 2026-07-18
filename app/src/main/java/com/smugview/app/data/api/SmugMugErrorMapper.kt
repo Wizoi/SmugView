@@ -34,8 +34,13 @@ object SmugMugErrorMapper {
                     return "Authentication Failed: OAuth signature mismatch. Please ensure your device's time and date settings are correct."
                 responseBodyContent.contains("API key lacks v2 access") -> 
                     return "Terms of Service Needed: Your API key lacks v2 access. Please accept the SmugMug developer terms at https://api.smugmug.com/api/developer/accept"
-                responseBodyContent.contains("expired_token") -> 
+                responseBodyContent.contains("expired_token") ->
                     return "Authorization Expired: Your developer token is expired. Please re-authenticate."
+                // SmugMug's search is Elasticsearch-backed and refuses deep pagination past
+                // ~10,000 results ("Result window is too large"). Show a friendly hint instead
+                // of the raw error JSON.
+                responseBodyContent.contains("Result window is too large", ignoreCase = true) ->
+                    return "That search has too many results to load them all. Try narrowing it with more specific tags."
             }
 
             // 2. Parse JSON error response if present
