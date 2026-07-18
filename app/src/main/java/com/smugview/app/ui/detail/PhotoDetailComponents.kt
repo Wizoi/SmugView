@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -112,6 +113,27 @@ fun rememberDominantBackgroundColor(
 }
 
 /**
+ * Max pan distance (in px, from center) that keeps a ContentScale.Fit-fitted image's edges from
+ * being dragged past the viewport, given the image's real aspect ratio and current zoom scale.
+ * Returns Offset.Zero (no panning) if the aspect ratio isn't known yet.
+ */
+private fun maxPanFor(aspectRatio: Float?, box: IntSize, scale: Float): Offset {
+    if (aspectRatio == null || box.width <= 0 || box.height <= 0) return Offset.Zero
+    val boxAr = box.width.toFloat() / box.height.toFloat()
+    val fittedW: Float
+    val fittedH: Float
+    if (boxAr > aspectRatio) {
+        fittedH = box.height.toFloat(); fittedW = fittedH * aspectRatio
+    } else {
+        fittedW = box.width.toFloat(); fittedH = fittedW / aspectRatio
+    }
+    return Offset(
+        ((fittedW * scale - box.width).coerceAtLeast(0f)) / 2f,
+        ((fittedH * scale - box.height).coerceAtLeast(0f)) / 2f
+    )
+}
+
+/**
  * One page of the immersive pager: a video (with authenticated URL) or a large image with the
  * standard tap-to-toggle-controls / long-press-EXIF / double-tap-favorite gestures.
  *
@@ -172,6 +194,12 @@ fun ImmersivePhotoPage(
                 mutableStateOf<kotlinx.coroutines.flow.StateFlow<Result<ImageSizeDetailsPayload>?>?>(null)
             }
             var committedOriginalPx by remember(photo.imageKey) { mutableStateOf(0) }
+            // Live pinch focal point (2-finger average position), tracked by a non-consuming observer
+            // so the zoom can pivot around the fingers instead of the box's fixed center.
+            var pinchCentroid by remember(photo.imageKey) { mutableStateOf<Offset?>(null) }
+            // Real decoded aspect ratio, captured from whichever tier loads first, used to bound panning
+            // to the photo's actual displayed edges (independent of API metadata availability/timing).
+            var contentAspectRatio by remember(photo.imageKey) { mutableStateOf<Float?>(null) }
 
             // Reset the zoom whenever this page stops being the active pager page.
             LaunchedEffect(isActive) {
@@ -180,6 +208,7 @@ fun ImmersivePhotoPage(
                     offset = Offset.Zero
                     sizeDetailsFlow = null
                     committedOriginalPx = 0
+                    pinchCentroid = null
                 }
             }
 
@@ -223,8 +252,17 @@ fun ImmersivePhotoPage(
             }
 
             val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-                scale = (scale * zoomChange).coerceIn(1f, maxScale)
-                offset = if (scale > 1f) offset + panChange else Offset.Zero
+                val newScale = (scale * zoomChange).coerceIn(1f, maxScale)
+                val boxCenter = Offset(boxSizePx.width / 2f, boxSizePx.height / 2f)
+                val focal = pinchCentroid ?: boxCenter
+                // graphicsLayer scales around boxCenter by default; solve for the offset that keeps the
+                // content point under `focal` visually fixed as scale changes, so zoom pivots at the
+                // fingers instead of always shrinking/growing from the screen center.
+                val zoomCompensated = focal - boxCenter - (focal - boxCenter - offset) * zoomChange
+                val raw = if (newScale > 1f) zoomCompensated + panChange else Offset.Zero
+                val bound = maxPanFor(contentAspectRatio, boxSizePx, newScale)
+                scale = newScale
+                offset = Offset(raw.x.coerceIn(-bound.x, bound.x), raw.y.coerceIn(-bound.y, bound.y))
             }
 
             Box(
@@ -233,6 +271,23 @@ fun ImmersivePhotoPage(
                     .onSizeChanged { boxSizePx = it }
                     // Pan is only consumed while zoomed, so a 1x page still swipes to the next photo.
                     .transformable(state = transformState, canPan = { scale > 1f })
+                    // Non-consuming observer: just watches raw pointer positions to track the pinch's
+                    // focal point for the transformable callback above. Never calls .consume(), so it
+                    // can't interfere with transformable's or the tap detector's own handling.
+                    .pointerInput(photo.imageKey) {
+                        awaitEachGesture {
+                            do {
+                                val event = awaitPointerEvent()
+                                val active = event.changes.filter { it.pressed }
+                                pinchCentroid = if (active.size >= 2) {
+                                    var sum = Offset.Zero
+                                    for (c in active) sum += c.position
+                                    sum / active.size.toFloat()
+                                } else null
+                            } while (event.changes.any { it.pressed })
+                            pinchCentroid = null
+                        }
+                    }
                     .pointerInput(photo.imageKey) {
                         detectTapGestures(
                             onTap = { onToggleControls() },
@@ -261,6 +316,12 @@ fun ImmersivePhotoPage(
                     model = currentDetailUrl,
                     contentDescription = photo.title ?: "Immersive photo details",
                     contentScale = ContentScale.Fit,
+                    onSuccess = { state ->
+                        val d = state.result.drawable
+                        if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
+                            contentAspectRatio = d.intrinsicWidth.toFloat() / d.intrinsicHeight.toFloat()
+                        }
+                    },
                     onError = { currentDetailUrl = photo.archivedUri ?: photo.thumbnailUrl },
                     modifier = zoomModifier
                 )
