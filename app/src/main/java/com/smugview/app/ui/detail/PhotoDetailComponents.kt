@@ -9,6 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,8 +32,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -149,27 +155,83 @@ fun ImmersivePhotoPage(
             var currentDetailUrl by remember(photo.thumbnailUrl, pagerImageModel) {
                 mutableStateOf(pagerImageModel)
             }
-            AsyncImage(
-                model = currentDetailUrl,
-                contentDescription = photo.title ?: "Immersive photo details",
-                contentScale = ContentScale.Fit,
-                onError = { currentDetailUrl = photo.archivedUri ?: photo.thumbnailUrl },
+            // Full-resolution source, fetched only once the user pinches to zoom.
+            val highResUrl = remember(photo.archivedUri, photo.thumbnailUrl) {
+                photo.archivedUri
+                    ?: photo.thumbnailUrl?.replace("/Th/", "/X3/")?.replace("/th/", "/x3/")
+                        ?.replace("-Th.", "-X3.")?.replace("-th.", "-x3.")
+            }
+
+            var scale by remember(photo.imageKey) { mutableStateOf(1f) }
+            var offset by remember(photo.imageKey) { mutableStateOf(Offset.Zero) }
+
+            // Reset the zoom whenever this page stops being the active pager page.
+            LaunchedEffect(isActive) {
+                if (!isActive) {
+                    scale = 1f
+                    offset = Offset.Zero
+                }
+            }
+
+            val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+                scale = (scale * zoomChange).coerceIn(1f, 5f)
+                offset = if (scale > 1f) offset + panChange else Offset.Zero
+            }
+            val isZoomed = scale > 1.01f
+            // Load the high-res source in the background once zoomed; it decodes off-screen and
+            // crossfades on top of the standard image when ready ("flips to sharper"). Leaving the
+            // page (isActive=false / composition exit) cancels the in-flight Coil request.
+            val loadHighRes = isZoomed && isActive && highResUrl != null
+
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .combinedClickable(
-                        onClick = onToggleControls,
-                        onLongClick = onLongPress,
-                        onDoubleClick = {
-                            val fav = localCollections.find { it.name.lowercase() == "favorites" }
-                            if (fav != null) {
-                                viewModel.addPhotoToCollection(photo, fav.id)
-                                Toast.makeText(context, "Added to Favorites!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                onRequestAddToCollection()
+                    // Pan is only consumed while zoomed, so a 1x page still swipes to the next photo.
+                    .transformable(state = transformState, canPan = { scale > 1f })
+                    .pointerInput(photo.imageKey) {
+                        detectTapGestures(
+                            onTap = { onToggleControls() },
+                            onLongPress = { onLongPress() },
+                            onDoubleTap = {
+                                val fav = localCollections.find { it.name.lowercase() == "favorites" }
+                                if (fav != null) {
+                                    viewModel.addPhotoToCollection(photo, fav.id)
+                                    Toast.makeText(context, "Added to Favorites!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    onRequestAddToCollection()
+                                }
                             }
-                        }
+                        )
+                    }
+            ) {
+                val zoomModifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    }
+                AsyncImage(
+                    model = currentDetailUrl,
+                    contentDescription = photo.title ?: "Immersive photo details",
+                    contentScale = ContentScale.Fit,
+                    onError = { currentDetailUrl = photo.archivedUri ?: photo.thumbnailUrl },
+                    modifier = zoomModifier
+                )
+                if (loadHighRes) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(highResUrl)
+                            .size(2560)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = zoomModifier
                     )
-            )
+                }
+            }
         }
     }
 }
