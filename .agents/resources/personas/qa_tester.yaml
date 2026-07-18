@@ -107,3 +107,23 @@ testing_patterns_and_reliability:
       A `catch { success = true }` (or returning early in playback mode) makes a test that can never fail. In
       deterministic playback, an exception is a real parse failure — `fail(...)`/rethrow. For genuinely-absent
       fixtures use JUnit `Assume.assumeTrue(...)` (honest SKIP), not a false pass.
+  - name: "Adding a SmugMugApi method breaks MockSmugMugApi silently until updated (verified 2026-07-18)"
+    rule: |
+      `SmugMugApiTest.kt` has a `MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi` that
+      hand-implements every interface method as a one-line delegate call. Adding a new abstract method to
+      `SmugMugApi` (e.g. a new `@Url`-based endpoint) does NOT surface as a runtime test failure — it fails
+      `compileDebugUnitTestKotlin` outright ("Class 'MockSmugMugApi' is not abstract and does not implement
+      abstract member ..."), so `./gradlew testDebugUnitTest` won't even start. Whenever you add a method to
+      `SmugMugApi`, grep for `MockSmugMugApi` and add the matching one-line delegate override immediately —
+      don't wait to discover it at publish time. This is exactly the kind of break the
+      `testDebugUnitTest`-before-release gate in publish_app.yaml exists to catch.
+  - name: "Nested response-envelope mismatches deserialize to null, not a crash — live curl is the only real proof"
+    rule: |
+      Reinforces "Raw Query Verification" above with a concrete miss: an extra JSON nesting level (see
+      api_specialist's ImageSizeDetails entry) produced ZERO errors anywhere — no exception, no logcat
+      warning, no UI crash across multiple rounds of manual on-device navigation testing. Gson just silently
+      left every field null and the code's null-safe fallback path quietly absorbed it, so the new feature
+      looked "done" while never actually engaging. On-device crash-watching proves the surrounding code
+      doesn't NPE; it does NOT prove a new response model's field names/nesting are correct. The only way to
+      catch this class of bug is `curl`ing the live endpoint and diffing the raw JSON against the Kotlin
+      model BEFORE trusting a "no crashes" UI pass.

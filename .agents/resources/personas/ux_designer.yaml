@@ -66,8 +66,17 @@ accessibility_and_loading_states:
       in Jetpack Compose (using `contentDescription`). Maintain a minimum touch target size of 48x48dp.
   - name: Pinch-to-Zoom Gesture Isolation
     rule: |
-      In full-screen photo detail pagers, dynamically freeze (disable) the horizontal swipe pager 
+      In full-screen photo detail pagers, dynamically freeze (disable) the horizontal swipe pager
       whenever the image scale factor is greater than 1.0f to prevent gestures from conflicting.
+  - name: "Instant guess, then silently upgrade to ground truth (added 2026-07-18)"
+    rule: |
+      When a UI decision (which image tier to show, how far zoom should be allowed to go) depends on data
+      that must be fetched (SmugMug's real ImageSizeDetails), never block the interaction waiting for it.
+      Render an instant best-guess immediately (the old string-guessed URL), kick off the real fetch in the
+      background, and crossfade to the accurate result once it lands — the user never sees a loading state
+      for something that was already visually "good enough." Reserve hard gating for things that would
+      otherwise be visibly wrong (e.g. don't let max-zoom exceed what's actually available before the real
+      size is known — clamp to a conservative flat default until then, don't guess high).
   - name: Micro-Feedback & Interactive Transitions
     rule: |
       Interactive controls must react to user gestures with spring animations and scale-ups (e.g., standard 

@@ -102,6 +102,19 @@ android_skills_and_knowledge:
         PhotoGridScreen. The detail screens do not host it. To prompt for a password from a detail-screen action
         (e.g. "Jump to Gallery"), navigate to the grid and let `selectAlbum` detect the lock and prompt — do not
         call `promptPassword` from a screen with no dialog (it silently sets state nobody renders).
+    - name: "LaunchedEffect keys must include the GATE, not just the value that changes under it (found 2026-07-18)"
+      doc_url: "https://developer.android.com/develop/ui/compose/side-effects#launchedeffect"
+      rule: |
+        `LaunchedEffect(someValue) { if (gate) commit(someValue) }` can silently miss the exact recomposition
+        where `gate` flips from false to true, if `someValue`'s numeric/equals value happens to be unchanged
+        across that same recomposition (e.g. a `coerceAtMost` clamp that resolves to the same result before
+        and after the gating condition becomes available). Since LaunchedEffect only re-runs its block when
+        the KEY changes (by `equals`), and the key didn't change, the commit that should have fired on the
+        gate-flip never runs. Fix: include the gate itself in the key list —
+        `LaunchedEffect(someValue, gate) { if (gate) commit(someValue) }` — so a gate transition always
+        re-evaluates the block even when the other key's value coincidentally matches. Caught in the
+        pinch-to-zoom tier-2 (original-resolution) trigger, where `targetPx` could equal its pre-gate value
+        at the exact moment `loadOriginal` became true.
     - name: Folder/Album Navigation Routing
       doc_url: "https://developer.android.com/develop/ui/compose/layouts"
       rule: |

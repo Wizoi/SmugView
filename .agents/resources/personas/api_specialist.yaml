@@ -131,6 +131,26 @@ api_skills_and_knowledge:
         An AlbumKey is NOT a NodeID. `GET node/{albumKey}` 404s. Never feed an album key to a node endpoint;
         resolve the node id from the album (or cache) first. This also means indexed cache lookups by album
         key must query `albumUri`, not `nodeId`.
+    - name: "ImageSizeDetails response has an EXTRA nesting level (verified 2026-07-18)"
+      doc_url: "https://api.smugmug.com/api/v2/doc/reference/image.html"
+      rule: |
+        `GET image/{key}-0!sizedetails` (reached via the image's `Uris.ImageSizeDetails` link — the same
+        `Uris` envelope, so no separate feature flag needed) does NOT put the size fields directly under
+        `Response`. The real shape is `Response.ImageSizeDetails.ImageSizeXxx`, one level deeper than the
+        `Response.Xxx` pattern every other endpoint in this codebase uses. Modeling it as a flat
+        `ImageSizeXResponse { Response: Payload }` (matching AlbumImagesResponse/ExifResponse etc.) silently
+        deserializes every size field to null — no exception, no crash, the feature just always falls back
+        to whatever default behavior you wrote for the "not yet loaded" case. Only caught by curling the
+        live endpoint and diffing the real JSON against the Kotlin model before trusting it.
+
+        Verified field names/shape for a real image (confirmed via live curl, not docs):
+        `Response.ImageSizeDetails` contains `ImageSizeTiny`, `ImageSizeThumb`, `ImageSizeSmall`,
+        `ImageSizeMedium`, `ImageSizeLarge`, `ImageSizeXLarge`, `ImageSizeX2Large`, `ImageSizeX3Large`,
+        `ImageSizeOriginal` (each `{Url, Ext, Width, Height, Size, Watermarked}` — `Size`/`Watermarked` are
+        sometimes absent, e.g. X3Large lacked `Size` for a 1920x1080 source), plus `UsableSizes` (array of
+        the size keys actually generated for that image — SmugMug does not upsize, so small originals won't
+        have every tier) and `LargestImageSize`. Use `UsableSizes`/walk-the-ladder-with-null-fallback rather
+        than assuming every size key is present.
 
   rate_limiting_and_scoping:
     - name: Batch Scoped Search HTTP 429 Rate Limiting & Jittered Backoff
