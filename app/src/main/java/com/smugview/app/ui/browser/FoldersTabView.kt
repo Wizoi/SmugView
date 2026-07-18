@@ -189,8 +189,14 @@ fun FoldersTabView(
                 }
             }
 
-            val folderTitle = navStack.lastOrNull()?.title ?: "Galleries"
-            val coverUrl = navStack.lastOrNull()?.highlightImageUrl 
+            val isRoot = navStack.isEmpty()
+            // At the site root, title the header with the site's name (fall back to the nickname)
+            // instead of a generic "Galleries".
+            val siteName = activeUserProfile?.name?.takeIf { it.isNotBlank() }
+                ?: nickname?.replaceFirstChar { it.uppercase() }
+                ?: "Galleries"
+            val folderTitle = navStack.lastOrNull()?.title ?: siteName
+            val coverUrl = navStack.lastOrNull()?.highlightImageUrl
                 ?: uiState.nodes.firstOrNull { !it.highlightImageUrl.isNullOrEmpty() }?.highlightImageUrl
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -291,20 +297,34 @@ fun FoldersTabView(
                             .align(Alignment.BottomStart)
                             .padding(start = 16.dp, bottom = 12.dp, end = 120.dp)
                     ) {
-                        Text(
-                            text = folderTitle,
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 20.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                showTooltip = true
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // At the site root, show the site logo to the left of the name.
+                            if (isRoot && nickname != null) {
+                                ProfileAvatar(
+                                    nickname = nickname!!,
+                                    name = siteName,
+                                    bioImageKey = activeUserProfile?.bioImageKey,
+                                    modifier = Modifier.size(40.dp),
+                                    textColor = Color.White,
+                                    fontSize = 18.sp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
                             }
-                        )
+                            Text(
+                                text = folderTitle,
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 20.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    showTooltip = true
+                                }
+                            )
+                        }
 
                         if (showTooltip) {
                             Popup(
