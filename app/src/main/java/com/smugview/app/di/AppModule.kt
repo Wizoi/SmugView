@@ -63,7 +63,14 @@ object AppModule {
                     null
                 }
                 val friendlyMessage = com.smugview.app.data.api.SmugMugErrorMapper.getFriendlyMessage(code, httpMessage, responseBodyContent)
-                
+
+                // Log every surfaced API failure so these are findable from the app's own tag
+                // (path + code), not just as a transient toast.
+                com.smugview.app.util.SmugLog.e(
+                    "SmugMugApiError",
+                    "${request.method} ${request.url.encodedPath} -> $code ($friendlyMessage)"
+                )
+
                 val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
                 mainHandler.post {
                     android.widget.Toast.makeText(

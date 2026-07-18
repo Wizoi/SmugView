@@ -296,12 +296,12 @@ class SmugMugRepository @Inject constructor(
     ): AlbumDetails? {
         return try {
             try {
-                api.getAlbum(albumKey, apiKey, password).response.album
+                api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true").response.album
             } catch (e: Exception) {
                 if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                     val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
                     if (unlocked) {
-                        api.getAlbum(albumKey, apiKey, password).response.album
+                        api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true").response.album
                     } else {
                         throw e
                     }
@@ -356,14 +356,14 @@ class SmugMugRepository @Inject constructor(
         password: String? = null
     ): AlbumImagesResponse {
         return try {
-            val response = api.getAlbumImages(albumKey, apiKey, password)
+            val response = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
             val images = response.response.images
             
             // If the response is successful but images is null or empty, and we have a password, try unlocking parent root
             if ((images == null || images.isEmpty()) && !password.isNullOrEmpty()) {
                 val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
                 if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password)
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
                     if (retryResponse.response.images != null && retryResponse.response.images.isNotEmpty()) {
                         return retryResponse
                     }
@@ -378,7 +378,7 @@ class SmugMugRepository @Inject constructor(
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                 val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
                 if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password)
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
                     if (retryResponse.response.images == null) {
                         throw e
                     }
@@ -530,7 +530,7 @@ class SmugMugRepository @Inject constructor(
         val allImages = mutableListOf<AlbumImageData>()
         try {
             var response = try {
-                val res = api.getAlbumImages(albumKey, apiKey, password)
+                val res = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
                 if (res.response.images == null) {
                     throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
                 }
@@ -539,7 +539,7 @@ class SmugMugRepository @Inject constructor(
                 if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                     val unlocked = unlockAlbum(albumKey, apiKey, password)
                     if (unlocked) {
-                        val retryRes = api.getAlbumImages(albumKey, apiKey, password)
+                        val retryRes = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
                         if (retryRes.response.images == null) {
                             throw e
                         }
@@ -1272,7 +1272,8 @@ class SmugMugRepository @Inject constructor(
                 apiKey = apiKey,
                 filter = "SecurityType,PasswordHint",
                 filterUri = "",
-                verbosity = 1
+                verbosity = 1,
+                ignoreErrors = "true"
             )
             AlbumSecurityInfo(
                 securityType = response.response.album.securityType,
