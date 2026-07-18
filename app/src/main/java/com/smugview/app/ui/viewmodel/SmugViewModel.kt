@@ -492,6 +492,14 @@ class SmugViewModel @Inject constructor(
         _searchScope.value = scope
     }
 
+    /** Reset per-site UI state (search results, keyword tags, scope) so switching the active
+     *  site doesn't leak the previous site's results/tags. Called by selectSite/disconnectSite. */
+    private fun resetPerSiteState() {
+        search.reset()
+        tag.reset()
+        _searchScope.value = SearchScope("Entire Site")
+    }
+
     // Image/gallery search — delegated to SearchController (facade decomposition).
     private val search = SearchController(
         repository = repository,
@@ -766,7 +774,10 @@ class SmugViewModel @Inject constructor(
                         _splashState.value = SplashUiState.Success(rootId)
                         currentFolderId = rootId
                         folderNavigationStack.clear()
-                        
+                        // Clear the previous site's search/tag/scope state so it doesn't leak
+                        // onto the newly selected site.
+                        resetPerSiteState()
+
                         // Launch the thin gallery load cache in the background
                         viewModelScope.launch {
                             repository.buildInMemoryGalleryCache(normalizedNickname, apiKey)
@@ -806,6 +817,7 @@ class SmugViewModel @Inject constructor(
         repository.setActiveNickname(null)
         _activeUserProfile.value = null
         siteHub.clearActiveSiteData()
+        resetPerSiteState()
         currentFolderId = null
         folderNavigationStack.clear()
         _splashState.value = SplashUiState.Idle

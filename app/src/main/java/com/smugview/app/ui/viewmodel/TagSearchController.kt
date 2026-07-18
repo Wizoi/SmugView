@@ -227,6 +227,31 @@ class TagSearchController(
         _scanProgress.value = ""
     }
 
+    /** Clear all keyword-search state. Called when the active site changes so one site's
+     *  tags/photos don't leak onto another. Sort-order and tag-cloud-limit prefs are kept. */
+    fun reset() {
+        imageLoadJob?.cancel()
+        imageLoadJob = null
+        tagScanJob?.cancel()
+        tagScanJob = null
+        _selectedTags.value = emptyMap()
+        _allScopeTags.value = emptyMap()
+        _allScopePhotos.value = emptyList()
+        _keywordPhotosTotal.value = 0
+        _isScanningTags.value = false
+        _isLoadingPhotos.value = false
+        _scanProgress.value = ""
+        tagSearchQuery = ""
+        lastLoadedKeywords = ""
+        lastLoadedScope = ""
+        nextStartToLoad = 1
+        nextUrlToLoad = null
+        scopeLoadingSuppressed = false
+        _albumKeywordsMap.value = emptyMap()
+        loadedAlbumImages.clear()
+        scopeAlbums = emptyList()
+    }
+
     init {
         observeSelectedTagsToLoadImages()
     }

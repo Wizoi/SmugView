@@ -134,6 +134,17 @@ class SearchController(
     private var searchJob: Job? = null
     private var backgroundSearchJob: Job? = null
 
+    /** Clear all search results/state. Called when the active site changes so one site's
+     *  search results don't leak onto another. Sort-order prefs are intentionally kept. */
+    fun reset() {
+        cancelSearchJob()
+        searchQuery = ""
+        searchResultTab = 0
+        _searchPhotosPagingFlow.value = kotlinx.coroutines.flow.emptyFlow()
+        _searchState.value = SearchUiState.Idle
+        _isSearchPhotosLoading.value = false
+    }
+
     fun cancelSearchJob() {
         searchJob?.cancel()
         searchJob = null
