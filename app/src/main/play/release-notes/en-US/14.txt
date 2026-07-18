@@ -1,0 +1,4 @@
+Performance and stability improvements under the hood:
+- Faster search and tag browsing with fewer redundant network requests.
+- Smoother scrolling in photo, gallery, and collection lists.
+- Internal code cleanup for better reliability and maintainability.
