@@ -29,7 +29,7 @@ To keep credentials secure, this project uses a build-time configuration system 
 
 ## 🛠️ Build and Compilation
 
-The project uses Gradle 8.5 and is configured with standard Android build wrappers.
+The project uses Gradle 8.13 (see `gradle/wrapper/gradle-wrapper.properties`) and is configured with standard Android build wrappers.
 
 ### Building via Android Studio
 1. Open Android Studio (Iguana / Jellyfish or newer recommended).
@@ -64,12 +64,17 @@ For deeper details on design, mechanics, and integration details, consult the fo
 
 *   **[DESIGN.md](DESIGN.md)**: Details the UX/UI layout specifications, custom client-side tag exclusion/inclusion formulas, and the Room database schema for custom offline collections.
 *   **[SMUGMUG.md](SMUGMUG.md)**: Documents API endpoints, expansion parameters (to prevent N+1 queries), password-unlock logic via POST requests, and Retrofit/OkHttp cookie persistence implementations.
+*   **[PUBLISH.md](PUBLISH.md)**: Google Play store listing content (title/descriptions/graphics/screenshots), the Play Console steps that can't be scripted (data safety, content rating, closed-testing gate), and the publish commands themselves.
+*   **[PRIVACY_POLICY.md](PRIVACY_POLICY.md)**: The public-facing privacy policy required by Play Console's App Content section. Keep this in sync if data handling (storage, permissions, third-party SDKs) ever changes.
 *   **[.gitignore](.gitignore)**: Standard Android ignore file ensuring cache files, IDE outputs, and credentials stay off public repositories.
 
 ---
 
 ## ⚙️ Architecture & Technology Stack
 *   **UI Framework**: Jetpack Compose with Material 3 (custom dark aesthetic).
-*   **Networking**: Retrofit 2 & OkHttp 4.
+*   **Networking**: Retrofit 2 & OkHttp 4, with an automatic 429/5xx retry+backoff interceptor.
 *   **Data Caching**: Room DB for offline lists/collections & Coil for smart image loading.
-*   **Concurreny & Flow**: Kotlin Coroutines & Flows for reactive state management.
+*   **Concurrency & Flow**: Kotlin Coroutines & Flows for reactive state management.
+*   **Media & Casting**: `androidx.media3`/ExoPlayer for in-gallery video, Google Cast framework for Chromecast, plus a local HTTP server ("Web Companion") for Roku/Fire TV casting — see the "Casting & the Web Companion Server" section in [DESIGN.md](DESIGN.md).
+
+For the fuller picture beyond this quick-reference list — including the ViewModel/controller split, the folder update-indicator feature, and the casting subsystem — see [DESIGN.md](DESIGN.md).

@@ -159,6 +159,62 @@ $$\text{visible} = (\text{includedTags.isEmpty()} \lor \text{photo.keywords.inte
 
 ---
 
+## 🔔 Folder & Gallery Update Indicators
+
+Folders and galleries the site owner has recently updated show a small glowing cyan dot so
+returning visitors can spot what's new without re-browsing everything.
+
+*   **What counts as "updated"**: only `Album` nodes carry the raw signal — a folder is never
+    directly "modified," so folders are excluded from the base case and instead inherit the dot
+    by bubbling it up from any updated album underneath them. An album counts as updated when its
+    `dateModified` (from the SmugMug API) is both (a) within the last 30 days, and (b) newer than
+    the last time *this device* recorded the user viewing it.
+*   **Data model**: `CachedNode`/`CachedAlbum` carry `dateModified` (`Entities.kt`); a
+    `viewed_gallery_updates` table records, per node, the `dateModified` value that was current the
+    last time the user viewed it. Comparing the two — rather than storing a boolean "seen" flag —
+    means a *new* update after a visit correctly re-triggers the dot instead of staying silently
+    cleared forever.
+*   **Bubbling query**: `CollectionDao.getNodesWithActiveUpdates()` is a single recursive CTE that
+    computes updated albums and walks the tree upward so every ancestor folder also lights up,
+    letting a user spot a new gallery from the root without drilling down blind.
+*   **Clearing**: `SmugMugRepository.markNodeAsViewed(nodeId)` records the current
+    `dateModified` for that node *and* recursively for every descendant, so marking a folder viewed
+    clears every album inside it in one action. This fires automatically when a gallery is opened,
+    and manually via a long-press "Mark as Viewed" option on any grid card.
+*   **Rendering**: a 10dp filled cyan circle (`Color(0xFF00F0FF)`) in the card's top-left corner
+    (`BrowserScreen.kt`); cards without an update reserve the same 10dp of space with an invisible
+    spacer so the badge appearing/disappearing never shifts the grid layout (CLS prevention, per
+    the UX Designer persona's skeleton-loader/layout-shift rules elsewhere in this doc).
+
+---
+
+## 📡 Casting & the Web Companion Server
+
+SmugView can push the photo currently being viewed to a Chromecast, Roku, or Amazon Fire TV device
+on the same local network. **None of this is SmugMug API traffic** — see the scope note at the top
+of [SMUGMUG.md](SMUGMUG.md).
+
+*   **Chromecast**: uses Google's standard Cast framework (`play-services-cast-framework`).
+    `CastOptionsProvider` registers the receiver app; `CastManager` handles discovery/session
+    lifecycle; `CastControllerScreen` + `CastButton` + `CastDeviceSelectorBottomSheet` provide the
+    UI (play/pause slideshow, next/prev, volume, mute).
+*   **Roku (ECP) & Fire TV (DIAL)**: these platforms don't speak Google Cast, so SmugView runs its
+    own tiny local HTTP server — the **Web Companion** (`WebCompanionServer.kt`) — on port `8080`.
+    It serves the currently-cast photo (and a small JSON feed for slideshow state) to the TV device
+    over plain HTTP.
+*   **Security scoping**: the Web Companion server is **only reachable by the specific device
+    being cast to** — it validates the caller's IP against the allow-listed cast-target IP set when
+    a cast session starts, not open to the whole LAN.
+*   **Why `usesCleartextTraffic="true"` in the manifest**: this local casting traffic is plain HTTP
+    by necessity (Roku ECP and Amazon DIAL are unencrypted local-network protocols). This is
+    strictly scoped to LAN casting — all SmugMug API traffic is HTTPS via Retrofit's `baseUrl`
+    regardless of this manifest flag. A network-security-config can't narrow this further because
+    it can't match private-IP CIDR ranges, only hostnames/IP literals.
+*   **`CHANGE_WIFI_MULTICAST_STATE` permission** is required for Roku/Fire TV discovery (SSDP/DIAL
+    both rely on multicast).
+
+---
+
 ## 🖼️ Photo Detail Actions & Offline Collections
 
 When a photo is viewed in detail/full-screen mode, the application must offer the following features:
@@ -167,6 +223,9 @@ When a photo is viewed in detail/full-screen mode, the application must offer th
 *   **Visual Design**: A pure black backdrop with translucent floating navigation and utility buttons.
 *   **Swipe Gestures**: Implements a smooth, gesture-driven pager (using Compose `HorizontalPager`) to swipe between photos, accompanied by subtle page-slide animations.
 *   **Quick Actions**: Double-tapping the image triggers a scale-animated heart to automatically add the photo to the "Favorites" collection. Long-pressing the image reveals a quick-info overlay.
+*   **Pinch-to-Zoom with Progressive High-Res** (`ImmersivePhotoPage` in `PhotoDetailComponents.kt`, shared by all three detail screens): pinch/drag scales the current photo from 1x–5x via `rememberTransformableState`. Pan is only consumed by the photo while zoomed in (`canPan = { scale > 1f }`) — at 1x, the same drag gesture falls through to the enclosing pager, so swiping to the next photo still works. Zoom resets to 1x whenever the page stops being the active pager page, so leaving a zoomed photo snaps it back. The base image shown is a mid-resolution rewrite of the thumbnail URL; once the user actually zooms in, a second, much larger image (`~2560px`, or the full `ArchivedUri`) loads in the background and crossfades over the lower-res image when ready — so the initial page load stays fast, and full detail only downloads if someone zooms in to look for it.
+    > [!IMPORTANT]
+    > Any new full-screen photo surface must reuse `PhotoDetailComponents.kt` rather than re-implementing zoom/pager interaction — a prior refactor (`1ecad32`) already consolidated this logic out of three near-duplicate screens specifically to avoid this drifting out of sync again.
 
 ### 2. Save to Device
 *   Downloads the original high-resolution image (using the `ArchivedUri` or highest available size link) to the user's local device storage.
@@ -198,10 +257,12 @@ To build a modern, high-quality, and robust Android application, adhere to the f
 3. **Architecture**: MVVM (Model-View-ViewModel) with Clean Architecture principles
    - **Data Layer**: Retrofit (for API calls), Paging 3 (for remote pagination), Room (for local caching, folder indexing, and local user collections), WorkManager (for background asset sync), and Coil (for image loading).
    - **Domain Layer**: Core data models and Use Cases.
-   - **Presentation Layer**: Compose screens, ViewModels, and Navigation using Jetpack Navigation Compose.
+   - **Presentation Layer**: Compose screens, ViewModels (split into a `SmugViewModel` facade plus per-concern controllers — see below), and Navigation using Jetpack Navigation Compose.
 4. **Asynchronous/Flows**: Kotlin Coroutines and StateFlow for reactive UI state propagation.
 5. **Dependency Injection**: Hilt / Dagger for clean dependency management.
 6. **Palette API**: Compose integration to dynamically extract dominant colors from photos/folders to adapt the UI theme colors dynamically.
+7. **Media playback**: `androidx.media3` (ExoPlayer + `PlayerView`) for in-gallery video playback with custom transport controls, seek, rewind/forward.
+8. **Casting**: `play-services-cast-framework` for Chromecast, plus a hand-rolled local HTTP server (the Web Companion) for Roku/Fire TV — see **"Casting & the Web Companion Server"** above.
 
 ---
 
@@ -225,6 +286,10 @@ graph TD
     Worker <--> |Queries status / Marks complete| DB
 ```
 
+> This diagram covers the core SmugMug data flow only. Casting (Chromecast + the local
+> Web Companion server) is a separate, local-network-only subsystem — see "Casting & the Web
+> Companion Server" above.
+
 ### Key Data Flow Cycles
 1. **Explore Site Flow**: User enters nickname ➡️ `SmugViewModel` triggers API request via `SmugMugRepository` ➡️ API returns root node ➡️ UI transitions to standard photo explorer.
 2. **Offline Bookmark & Sync Flow**: User toggles offline sync on a collection ➡️ Repository inserts metadata in `AppDatabase` ➡️ Repository schedules `OfflineDownloadWorker` via `WorkManager` ➡️ Worker verifies local device storage ➡️ Worker fetches full-resolution images from `SmugMugApi` and saves files directly to internal directory, updating Room DB metadata status to `downloaded` (rendered as a green cloud checkmark in UI).
@@ -238,23 +303,37 @@ The application is structured into clearly separated packages mirroring Clean Ar
 
 ### 1. Presentation Layer (`com.smugview.app.ui`)
 *   **ViewModels (`ui.viewmodel`)**:
-    *   `SmugViewModel.kt`: The single state holder for the app. Retains nickname searches, dynamic folder listings, active loading/splash states, and applies client-side tag inclusion/exclusion formulas on Kotlin Flows.
+    *   `SmugViewModel.kt`: The facade/state holder the UI actually binds to. It no longer holds every concern directly — most logic now lives in per-feature controllers it delegates to:
+        *   `SearchController.kt`, `TagSearchController.kt`: text search and keyword/tag-cloud search respectively (including the `MAX_SEARCH_START = 9501` hard cap that stops keyword-search pagination before SmugMug's Elasticsearch result-window limit — see `SMUGMUG.md`).
+        *   `SiteHubController.kt`: the Hub tab's dashboard/shortcut logic.
+        *   `CollectionsController.kt`: custom offline collections.
+        *   `CastController.kt`: Chromecast/Web-Companion casting state (active device, slideshow playback, volume/mute).
+    *   This split happened via a series of refactors extracting each controller "behind the `SmugViewModel` facade" — new feature logic should go in the relevant controller, not back into `SmugViewModel` directly.
 *   **Screens & Layouts**:
-    *   `SiteExplorerScreen.kt` (`ui.explorer`): The initial entry screen allowing the user to search public SmugMug nicknames and view validated profile card summaries.
-    *   `BrowserScreen.kt` (`ui.browser`): The tabbed browsing coordinator containing the Folders grid, local Collections, and the tag-filtering Search tab.
-    *   `PhotoDetailScreen.kt` & `SearchPhotoDetailScreen.kt` (`ui.detail`): Fully-immersive full-screen image views with horizontal swiping, ExoPlayer streaming support, EXIF metadata bottom sheets, and scoped storage download options.
+    *   `SiteExplorerScreen.kt` (`ui.explorer`): The initial entry screen allowing the user to search public SmugMug nicknames and view validated profile card summaries. Also defines `ProfileAvatar`, reused elsewhere for site branding (see below).
+    *   `BrowserScreen.kt` (`ui.browser`): The tabbed browsing coordinator/shell (bottom nav: Home, Search, Tags, Collections, and a 5th tab showing the active site's own avatar). Delegates each tab's content to its own file: `FoldersTabView.kt` (folder/gallery tree — the "Home" tab; renders the site's name + profile avatar in the root header via `ProfileAvatar`), `HomeTabView.kt` (the "Gallery Hub" dashboard tab), `SearchTabView.kt` (text search), and the tag-search tab (backed by `TagSearchController`).
+    *   `PhotoDetailScreen.kt`, `SearchPhotoDetailScreen.kt`, `KeywordPhotoDetailScreen.kt` (`ui.detail`): three immersive full-screen entry points (browsed photo, search-result photo, keyword-result photo) that all share one implementation — `PhotoDetailComponents.kt` (pager page body, pinch-to-zoom, palette-driven background, action capsule, EXIF bottom sheet) and `PhotoDetailUtils.kt` — rather than duplicating viewer logic three times. Includes ExoPlayer-backed video playback and Chromecast/Web-Companion cast controls.
+    *   `KeywordImagesScreen.kt` (`ui.explorer`): the results grid for a keyword/tag-cloud search, feeding into `KeywordPhotoDetailScreen.kt`.
+    *   `ui.component/CastControllerScreen.kt`, `CastButton.kt`, `CastDeviceSelectorBottomSheet.kt`: the casting UI (see "Casting & the Web Companion Server" above).
 
 ### 2. Domain & Repository Layer (`com.smugview.app.data.repository`)
-*   `SmugMugRepository.kt`: The central repository managing network fallback logic, password authentication caching, Room database transaction forwarding, and WorkManager task dispatching.
+*   `SmugMugRepository.kt`: The central repository managing network fallback logic, password authentication caching, Room database transaction forwarding, incremental album-index sync, folder/gallery update-indicator bookkeeping (`getNodesWithActiveUpdates`, `markNodeAsViewed`), and WorkManager task dispatching.
 *   `PhotoPagingSource.kt`: Paging 3 source that handles loading and paginating list indexes returned from SmugMug image search endpoints.
 
 ### 3. Data & Storage Layer (`com.smugview.app.data`)
 *   **API Client (`data.api`)**:
-    *   `SmugMugApi.kt`: Retrofit client defining GET endpoints for folder/album trees, image lists, and EXIF metadata, as well as POST endpoints for session unlocks.
+    *   `SmugMugApi.kt`: Retrofit client defining GET endpoints for folder/album trees, image lists, and EXIF metadata, as well as POST endpoints for session unlocks. See `SMUGMUG.md` for the full endpoint table.
     *   `ResponseModels.kt`: Serialized data models mapping the JSON payloads returned by the SmugMug REST API.
 *   **Room Database (`data.db`)**:
-    *   `Entities.kt`: SQLite table structures for offline collections, collection items, and recent search histories.
-    *   `CollectionDao.kt`: Core database queries for managing and checking local collections.
-    *   `AppDatabase.kt`: Main database initializer registering the DAOs and migration specifications.
+    *   `Entities.kt`: SQLite table structures — offline collections, collection items, recent search histories, cached nodes/albums (including the `dateModified` fields powering the update-indicator feature), and `viewed_gallery_updates`.
+    *   `CollectionDao.kt`: Core database queries for collections plus the recursive-CTE `getNodesWithActiveUpdates()` query.
+    *   `AppDatabase.kt`: Main database initializer registering the DAOs and migration specifications. Uses real, explicit `Migration`s (not destructive fallback) — see the Room migration warning in `SMUGMUG.md`.
 *   **Background Jobs (`data.worker`)**:
     *   `OfflineDownloadWorker.kt`: Downloader service validating local space availability, requesting high-resolution files, saving raw files locally, and flagging Room database entities as sync-complete.
+*   **Security (`data.security`)**:
+    *   `PasswordStore.kt` / `PasswordPrefsCompat.kt`: encrypted (`EncryptedSharedPreferences`) local storage for gallery passwords — never store these in plain `SharedPreferences`.
+*   **Casting (`data.cast`)**:
+    *   `CastManager.kt`: discovery/session lifecycle for both Chromecast and the Web Companion path.
+    *   `CastOptionsProvider.kt`: registers the Cast receiver app (referenced from `AndroidManifest.xml`).
+    *   `CastDevice.kt`: device model shared across Chromecast/Roku/Fire TV.
+    *   `WebCompanionServer.kt`: the local HTTP server used for Roku (ECP) and Fire TV (DIAL) casting — see "Casting & the Web Companion Server" above.

@@ -2,6 +2,10 @@
 
 This document records the architectural details, endpoint definitions, expansions, and gotchas identified while integrating the SmugMug API v2 into the SmugView application.
 
+> Scope note: this doc covers **SmugMug API v2 traffic only**. Casting to Chromecast/Roku/Fire TV
+> uses a separate local-network HTTP server (the "Web Companion") that never talks to SmugMug's
+> servers — see **"Casting & the Web Companion Server"** in [DESIGN.md](DESIGN.md).
+
 ---
 
 ## 👥 SmugMug Expert Personas & Audit Framework
@@ -175,7 +179,17 @@ To maintain a resilient and high-performing integration, any future changes or o
 *   **Example**: `GET /api/v2/user/cmac,onethumb`
 *   **Behavior**: The API changes the `LocatorType` to `Objects` and returns the payload under the target key as a JSON list.
 
-### 4. Concurrent Request Deduplication & Caching Optimizations
+### 4. Field Filtering — `_filter` vs. `_filteruri`
+*   **`_filter`**: restricts which *properties* come back on the main response object (e.g. `Name,GalleryStyle,WebUri`).
+*   **`_filteruri`**: restricts which entries appear in the `Uris` expansion map (e.g. `ChildNodes,Album,HighlightImage,ParentNode`). Every node/album/image endpoint in `SmugMugApi.kt` sets both — `_filter` alone is not enough to trim payload size, because the `Uris` map is filtered independently.
+*   **Gotcha**: `getAlbumKeywords` deliberately sets `_filteruri = ""` (empty) — the keyword-scan batch call only wants the `AlbumKeywords` expansion itself, not any of the album's other `Uris` entries, so it blanks the filter rather than omitting it (an omitted `_filteruri` falls back to the server default, which is not empty).
+
+### 5. Automatic Retry & Backoff (429 / 5xx)
+*   **Where**: `AppModule.kt` registers a Retrofit/OkHttp `Interceptor` (`retryInterceptor`) on the shared `OkHttpClient`, so every SmugMug API call gets this for free — no per-repository-method retry logic needed.
+*   **Behavior**: on a `429` or any `5xx` response, retries up to **5 times**. Delay starts at 500ms and doubles each attempt (exponential backoff: 500ms, 1s, 2s, 4s, 8s). For a `429` specifically, it first checks the `Retry-After` header (seconds) and sleeps that long instead of the computed backoff value if present.
+*   **Caveat**: the sleep is a blocking `Thread.sleep` on the OkHttp dispatcher thread, not a suspending `delay` — under heavy concurrent load this can starve the dispatcher's thread pool (see the "Room / DB performance" retro notes in `AGENTS.md` for the incident this caused). Don't add a second layer of manual retry/backoff in repository code on top of this interceptor — it already covers every request.
+
+### 6. Concurrent Request Deduplication & Caching Optimizations
 *   **Problem**: Parallel background synchronization and foreground UI activities triggered simultaneous, identical HTTP requests for the same folder node. Additionally, search operations called sequential requests for the same user root node ID, and pager swiping caused redundant album re-fetches and UI blanking out.
 *   **Optimizations**:
     1.  **Node Request Deduplication**: Introduced a nodeId-based `Mutex` synchronization lock map (`nodeLocks`) in the repository. Concurrent requests for the same node suspend and wait for the in-flight network call to complete and populate the Room database, rather than triggering parallel API fetches.
@@ -282,11 +296,10 @@ We implemented a set of deep optimizations to protect the SmugMug API and CDN re
     *   **Mitigation**: Always parse and clean expansion keys by removing query parameters or action symbols, such as stripping everything after and including the `!` symbol (e.g., `uri.substringAfterLast("/").substringBefore("!")`).
 
 ### 4. Server-Side Field Filtering (`_filter`)
-*   To minimize JSON payload sizes and accelerate parsing times on the mobile client, we applied the `_filter` parameter to limit attributes on high-volume endpoints:
-    *   **User Albums**: Requests only `AlbumKey,Name,GalleryStyle,UrlPath,WebUri`.
-    *   **Search Nodes**: Requests only `Uri,NodeID,Type,Name,Description,SecurityType,PasswordHint,Uris,WebUri`.
-    *   **Get Image**: Requests only `ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,Format,OriginalWidth,OriginalHeight,Uris,WebUri`.
-    *   **Get Album Images**: Requests `Keywords` alongside basic metadata to ensure tag-filtering lists are fully populated.
+*   To minimize JSON payload sizes and accelerate parsing times on the mobile client, we applied the `_filter` parameter to limit attributes on high-volume endpoints (field lists below reflect the actual `SmugMugApi.kt` defaults, which have grown since this section was first written):
+    *   **User Albums / Get Album**: `Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated`.
+    *   **Get Node / Search Nodes**: `Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl,DateModified` (`Privacy`, `ThumbnailUrl`, and `DateModified` were added later — `Privacy` because `SecurityType` alone can disagree with it on password-protected items, see the "Privacy vs SecurityType" retro note in `AGENTS.md`; `DateModified` powers the folder/gallery update-indicator feature).
+    *   **Get Image / Search Images / Get Album Images**: `ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris(,WebUri)`. `FileName`/`OriginalSize` support the save-to-device flow; `Keywords`/`KeywordArray` populate tag-filtering chips.
 
 ---
 
@@ -304,22 +317,24 @@ This section provides a structured guide to all Retrofit endpoint definitions, q
 | **GET** | `node/{node_id}` | `getNode` | Fetches metadata for a single node.<br>• *Params*: `nodeId`, `apiKey`, `verbosity = 1` |
 | **GET** | `album/{album_key}` | `getAlbum` | Fetches details (title, security hint, key) for a gallery.<br>• *Params*: `albumKey`, `apiKey`, `password` (optional), `verbosity = 1` |
 | **GET** | `album/{album_key}!images` | `getAlbumImages` | Retrieves paginated images in a gallery (up to 500/request).<br>• *Params*: `albumKey`, `apiKey`, `password` (optional), `count = 500`, `expand = "LargestVideo"`, `filter`, `verbosity = 1` |
-| **GET** | *(Dynamic Url)* | `getAlbumImagesByUri` | Recursively traverses next page links for gallery images.<br>• *Params*: `url`, `apiKey`, `password` (optional), `count = 500`, `expand`, `filter`, `verbosity = 1` |
+| **GET** | *(Dynamic Url)* | `getAlbumImagesByUri` | Recursively traverses next page links for gallery images.<br>• *Params*: `url`, `apiKey`, `password` (optional). No `count`/`expand`/`filter`/`verbosity` — those are already baked into the `pages.next` URL returned by the server. |
 | **GET** | `image!search` | `searchImages` | Performs global public image search (scoped or unscoped).<br>• *Params*: `apiKey`, `scope`, `text` (search term), `sortMethod`, `sortDirection`, `count = 500`, `start = 1`, `filter`, `expand`, `verbosity = 1` |
-| **GET** | *(Dynamic Url)* | `searchImagesByUri` | Follows next page links for global image search results.<br>• *Params*: `url`, `apiKey`, `verbosity = 1` |
+| **GET** | *(Dynamic Url)* | `searchImagesByUri` | Follows next page links for global image search results.<br>• *Params*: `url`, `apiKey` only — no other params (all baked into `pages.next`). |
 | **GET** | `user/{nickname}!imagesearch` | `searchImagesUser` | Searches for images restricted to a specific user account.<br>• *Params*: `nickname`, `apiKey`, `text`, `scope`, `password` (optional), `count = 250`, `start = 1`, `expand`, `filter`, `verbosity = 1` |
-| **GET** | *(Dynamic Url)* | `searchImagesUserByUri` | Follows next page links for user-scoped image searches.<br>• *Params*: `url`, `apiKey`, `password` (optional), `expand`, `filter`, `verbosity = 1` |
+| **GET** | *(Dynamic Url)* | `searchImagesUserByUri` | Follows next page links for user-scoped image searches.<br>• *Params*: `url`, `apiKey`, `password` (optional). No `expand`/`filter`/`verbosity` — baked into `pages.next`. |
 | **GET** | `node!search` | `searchNodes` | Finds folders and galleries matching a keyword.<br>• *Params*: `apiKey`, `scope`, `text`, `password` (optional), `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
 | **GET** | `image/{image_key}` | `getImage` | Fetches details and metadata for a single photo.<br>• *Params*: `imageKey`, `apiKey`, `password` (optional), `expand`, `filter`, `verbosity = 1` |
 | **GET** | `image/{image_key}!metadata` | `getImageExif` | Fetches EXIF/camera metadata for a photo.<br>• *Params*: `imageKey`, `apiKey`, `password` (optional), `verbosity = 1` |
-| **POST** | `node/{node_id}!unlock` | `unlockNode` | Submits folder/node password for authentication session.<br>• *Params*: `nodeId`, `apiKey`, `@Field("Password") password` |
-| **POST** | `album/{album_key}!unlock` | `unlockAlbum` | Submits gallery/album password for authentication session.<br>• *Params*: `albumKey`, `apiKey`, `@Field("Password") password` |
+| **POST** | `node/{node_id}!unlock` | `unlockNode` | Submits folder/node password for authentication session.<br>• *Params*: `nodeId`, `apiKey`, `@Field("Password") password`, `X-Ignore-Errors` header (always sent — unlock attempts must never pop the generic error Toast). |
+| **POST** | `album/{album_key}!unlock` | `unlockAlbum` | Submits gallery/album password for authentication session.<br>• *Params*: `albumKey`, `apiKey`, `@Field("Password") password`, `X-Ignore-Errors` header (always sent, same reason). |
 | **PATCH** | `image/{image_key}` | `updateImageMetadata` | Modifies keywords/tags list for a photo.<br>• *Params*: `imageKey`, `apiKey`, `@Body body: UpdateImageMetadataRequest` |
 | **GET** | `user/{nickname}!albums` | `getUserAlbums` | Lists all galleries/albums in the user account.<br>• *Params*: `nickname`, `apiKey`, `count = 500`, `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
-| **GET** | *(Dynamic Url)* | `getUserAlbumsByUri` | Traverses subsequent pages of all user albums.<br>• *Params*: `url`, `apiKey`, `count = 500`, `expand`, `filter`, `verbosity = 1` |
+| **GET** | *(Dynamic Url)* | `getUserAlbumsByUri` | Traverses subsequent pages of all user albums.<br>• *Params*: `url`, `apiKey` only — no other params (baked into `pages.next`). |
 | **GET** | `album/{album_keys}` | `getAlbumKeywords` | Fetches keywords for one or more galleries (comma-separated keys).<br>• *Params*: `albumKeys`, `apiKey`, `password` (optional), `expand = "AlbumKeywords"`, `filter = "Uri"`, `verbosity = 1` |
 | **GET** | `user/{nickname}!topkeywords` | `getUserTopKeywords` | Aggregates most used keywords/tags in user profile or folder node.<br>• *Params*: `nickname`, `apiKey`, `nodeId` (optional), `verbosity = 1` |
-| **GET** | `image!search` | `getImagesByKeyword` | Specifically optimized query for keyword tags searching.<br>• *Params*: `apiKey`, `scope`, `text` (space-separated tag query), `count = 10`, `start = 1`, `filter`, `verbosity = 1` |
+| **GET** | `image!search` | `getImagesByKeyword` | Specifically optimized query for keyword tags searching.<br>• *Params*: `apiKey`, `scope`, `text` (space-separated tag query), `count = 500`, `start = 1`, `filter`, `verbosity = 1` |
+| **GET** | `user!search` | `searchUsers` | Looks up public SmugMug accounts by nickname/name fragment (site explorer autocomplete).<br>• *Params*: `apiKey`, `q` (query text — **not** `Text`), `verbosity = 1` |
+| **GET** | `user/{nickname}!recentimages` | `getUserRecentImages` | Fetches the account's most recently added images (seeds the Home/Hub tab).<br>• *Params*: `nickname`, `apiKey`, `count = 4`, `password` (optional), `filter = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,Uris"`, `filterUri = "ImageAlbum"`, `verbosity = 1` |
 
 ### 2. Core Application Enums
 
@@ -344,7 +359,8 @@ Defines the inclusion state of a tag pill filter:
 
 ### 3. API Invocation Guidelines (Avoid Basic Mistakes)
 
-*   **Pacing & Rate Limiting (429)**: Standard calls should be rate-limited or paced. For scoped searches or batch requests, maintain at least a `250ms` delay between sequential calls.
+*   **Pacing & Rate Limiting (429)**: Standard calls should be rate-limited or paced. For scoped searches or batch requests, maintain at least a `250ms` delay between sequential calls. Note this is in addition to, not instead of, the automatic 429/5xx retry interceptor described above.
+*   **Hard Result-Window Cap on Keyword/Tag Search**: SmugMug's Elasticsearch-backed search backend rejects pagination once `from + size > 10000` ("Result window is too large"). With a 500-per-page size, the last safe 1-indexed `start` is **9501** — hardcoded as `TagSearchController.MAX_SEARCH_START`. The tag/keyword search loader stops paginating past this point rather than surfacing the error, and reports the loaded count as the total so the progress UI settles at 100% instead of stalling short. Any new keyword-search entry point must respect the same cap or it will hit this error on large tag result sets.
 *   **Searchable Index Exclusions**: The global `node!search` or `image!search` endpoints omit unsearchable nodes. Combine network searches with local database lookups on `cached_nodes` using `title LIKE %query%`.
 *   **Case Sensitivity**: Autocomplete queries must compare tags case-insensitively (`it.lowercase().contains(query)`).
 *   **Stripping Key Suffixes**: Album key mapping for expanded resources requires removing the trailing action suffix (e.g. splitting `/api/v2/album/{key}!keywords` at `!`).
