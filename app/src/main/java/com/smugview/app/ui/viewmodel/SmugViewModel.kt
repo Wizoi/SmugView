@@ -580,40 +580,46 @@ class SmugViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
+    // Recent site names + active site profile — driven by session lifecycle (stays here).
     private val _recentSites = MutableStateFlow<List<String>>(emptyList())
     val recentSites: StateFlow<List<String>> = _recentSites.asStateFlow()
-
-    private val _sitePreview = MutableStateFlow<Result<UserData>?>(null)
-    val sitePreview: StateFlow<Result<UserData>?> = _sitePreview.asStateFlow()
-
-    private val _previewAlbums = MutableStateFlow<List<com.smugview.app.data.api.AlbumPreview>>(emptyList())
-    val previewAlbums: StateFlow<List<com.smugview.app.data.api.AlbumPreview>> = _previewAlbums.asStateFlow()
-
-    private val _globalSearchState = MutableStateFlow<GlobalSearchUiState>(GlobalSearchUiState.Idle)
-    val globalSearchState: StateFlow<GlobalSearchUiState> = _globalSearchState.asStateFlow()
 
     var lastSelectedCollectionIds by mutableStateOf<Set<Long>>(emptySet())
 
     private val _activeUserProfile = MutableStateFlow<UserData?>(null)
     val activeUserProfile: StateFlow<UserData?> = _activeUserProfile.asStateFlow()
 
-    private val _activeSiteRecentImages = MutableStateFlow<List<AlbumImageData>>(emptyList())
-    val activeSiteRecentImages: StateFlow<List<AlbumImageData>> = _activeSiteRecentImages.asStateFlow()
+    // Site discovery + preview + hub dashboard — delegated to SiteHubController.
+    // Declared before init{} because loadHistoryAndActiveSite() (in init) drives it.
+    private val siteHub = SiteHubController(
+        repository = repository,
+        apiKey = apiKey,
+        scope = viewModelScope,
+        getRootNodeId = {
+            _splashState.value.let { if (it is SplashUiState.Success) it.rootNodeId else null }
+        },
+        getUnlockedPasswordSync = { nodeId -> getUnlockedPasswordSync(nodeId) },
+        getAlbumKeyFromWebUri = { webUri -> getAlbumKeyFromWebUri(webUri) },
+        setUserAlbums = { albums -> _userAlbums = albums }
+    )
 
-    private val _activeSiteAlbums = MutableStateFlow<List<HubAlbumItem>>(emptyList())
-    val activeSiteAlbums: StateFlow<List<HubAlbumItem>> = _activeSiteAlbums.asStateFlow()
+    val sitePreview: StateFlow<Result<UserData>?> get() = siteHub.sitePreview
+    val previewAlbums: StateFlow<List<com.smugview.app.data.api.AlbumPreview>> get() = siteHub.previewAlbums
+    val globalSearchState: StateFlow<GlobalSearchUiState> get() = siteHub.globalSearchState
+    val activeSiteRecentImages: StateFlow<List<AlbumImageData>> get() = siteHub.activeSiteRecentImages
+    val activeSiteAlbums: StateFlow<List<HubAlbumItem>> get() = siteHub.activeSiteAlbums
+    val activeSiteTopKeywords: StateFlow<List<String>> get() = siteHub.activeSiteTopKeywords
+    val activeSiteTotalGalleries: StateFlow<Int?> get() = siteHub.activeSiteTotalGalleries
+    val activeSiteTotalPhotos: StateFlow<Int?> get() = siteHub.activeSiteTotalPhotos
+    val isActiveSiteDetailsLoading: StateFlow<Boolean> get() = siteHub.isActiveSiteDetailsLoading
 
-    private val _activeSiteTopKeywords = MutableStateFlow<List<String>>(emptyList())
-    val activeSiteTopKeywords: StateFlow<List<String>> = _activeSiteTopKeywords.asStateFlow()
+    fun verifyAndPreviewNickname(nickname: String) = siteHub.verifyAndPreviewNickname(nickname)
 
-    private val _activeSiteTotalGalleries = MutableStateFlow<Int?>(null)
-    val activeSiteTotalGalleries: StateFlow<Int?> = _activeSiteTotalGalleries.asStateFlow()
+    fun searchPublicSites(query: String) = siteHub.searchPublicSites(query)
 
-    private val _activeSiteTotalPhotos = MutableStateFlow<Int?>(null)
-    val activeSiteTotalPhotos: StateFlow<Int?> = _activeSiteTotalPhotos.asStateFlow()
+    fun clearGlobalSiteSearch() = siteHub.clearGlobalSiteSearch()
 
-    private val _isActiveSiteDetailsLoading = MutableStateFlow(false)
-    val isActiveSiteDetailsLoading: StateFlow<Boolean> = _isActiveSiteDetailsLoading.asStateFlow()
+    private fun loadActiveSiteDetails(nickname: String) = siteHub.loadActiveSiteDetails(nickname)
 
     // Tag Search UI States
     private val _isScanningTags = MutableStateFlow(false)
@@ -784,206 +790,11 @@ class SmugViewModel @Inject constructor(
         }
     }
 
-    private fun loadActiveSiteDetails(nickname: String) {
-        _isActiveSiteDetailsLoading.value = true
-        _activeSiteRecentImages.value = emptyList()
-        _activeSiteAlbums.value = emptyList()
-        _activeSiteTopKeywords.value = emptyList()
-        _activeSiteTotalGalleries.value = null
-        _activeSiteTotalPhotos.value = null
-        
-        val rootNodeId = _splashState.value.let {
-            if (it is SplashUiState.Success) it.rootNodeId else null
-        }
-        val password = rootNodeId?.let { getUnlockedPasswordSync(it) }
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: starting for $nickname, rootNodeId=$rootNodeId, password=${password != null}")
-        }
-
-        viewModelScope.launch {
-            try {
-                kotlinx.coroutines.coroutineScope {
-                    val recentImagesDeferred = async {
-                        try {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching recent images")
-                            }
-                            val res = repository.getUserRecentImagesResponse(nickname, apiKey, count = 10, password = password)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: recent images response: ${res.response.images?.size} items")
-                            }
-                            res.response.images ?: emptyList()
-                        } catch (e: Exception) {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("SmugViewModel", "loadActiveSiteDetails recent images failed", e)
-                            }
-                            emptyList()
-                        }
-                    }
-                    val albumsDeferred = async {
-                        try {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching albums")
-                            }
-                            val res = repository.getUserAlbumsResponse(nickname, apiKey, password = password)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: albums response: ${res.response.albums?.size} items")
-                            }
-                            _activeSiteTotalGalleries.value = res.response.pages?.total
-                            val albums = res.response.albums ?: emptyList()
-                            _userAlbums = albums
-                            val expansions = res.expansions
-                            albums.map { album ->
-                                val highlightUri = album.uris?.highlightImage
-                                val highlightUrl = if (highlightUri != null) {
-                                    val expansion = expansions?.get(highlightUri)
-                                    val thumb = expansion?.image?.thumbnailUrl
-                                    thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
-                                } else null
-                                HubAlbumItem(
-                                    albumKey = album.albumKey,
-                                    title = album.name,
-                                    coverUrl = highlightUrl,
-                                    imageCount = album.imageCount ?: 0,
-                                    dateModified = album.dateModified,
-                                    access = album.securityType,
-                                    passwordHint = album.passwordHint
-                                )
-                            }
-                        } catch (e: Exception) {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("SmugViewModel", "loadActiveSiteDetails albums failed", e)
-                            }
-                            emptyList()
-                        }
-                    }
-                    val topKeywordsDeferred = async {
-                        try {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching top keywords")
-                            }
-                            val res = repository.getUserTopKeywords(nickname, apiKey, nodeId = rootNodeId, password = password)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: top keywords response: ${res.response.userTopKeywords?.keywords?.size} items")
-                            }
-                            res.response.userTopKeywords?.keywords ?: emptyList()
-                        } catch (e: Exception) {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("SmugViewModel", "loadActiveSiteDetails top keywords failed", e)
-                            }
-                            emptyList()
-                        }
-                    }
-                    val recentImages = recentImagesDeferred.await()
-                    val albums = albumsDeferred.await()
-                    val topKeywords = topKeywordsDeferred.await()
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: completed. albums=${albums.size}, recent=${recentImages.size}, keywords=${topKeywords.size}")
-                    }
-
-                    // Resolve missing albumKeys for recentImages
-                    val resolvedRecentImages = recentImages.map { img ->
-                        val apiAlbumKey = img.uris?.imageAlbum?.substringAfterLast("/")
-                            ?: img.uris?.album?.substringAfterLast("/")
-                            ?: ""
-                        if (apiAlbumKey.isNotEmpty()) {
-                            img
-                        } else {
-                            val resolvedKey = getAlbumKeyFromWebUri(img.webUri) 
-                                ?: getAlbumKeyFromWebUri(img.thumbnailUrl)
-                            if (resolvedKey != null && resolvedKey.isNotEmpty()) {
-                                val finalUris = (img.uris ?: com.smugview.app.data.api.AlbumImageUris()).copy(
-                                    imageAlbum = "/api/v2/album/$resolvedKey",
-                                    album = "/api/v2/album/$resolvedKey"
-                                )
-                                img.copy(uris = finalUris)
-                            } else {
-                                img
-                            }
-                        }
-                    }
-
-                    // Compute actual total photos across all loaded albums
-                    val computedTotalPhotos = albums.sumOf { it.imageCount }
-                    _activeSiteTotalPhotos.value = computedTotalPhotos
-
-                    _activeSiteRecentImages.value = resolvedRecentImages
-                    _activeSiteAlbums.value = albums
-                    _activeSiteTopKeywords.value = topKeywords.take(12)
-                }
-            } catch (e: Exception) {
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.e("SmugViewModel", "loadActiveSiteDetails failed outer", e)
-                }
-            } finally {
-                _isActiveSiteDetailsLoading.value = false
-            }
-        }
-    }
-
     fun retryActiveSite() {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "retryActiveSite called: activeNickname=${_activeNickname.value}")
         }
         _activeNickname.value?.let { loadUserProfile(it) }
-    }
-
-    // Live validation for Site Explorer
-    fun verifyAndPreviewNickname(nickname: String) {
-        if (nickname.isBlank()) {
-            _sitePreview.value = null
-            _previewAlbums.value = emptyList()
-            return
-        }
-        viewModelScope.launch {
-            repository.getUserProfile(nickname, apiKey, ignoreErrors = "true").collect { result ->
-                _sitePreview.value = result
-                result.fold(
-                    onSuccess = { userData ->
-                        try {
-                            val albums = repository.getUserAlbumsPreview(userData.nickName, apiKey)
-                            _previewAlbums.value = albums.take(3)
-                        } catch (e: Exception) {
-                            _previewAlbums.value = emptyList()
-                        }
-                    },
-                    onFailure = {
-                        _previewAlbums.value = emptyList()
-                    }
-                )
-            }
-        }
-    }
-
-    private var globalSearchJob: kotlinx.coroutines.Job? = null
-
-    fun searchPublicSites(query: String) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "searchPublicSites called: query='$query'")
-        }
-        globalSearchJob?.cancel()
-        if (query.isBlank()) {
-            _globalSearchState.value = GlobalSearchUiState.Idle
-            return
-        }
-        _globalSearchState.value = GlobalSearchUiState.Loading
-        globalSearchJob = viewModelScope.launch {
-            repository.searchPublicSites(query, apiKey).collect { result ->
-                result.fold(
-                    onSuccess = { sites ->
-                        _globalSearchState.value = GlobalSearchUiState.Success(sites)
-                    },
-                    onFailure = { error ->
-                        _globalSearchState.value = GlobalSearchUiState.Error(error.localizedMessage ?: "Failed to perform discovery search")
-                    }
-                )
-            }
-        }
-    }
-
-    fun clearGlobalSiteSearch() {
-        globalSearchJob?.cancel()
-        _globalSearchState.value = GlobalSearchUiState.Idle
     }
 
     // Selects and locks in a SmugMug nickname to browse
@@ -1059,16 +870,11 @@ class SmugViewModel @Inject constructor(
         _activeNickname.value = null
         repository.setActiveNickname(null)
         _activeUserProfile.value = null
-        _activeSiteRecentImages.value = emptyList()
-        _activeSiteAlbums.value = emptyList()
-        _activeSiteTopKeywords.value = emptyList()
-        _activeSiteTotalGalleries.value = null
-        _activeSiteTotalPhotos.value = null
+        siteHub.clearActiveSiteData()
         currentFolderId = null
         folderNavigationStack.clear()
         _splashState.value = SplashUiState.Idle
-        _sitePreview.value = null
-        _previewAlbums.value = emptyList()
+        siteHub.clearPreview()
         _activeTab.value = BrowserTab.Hub
         clearGlobalSiteSearch()
     }
