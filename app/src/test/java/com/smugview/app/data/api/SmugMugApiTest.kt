@@ -1033,6 +1033,7 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbum(albumKey, apiKey, password, filter, filterUri, verbosity, ignoreErrors)
     override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbumImages(albumKey, apiKey, password, count, expand, filter, filterUri, verbosity, ignoreErrors)
     override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, ignoreErrors: String?) = delegate.getAlbumImagesByUri(url, apiKey, password, ignoreErrors)
+    override suspend fun getImageSizeDetailsByUri(url: String, apiKey: String, password: String?) = delegate.getImageSizeDetailsByUri(url, apiKey, password)
     override suspend fun searchImages(apiKey: String, scope: String?, text: String?, sortMethod: String?, sortDirection: String?, count: Int, start: Int, filter: String, filterUri: String, expand: String?, verbosity: Int) = delegate.searchImages(apiKey, scope, text, sortMethod, sortDirection, count, start, filter, filterUri, expand, verbosity)
     override suspend fun searchImagesByUri(url: String, apiKey: String) = delegate.searchImagesByUri(url, apiKey)
     override suspend fun searchUsers(apiKey: String, query: String, verbosity: Int) = delegate.searchUsers(apiKey, query, verbosity)
