@@ -1581,6 +1581,26 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
+    /**
+     * Marks a folder and its DIRECT gallery children as viewed. Called when the user enters a
+     * folder — browsing into it counts as reading it, so its update dot (which bubbles up from an
+     * unviewed direct gallery) clears. Nested subfolders keep their own dots until entered, so
+     * entering a top-level folder doesn't silently clear deeply-nested new galleries.
+     */
+    suspend fun markFolderVisited(nodeId: String) {
+        val node = dao.getNodeById(nodeId) ?: return
+        val updates = mutableListOf<ViewedGalleryUpdate>()
+        node.dateModified?.takeIf { it.isNotEmpty() }?.let { updates.add(ViewedGalleryUpdate(nodeId, it)) }
+        for (child in dao.getDirectChildren(nodeId)) {
+            if (child.type == "Album") {
+                child.dateModified?.takeIf { it.isNotEmpty() }?.let { updates.add(ViewedGalleryUpdate(child.nodeId, it)) }
+            }
+        }
+        if (updates.isNotEmpty()) {
+            dao.insertViewedUpdates(updates)
+        }
+    }
+
     fun searchPublicSites(query: String, apiKey: String): Flow<Result<List<DiscoveredSite>>> = flow {
         try {
             val userSearchResponse = api.searchUsers(apiKey, query)

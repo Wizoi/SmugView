@@ -90,6 +90,9 @@ interface CollectionDao {
     """)
     suspend fun getAllDescendants(nodeId: String): List<CachedNode>
 
+    @Query("SELECT * FROM cached_nodes WHERE parentNodeId = :parentNodeId")
+    suspend fun getDirectChildren(parentNodeId: String): List<CachedNode>
+
     @Query("SELECT * FROM cached_nodes")
     suspend fun getAllCachedNodes(): List<CachedNode>
 

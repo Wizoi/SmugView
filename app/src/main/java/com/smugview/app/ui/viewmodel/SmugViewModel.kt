@@ -970,6 +970,9 @@ class SmugViewModel @Inject constructor(
             currentFolderId = node.nodeId
             folderNavigationStack.add(node)
             loadFolderContents(node.nodeId)
+            // Entering a folder counts as reading it: mark it and its direct galleries viewed so
+            // the update dot clears. Nested subfolders keep their dots until entered.
+            repository.markFolderVisited(node.nodeId)
         }
     }
 
