@@ -103,9 +103,6 @@ class SmugMugRepositoryTest {
 
         val viewedUpdates = mutableMapOf<String, String>()
 
-        override suspend fun getDirectChildren(parentNodeId: String): List<CachedNode> =
-            nodes.filter { it.parentNodeId == parentNodeId }
-
         override suspend fun getAllDescendants(nodeId: String): List<CachedNode> {
             val result = mutableListOf<CachedNode>()
             val queue = ArrayDeque<String>()

@@ -143,57 +143,6 @@ class CollectionDaoTest {
         assertFalse(active.contains("root"))
     }
 
-    // Mimics repository.markFolderVisited: mark the folder + its direct Album children as viewed.
-    private suspend fun enterFolder(folderId: String) {
-        val direct = dao.getDirectChildren(folderId).filter { it.type == "Album" }
-        val self = dao.getNodeById(folderId)
-        val updates = (direct + listOfNotNull(self)).mapNotNull { n ->
-            n.dateModified?.let { ViewedGalleryUpdate(n.nodeId, it) }
-        }
-        if (updates.isNotEmpty()) dao.insertViewedUpdates(updates)
-    }
-
-    @Test
-    fun enteringLeafFolder_marksDirectGalleries_clearsFolderDot() = runBlocking {
-        val m = recent()
-        dao.insertNodes(
-            listOf(
-                node("root", null, "Folder", dateModified = m),
-                node("folderF", "root", "Folder", dateModified = m),
-                node("g1", "folderF", "Album", dateModified = m),
-                node("g2", "folderF", "Album", dateModified = m)
-            )
-        )
-        assertTrue(dao.getNodesWithActiveUpdates().first().contains("folderF"))
-
-        enterFolder("folderF")
-
-        val active = dao.getNodesWithActiveUpdates().first().toSet()
-        assertFalse("entering a leaf folder clears its dot", active.contains("folderF"))
-        assertFalse(active.contains("g1"))
-        assertFalse(active.contains("g2"))
-    }
-
-    @Test
-    fun enteringFolder_leavesNestedSubfolderGalleryDot() = runBlocking {
-        val m = recent()
-        dao.insertNodes(
-            listOf(
-                node("folderF", null, "Folder", dateModified = m),
-                node("g1", "folderF", "Album", dateModified = m),
-                node("sub", "folderF", "Folder", dateModified = m),
-                node("g2", "sub", "Album", dateModified = m)
-            )
-        )
-        // Entering folderF marks only its direct gallery (g1), not the nested g2.
-        enterFolder("folderF")
-
-        val active = dao.getNodesWithActiveUpdates().first().toSet()
-        assertFalse("directly-marked gallery clears", active.contains("g1"))
-        assertTrue("nested unviewed gallery keeps its own dot", active.contains("g2"))
-        assertTrue("...and keeps the ancestor folder's dot until that subfolder is entered", active.contains("folderF"))
-    }
-
     @Test
     fun getAllDescendants_returnsFullSubtree() = runBlocking {
         dao.insertNodes(
