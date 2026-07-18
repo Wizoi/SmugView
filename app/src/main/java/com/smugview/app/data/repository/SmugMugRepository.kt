@@ -62,6 +62,10 @@ class SmugMugRepository @Inject constructor(
 
     private val nodeLocks = ConcurrentHashMap<String, Mutex>()
 
+    // Root node IDs are stable per site; memoize to avoid re-fetching the user profile
+    // on every search / tag-scan that resolves an "Entire Site" scope. Cleared by clearEntireCache().
+    private val rootNodeIdCache = ConcurrentHashMap<String, String>()
+
     /**
      * Nickname of the SmugMug site currently being browsed. Cached nodes are stamped with this on
      * insert so [CollectionDao.searchNodesGlobal] can scope results per-site.
@@ -126,10 +130,15 @@ class SmugMugRepository @Inject constructor(
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "getUserRootNodeId called: nickname=$nickname")
         }
+        rootNodeIdCache[nickname]?.let {
+            emit(Result.success(it))
+            return@flow
+        }
         try {
             val response = api.getUserProfile(nickname, apiKey)
             val nodeUri = response.response.user.uris.node
             val nodeId = parseNodeIdFromUri(nodeUri)
+            rootNodeIdCache[nickname] = nodeId
             if (com.smugview.app.BuildConfig.DEBUG) {
                 android.util.Log.d("SmugMugRepository", "getUserRootNodeId success: nickname=$nickname, nodeId=$nodeId")
             }
@@ -146,6 +155,7 @@ class SmugMugRepository @Inject constructor(
 
     // Fetches children nodes (with offline cache boundary)
     suspend fun clearEntireCache() {
+        rootNodeIdCache.clear()
         dao.clearAllCachedNodes()
         dao.clearAllSearchHistory()
     }
