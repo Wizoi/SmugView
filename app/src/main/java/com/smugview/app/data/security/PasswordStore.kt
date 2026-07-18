@@ -1,4 +1,5 @@
 package com.smugview.app.data.security
+import com.smugview.app.util.SmugLog
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -113,7 +114,7 @@ class EncryptedPasswordStore @Inject constructor(
         }
         editor.apply()
         legacy.edit().clear().apply()
-        Log.i(TAG, "Migrated ${legacyEntries.size} password entries to encrypted storage")
+        SmugLog.i(TAG) { "Migrated ${legacyEntries.size} password entries to encrypted storage" }
     }
 
     companion object {

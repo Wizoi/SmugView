@@ -1,4 +1,5 @@
 package com.smugview.app.data.cast
+import com.smugview.app.util.SmugLog
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -286,7 +287,7 @@ class DefaultCastManager @Inject constructor(
             while (isActive) {
                 val localDevices = performSsdpDiscovery()
                 
-                android.util.Log.d("CastManager", "SSDP: Scan successfully resolved ${localDevices.size} local devices.")
+                SmugLog.d("CastManager") { "SSDP: Scan successfully resolved ${localDevices.size} local devices." }
                 updateDiscoveredDevices(localDevices)
                 
                 delay(8000)
@@ -620,7 +621,7 @@ class DefaultCastManager @Inject constructor(
 
             val socket = if (localAddress != null) {
                 try {
-                    android.util.Log.d("CastManager", "SSDP: Binding MulticastSocket to local Wi-Fi IP: $localAddress")
+                    SmugLog.d("CastManager") { "SSDP: Binding MulticastSocket to local Wi-Fi IP: $localAddress" }
                     java.net.MulticastSocket(java.net.InetSocketAddress(localAddress, 0))
                 } catch (e: Exception) {
                     android.util.Log.e("CastManager", "SSDP: Failed to bind MulticastSocket to local IP, fallback to wildcard", e)
@@ -635,7 +636,7 @@ class DefaultCastManager @Inject constructor(
             if (wifiNetwork != null) {
                 try {
                     wifiNetwork.bindSocket(socket)
-                    android.util.Log.d("CastManager", "SSDP: Bound MulticastSocket to Wi-Fi interface: $wifiNetwork")
+                    SmugLog.d("CastManager") { "SSDP: Bound MulticastSocket to Wi-Fi interface: $wifiNetwork" }
                 } catch (e: Exception) {
                     android.util.Log.e("CastManager", "SSDP: Failed to bind MulticastSocket to Wi-Fi interface", e)
                 }
@@ -643,7 +644,7 @@ class DefaultCastManager @Inject constructor(
 
             try {
                 socket.joinGroup(address)
-                android.util.Log.d("CastManager", "SSDP: Joined multicast group $address")
+                SmugLog.d("CastManager") { "SSDP: Joined multicast group $address" }
             } catch (e: Exception) {
                 android.util.Log.e("CastManager", "SSDP: Failed to join multicast group", e)
             }
@@ -715,7 +716,7 @@ class DefaultCastManager @Inject constructor(
                                     }
                                 }
 
-                            android.util.Log.d("CastManager", "SSDP Discovered: name=$name, ip=$ip, type=$type")
+                            SmugLog.d("CastManager") { "SSDP Discovered: name=$name, ip=$ip, type=$type" }
                             discovered.add(CastDevice(ip, name, ip, type))
                         }
                     }
@@ -857,7 +858,7 @@ class DefaultCastManager @Inject constructor(
             connection.readTimeout = 3000
             connection.setFixedLengthStreamingMode(0)
             val code = connection.responseCode
-            android.util.Log.d("CastManager", "Roku Cast request: $urlString, Response code: $code")
+            SmugLog.d("CastManager") { "Roku Cast request: $urlString, Response code: $code" }
             connection.disconnect()
         } catch (e: Exception) {
             android.util.Log.e("CastManager", "Roku Cast failed for IP: $ip", e)
@@ -880,7 +881,7 @@ class DefaultCastManager @Inject constructor(
             }
             
             val code = connection.responseCode
-            android.util.Log.d("CastManager", "Amazon Cast request body: $imageUrl, Response code: $code")
+            SmugLog.d("CastManager") { "Amazon Cast request body: $imageUrl, Response code: $code" }
             connection.disconnect()
         } catch (e: Exception) {
             android.util.Log.e("CastManager", "Amazon Cast failed for IP: $ip", e)

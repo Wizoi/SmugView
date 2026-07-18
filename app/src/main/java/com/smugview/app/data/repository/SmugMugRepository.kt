@@ -1,4 +1,5 @@
 package com.smugview.app.data.repository
+import com.smugview.app.util.SmugLog
 
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -1421,10 +1422,10 @@ class SmugMugRepository @Inject constructor(
         password: String? = null
     ): Flow<Result<List<CachedNode>>> = flow {
         try {
-            android.util.Log.d("SmugMugRepository", "searchNodesRemote starting: scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query")
+            SmugLog.d("SmugMugRepository") { "searchNodesRemote starting: scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query" }
             val response = api.searchNodes(apiKey, scopeUri, query, password)
             val apiNodes = response.response.nodes ?: emptyList()
-            android.util.Log.d("SmugMugRepository", "searchNodesRemote API returned ${apiNodes.size} nodes")
+            SmugLog.d("SmugMugRepository") { "searchNodesRemote API returned ${apiNodes.size} nodes" }
             val dbNodes = apiNodes.mapIndexed { index, node ->
                 val highlightUri = node.uris.highlightImage
                 val highlightUrl = if (highlightUri != null) {
@@ -1457,15 +1458,15 @@ class SmugMugRepository @Inject constructor(
             }
             dao.deleteSearchResultsForQueryAndType(query, scopeKey, "Folder")
             dao.deleteSearchResultsForQueryAndType(query, scopeKey, "Album")
-            android.util.Log.d("SmugMugRepository", "searchNodesRemote deleted old search results for query=$query, scopeKey=$scopeKey")
+            SmugLog.d("SmugMugRepository") { "searchNodesRemote deleted old search results for query=$query, scopeKey=$scopeKey" }
             if (dbNodes.isNotEmpty()) {
                 insertNodesScoped(dbNodes)
-                android.util.Log.d("SmugMugRepository", "searchNodesRemote inserted ${dbNodes.size} nodes into cached_nodes")
+                SmugLog.d("SmugMugRepository") { "searchNodesRemote inserted ${dbNodes.size} nodes into cached_nodes" }
                 val searchResults = dbNodes.mapIndexed { index, node ->
                     node.toSearchResult(query, scopeKey, index)
                 }
                 dao.insertSearchResults(searchResults)
-                android.util.Log.d("SmugMugRepository", "searchNodesRemote inserted ${searchResults.size} search results into search_results")
+                SmugLog.d("SmugMugRepository") { "searchNodesRemote inserted ${searchResults.size} search results into search_results" }
             }
             emit(Result.success(dbNodes))
         } catch (e: CancellationException) {
@@ -1511,13 +1512,13 @@ class SmugMugRepository @Inject constructor(
         }
         
         val combined = (remoteResults + localResults).distinctBy { it.nodeId }
-        android.util.Log.d("SmugMugRepository", "getSearchResultNodes combined: query=$query, scope=$scope, type=$type, remoteSize=${remoteResults.size}, localSize=${localResults.size}, combinedSize=${combined.size}")
+        SmugLog.d("SmugMugRepository") { "getSearchResultNodes combined: query=$query, scope=$scope, type=$type, remoteSize=${remoteResults.size}, localSize=${localResults.size}, combinedSize=${combined.size}" }
         return combined
     }
 
     suspend fun getSearchResultPhotos(query: String, scope: String): List<AlbumImageData> {
         val results = dao.getSearchResults(query, scope, "Photo")
-        android.util.Log.d("SmugMugRepository", "getSearchResultPhotos DB: query=$query, scope=$scope, resultsSize=${results.size}")
+        SmugLog.d("SmugMugRepository") { "getSearchResultPhotos DB: query=$query, scope=$scope, resultsSize=${results.size}" }
         return results.map { it.toAlbumImageData() }
     }
 
