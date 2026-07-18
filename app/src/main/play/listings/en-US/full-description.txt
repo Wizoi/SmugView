@@ -1,0 +1,17 @@
+SmugView is a fast, beautifully designed viewer for public SmugMug photography sites. Type in any SmugMug nickname or custom domain and explore its folders, galleries, and photos with a fluid, gesture-driven interface built for browsing — not just viewing.
+
+KEY FEATURES
+
+• Explore any public site — enter any SmugMug nickname to browse its full folder and gallery structure, no account needed.
+• Password-protected galleries — enter a gallery password once and SmugView remembers it securely for next time.
+• Smart search — find folders, galleries, and photos across a site in one search, with instant local results plus live SmugMug search.
+• Tag filtering — a swipeable tag sheet lets you include or exclude keywords to narrow huge galleries down to exactly what you want.
+• Immersive full-screen viewer — swipe between photos with smooth paging, double-tap to favorite, and long-press for a quick-info overlay.
+• Photo details — view camera settings, capture date, and keywords for any photo.
+• Save & share — download full-resolution originals to your device or share a photo's SmugMug link directly.
+• Offline collections — build your own custom collections and mark them for offline sync, so your favorites are viewable without a connection.
+• Cast to the big screen — send galleries to Chromecast, Roku, and Fire TV devices right from your phone.
+
+Whether you're catching up on a photographer's latest gallery, digging through a huge back catalog by tag, or just want a nicer way to browse SmugMug on your phone, SmugView is built to make it quick and enjoyable.
+
+SmugView is an independent app built with the public SmugMug API. It is not affiliated with, endorsed by, or sponsored by SmugMug, Inc.
