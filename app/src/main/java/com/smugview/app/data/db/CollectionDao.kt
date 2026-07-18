@@ -202,15 +202,20 @@ interface CollectionDao {
 
     @Query("""
         WITH RECURSIVE active_nodes(nodeId, parentNodeId) AS (
+            -- Base case: only galleries (Albums) are "updated" on their own. A folder's own
+            -- dateModified bumps when its contents change, so if folders were included here they
+            -- would keep a dot forever even after every updated gallery inside was viewed.
             SELECT n.nodeId, n.parentNodeId
             FROM cached_nodes n
             LEFT JOIN viewed_gallery_updates v ON n.nodeId = v.nodeId
-            WHERE n.dateModified IS NOT NULL
+            WHERE n.type = 'Album'
+              AND n.dateModified IS NOT NULL
               AND datetime(n.dateModified) >= datetime('now', '-30 days')
               AND (v.lastViewedDateModified IS NULL OR n.dateModified > v.lastViewedDateModified)
-            
+
             UNION
-            
+
+            -- Bubble the indicator up to ancestor folders.
             SELECT p.nodeId, p.parentNodeId
             FROM cached_nodes p
             JOIN active_nodes a ON p.nodeId = a.parentNodeId

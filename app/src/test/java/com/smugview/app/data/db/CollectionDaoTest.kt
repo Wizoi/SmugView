@@ -122,6 +122,28 @@ class CollectionDaoTest {
     }
 
     @Test
+    fun folderWithOwnRecentModification_clearsWhenItsOnlyGalleryIsViewed() = runBlocking {
+        val modified = recent()
+        // A folder whose own dateModified is recent (its contents changed) containing one album.
+        dao.insertNodes(
+            listOf(
+                node("root", null, "Folder", dateModified = recent()),
+                node("folderB", "root", "Folder", dateModified = modified),
+                node("albumX", "folderB", "Album", dateModified = modified)
+            )
+        )
+        assertTrue(dao.getNodesWithActiveUpdates().first().contains("folderB"))
+
+        // Viewing only the gallery must also clear the folder — the folder's own recent
+        // dateModified must NOT keep a dot on it forever.
+        dao.insertViewedUpdates(listOf(ViewedGalleryUpdate("albumX", modified)))
+        val active = dao.getNodesWithActiveUpdates().first().toSet()
+        assertFalse("folder should clear once its only updated gallery is viewed", active.contains("folderB"))
+        assertFalse(active.contains("albumX"))
+        assertFalse(active.contains("root"))
+    }
+
+    @Test
     fun getAllDescendants_returnsFullSubtree() = runBlocking {
         dao.insertNodes(
             listOf(
