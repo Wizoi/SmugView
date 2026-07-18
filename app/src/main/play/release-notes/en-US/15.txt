@@ -1,0 +1,10 @@
+New:
+- Pinch to zoom on photos; the high-res image loads in the background and sharpens when ready.
+- Home screen now shows the site name and logo.
+- Folder update dots now clear once you've viewed the new galleries inside.
+
+Fixes:
+- Switching sites no longer carries over the previous site's search or tags.
+- "Jump to Gallery" from search/tag results now loads reliably.
+- Locked galleries prompt for a password instead of showing an error.
+- Smoother scrolling and fewer redundant requests.
