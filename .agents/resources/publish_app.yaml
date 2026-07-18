@@ -33,3 +33,28 @@ steps:
     command: |
       $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
       ./gradlew publishListing
+  8_promote_to_another_track:
+    action: |
+      To move an ALREADY-UPLOADED build (e.g. one sitting on internal) to another track (alpha/beta/production)
+      WITHOUT rebuilding or bumping versionCode, use `promoteArtifact`, not `publishReleaseBundle`.
+      `publishReleaseBundle` always performs a fresh bundle UPLOAD, which requires a brand-new, never-used
+      versionCode — Google Play rejects re-uploading an existing versionCode to a different track (verified
+      2026-07-18: "Version code is too low or has already been used"). `promoteArtifact` re-associates a
+      versionCode Play already has on file with a new track via the Android Publisher API — no new artifact,
+      no new versionCode.
+    command: |
+      $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+      ./gradlew promoteArtifact --from-track internal --promote-track alpha --release-status draft
+    gate: "Same as publishReleaseBundle — this is a real Play Console action. Confirm with the user before running."
+
+known_issues:
+  - name: "App is still in Play Console DRAFT status (as of 2026-07-18) — any non-internal-track release needs --release-status draft"
+    detail: |
+      Both `publishReleaseBundle` and `promoteArtifact` default to a `completed` release, which Play rejects
+      with "Only releases with status draft may be created on draft app" for any track beyond internal, until
+      the app clears the docs/PUBLISH.md §4 checklist (store listing, content rating, data safety form, etc.
+      — internal testing tolerates an incomplete listing, closed/open/production tracks don't). Until that's
+      cleared, pass `--release-status draft` (or `releaseStatus.set(ReleaseStatus.DRAFT)`) for alpha/beta/
+      production pushes — the release lands in Play Console as a draft for the user to manually review and
+      roll out. Re-check this the next time a non-internal publish is requested; if the checklist has since
+      been completed, a normal `completed` status should work and this note can be removed.

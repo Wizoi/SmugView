@@ -126,9 +126,25 @@ $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
 ./gradlew publishListing
 
 # full release: compile, sign, bundle release notes, upload to the configured track
+# (this ALWAYS uploads a fresh bundle, which requires a brand-new, never-used versionCode —
+# Play rejects re-uploading an existing versionCode to a different track)
 ./gradlew publishReleaseBundle
+
+# move a build that's ALREADY on Play (e.g. sitting on internal) to another track WITHOUT
+# rebuilding or bumping versionCode — this is the right tool for internal -> alpha/beta/production
+./gradlew promoteArtifact --from-track internal --promote-track alpha
 ```
 
-Switching `track` from `internal` to `production` in `app/build.gradle.kts` (or passing
-`-Ptrack=production`) is the actual "go public" switch — do that only once the checklist in
-§4 is cleared.
+**Known issue (as of 2026-07-18): this app is still in Play Console draft status.** Both
+`publishReleaseBundle` and `promoteArtifact` default to a `completed` release, which Play
+rejects ("Only releases with status draft may be created on draft app") for any track beyond
+internal until the §4 checklist below is cleared — internal testing tolerates an incomplete
+listing, closed/open/production tracks don't. Until then, append `--release-status draft` to
+either command; the release lands in Play Console as a draft for manual review/rollout. Once §4
+is fully cleared, this should no longer be necessary — worth re-testing then.
+
+Switching the default `track` in `app/build.gradle.kts` from `internal` to `production` is the
+actual "go public" switch for the *default* publish target — do that only once the checklist in
+§4 is cleared. (There's no generic `-Ptrack=` CLI override actually wired into this project's
+`play {}` block — `promoteArtifact --promote-track <name>` is the correct one-off way to target a
+different track without touching the committed default.)
