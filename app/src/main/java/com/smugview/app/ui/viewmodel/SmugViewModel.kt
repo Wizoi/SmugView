@@ -306,12 +306,7 @@ class SmugViewModel @Inject constructor(
         }
     }
 
-    fun cancelSearchJob() {
-        searchJob?.cancel()
-        searchJob = null
-        backgroundSearchJob?.cancel()
-        backgroundSearchJob = null
-    }
+    fun cancelSearchJob() = search.cancelSearchJob()
 
     fun cancelTagSearchJob() {
         imageLoadJob?.cancel()
@@ -493,82 +488,54 @@ class SmugViewModel @Inject constructor(
     private val _activeNickname = MutableStateFlow<String?>(null)
     val activeNickname: StateFlow<String?> = _activeNickname.asStateFlow()
 
-    // Search query and search state
-    var searchQuery by mutableStateOf("")
-        private set
-
-    var searchResultTab by mutableStateOf(0)
-
+    // Active search/browsing scope — shared with the tag engine and tab switching.
     private val _searchScope = MutableStateFlow(SearchScope("Entire Site"))
     val searchScope: StateFlow<SearchScope> = _searchScope.asStateFlow()
 
+    // Populated by the keyword tooling; kept in the ViewModel because that flow mutates it.
     val searchPhotosList = mutableStateListOf<AlbumImageData>()
-
-    private val _searchPhotosPagingFlow = kotlinx.coroutines.flow.MutableStateFlow<kotlinx.coroutines.flow.Flow<androidx.paging.PagingData<AlbumImageData>>>(kotlinx.coroutines.flow.emptyFlow())
-    val searchPhotosPagingFlow: kotlinx.coroutines.flow.StateFlow<kotlinx.coroutines.flow.Flow<androidx.paging.PagingData<AlbumImageData>>> = _searchPhotosPagingFlow
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val searchHistory: StateFlow<List<SearchHistory>> = activeNickname
-        .flatMapLatest { nickname ->
-            repository.getSearchHistory(nickname ?: "")
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
-
-    fun clearSearchHistory() {
-        viewModelScope.launch {
-            repository.clearSearchHistory(activeNickname.value ?: "")
-        }
-    }
-
-    fun deleteSearchQuery(query: String) {
-        viewModelScope.launch {
-            repository.deleteSearchQuery(query, activeNickname.value ?: "")
-        }
-    }
 
     fun setSearchScope(scope: SearchScope) {
         _searchScope.value = scope
     }
 
-    private val _searchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
-    val searchState: StateFlow<SearchUiState> = _searchState.asStateFlow()
+    // Image/gallery search — delegated to SearchController (facade decomposition).
+    private val search = SearchController(
+        repository = repository,
+        apiKey = apiKey,
+        scope = viewModelScope,
+        sharedPrefs = sharedPrefs,
+        searchStatusPrefs = searchStatusPrefs,
+        searchScope = searchScope,
+        activeNickname = activeNickname,
+        getUnlockedPassword = { key -> getUnlockedPassword(key) }
+    )
 
-    private val _isSearchPhotosLoading = MutableStateFlow(false)
-    val isSearchPhotosLoading: StateFlow<Boolean> = _isSearchPhotosLoading.asStateFlow()
+    val searchQuery: String get() = search.searchQuery
 
-    // Search Gallery Sort Order: "Ascending" or "Descending"
-    var searchGallerySortOrder by mutableStateOf(sharedPrefs.getString("search_gallery_sort_order", "Ascending") ?: "Ascending")
-        private set
+    var searchResultTab: Int
+        get() = search.searchResultTab
+        set(value) { search.searchResultTab = value }
 
-    fun updateSearchGallerySortOrder(order: String) {
-        searchGallerySortOrder = order
-        sharedPrefs.edit().putString("search_gallery_sort_order", order).apply()
-        val currentState = _searchState.value
-        if (currentState is SearchUiState.Success) {
-            val sortedGalleries = sortGalleries(currentState.galleries, order)
-            _searchState.value = currentState.copy(galleries = sortedGalleries)
-        }
-    }
+    val searchPhotosPagingFlow: StateFlow<Flow<PagingData<AlbumImageData>>> get() = search.searchPhotosPagingFlow
 
-    // Search Photos Sort Order: "Descending" or "Ascending"
-    var searchPhotosSortOrder by mutableStateOf(sharedPrefs.getString("search_photos_sort_order", "Descending") ?: "Descending")
-        private set
+    val searchHistory: StateFlow<List<SearchHistory>> get() = search.searchHistory
 
-    fun updateSearchPhotosSortOrder(order: String) {
-        searchPhotosSortOrder = order
-        sharedPrefs.edit().putString("search_photos_sort_order", order).apply()
-        val currentState = _searchState.value
-        if (currentState is SearchUiState.Success) {
-            val sortedPhotos = sortPhotos(currentState.photos, order)
-            _searchState.value = currentState.copy(photos = sortedPhotos)
-        } else if (searchQuery.isNotBlank()) {
-            performSearch(searchQuery)
-        }
-    }
+    fun clearSearchHistory() = search.clearSearchHistory()
+
+    fun deleteSearchQuery(query: String) = search.deleteSearchQuery(query)
+
+    val searchState: StateFlow<SearchUiState> get() = search.searchState
+
+    val isSearchPhotosLoading: StateFlow<Boolean> get() = search.isSearchPhotosLoading
+
+    val searchGallerySortOrder: String get() = search.searchGallerySortOrder
+
+    fun updateSearchGallerySortOrder(order: String) = search.updateSearchGallerySortOrder(order)
+
+    val searchPhotosSortOrder: String get() = search.searchPhotosSortOrder
+
+    fun updateSearchPhotosSortOrder(order: String) = search.updateSearchPhotosSortOrder(order)
 
     // Keyword Photos Sort Order: "Descending" or "Ascending"
     var keywordPhotosSortOrder by mutableStateOf(sharedPrefs.getString("keyword_photos_sort_order", "Descending") ?: "Descending")
@@ -579,175 +546,9 @@ class SmugViewModel @Inject constructor(
         sharedPrefs.edit().putString("keyword_photos_sort_order", order).apply()
     }
 
-    fun sortGalleries(galleries: List<CachedNode>, order: String): List<CachedNode> {
-        return if (order == "Descending") {
-            galleries.sortedByDescending { it.title.lowercase() }
-        } else {
-            galleries.sortedBy { it.title.lowercase() }
-        }
-    }
-
-    fun sortPhotos(photos: List<AlbumImageData>, order: String): List<AlbumImageData> {
-        return if (order == "Descending") {
-            photos.sortedByDescending { it.date ?: "" }
-        } else {
-            photos.sortedBy { it.date ?: "" }
-        }
-    }
-
-    private var searchJob: kotlinx.coroutines.Job? = null
-    private var backgroundSearchJob: kotlinx.coroutines.Job? = null
     private var treeSyncJob: kotlinx.coroutines.Job? = null
 
-    fun performSearch(query: String, forceRefresh: Boolean = false) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "performSearch called: query='$query', forceRefresh=$forceRefresh")
-        }
-        searchQuery = query
-        if (query.isBlank()) {
-            searchJob?.cancel()
-            backgroundSearchJob?.cancel()
-            _searchState.value = SearchUiState.Idle
-            return
-        }
-        _searchState.value = SearchUiState.Loading
-        searchJob?.cancel()
-        backgroundSearchJob?.cancel()
-        viewModelScope.launch {
-            repository.insertSearchQuery(query, _activeNickname.value ?: "")
-        }
-        searchJob = viewModelScope.launch {
-            try {
-                val nickname = _activeNickname.value
-                if (nickname.isNullOrEmpty()) {
-                    _searchState.value = SearchUiState.Error("No active site profile loaded")
-                    return@launch
-                }
-
-                // Resolve search scope URI
-                val activeScope = _searchScope.value
-                val resolvedRootId = if (activeScope.nodeUri == null || activeScope.nodeId == null) {
-                    repository.getUserRootNodeId(nickname, apiKey).first().getOrNull()
-                } else {
-                    null
-                }
-
-                val scopeUri = activeScope.nodeUri
-                val scopeKey = activeScope.nodeId ?: "site:$nickname"
-                
-                // Wait for the gallery cache to finish loading
-                if (!repository.isAlbumsCacheLoaded.value) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch waiting for gallery cache to finish loading")
-                    }
-                    _searchState.value = SearchUiState.Loading
-                    repository.isAlbumsCacheLoaded.first { it }
-                }
-
-                // 1. Load cached search results from the database IMMEDIATELY (Folders)
-                val cachedFolders = repository.getSearchResultNodes(query, scopeKey, "Folder")
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "performSearch: found ${cachedFolders.size} folders in database cache")
-                }
-                
-                // Fetch galleries from in-memory cache
-                val lowerQuery = query.lowercase()
-                val cachedGalleries = repository.albumsCache.value.filter {
-                    it.title.lowercase().contains(lowerQuery)
-                }
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "performSearch: matched ${cachedGalleries.size} galleries from in-memory cache")
-                }
-                val sortedGalleries = sortGalleries(cachedGalleries, searchGallerySortOrder)
-
-                val lastSearchedAt = searchStatusPrefs.getLong("${scopeKey}_${query}_ts", 0L)
-                val cacheAgeMs = System.currentTimeMillis() - lastSearchedAt
-                val cacheMaxAgeMs = 24 * 60 * 60 * 1000L // 24 hours
-                var isFullySearched = lastSearchedAt > 0L && cacheAgeMs < cacheMaxAgeMs
-                if (isFullySearched && !repository.hasSearchPhotosInDb(query, scopeKey)) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch: cache timestamp exists but database has no photos. Bypassing isFullySearched to fetch from API.")
-                    }
-                    isFullySearched = false
-                }
-
-                if (forceRefresh) {
-                    repository.deleteSearchResultsForQueryAndType(query, scopeKey, "Photo")
-                    _searchPhotosPagingFlow.value = kotlinx.coroutines.flow.emptyFlow()
-                }
-
-                // Start observing paging flow immediately for cached or fresh photos
-                _searchPhotosPagingFlow.value = androidx.paging.Pager(
-                    config = androidx.paging.PagingConfig(pageSize = 60, enablePlaceholders = true)
-                ) {
-                    repository.getPagedSearchPhotos(query, scopeKey, searchPhotosSortOrder)
-                }.flow.map { pagingData ->
-                    pagingData.map { it.toAlbumImageData() }
-                }.cachedIn(viewModelScope)
-
-                if (isFullySearched && !forceRefresh) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch cache is valid (fully searched in past 24h). Displaying cached results.")
-                    }
-                    _isSearchPhotosLoading.value = false
-                    _searchState.value = SearchUiState.Success(
-                        photos = emptyList(),
-                        galleries = sortedGalleries,
-                        folders = cachedFolders,
-                        photosError = null
-                    )
-                    return@launch
-                }
-
-                _searchState.value = SearchUiState.Success(
-                    photos = emptyList(), // Replaced by Pager
-                    galleries = sortedGalleries,
-                    folders = cachedFolders,
-                    photosError = null
-                )
-
-                // 2. Search folders and galleries from API (node!search) first
-                val password = getUnlockedPassword(scopeKey)
-                val apiScopeUri = scopeUri ?: resolvedRootId?.let { "/api/v2/node/$it" }
-                if (apiScopeUri != null) {
-                    try {
-                        // Note: searchNodesRemote still fetches folders if available from SmugMug search API.
-                        // Galleries are exclusively handled by the in-memory cache.
-                        repository.searchNodesRemote(apiScopeUri, scopeKey, query, apiKey, password).collect {}
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-
-                val updatedFolders = repository.getSearchResultNodes(query, scopeKey, "Folder")
-
-                _searchState.value = SearchUiState.Success(
-                    photos = emptyList(),
-                    galleries = sortedGalleries, // using the memory cache galleries again
-                    folders = updatedFolders,
-                    photosError = null
-                )
-
-                // 3. Trigger background API fetcher
-                _isSearchPhotosLoading.value = true
-                backgroundSearchJob?.cancel()
-                backgroundSearchJob = viewModelScope.launch {
-                    try {
-                        repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey, password)
-                        searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
-                    } finally {
-                        _isSearchPhotosLoading.value = false
-                    }
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                e.printStackTrace()
-                _isSearchPhotosLoading.value = false
-                _searchState.value = SearchUiState.Error(e.localizedMessage ?: "Error during search job")
-            }
-        }
-    }
+    fun performSearch(query: String, forceRefresh: Boolean = false) = search.performSearch(query, forceRefresh)
 
     // Tag list and active selection state
     private val _availableTags = MutableStateFlow<Set<String>>(emptySet())
