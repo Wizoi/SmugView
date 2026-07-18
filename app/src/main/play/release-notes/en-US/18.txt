@@ -1,0 +1,3 @@
+Improved:
+- Pinch to zoom now anchors to your fingers instead of always zooming from the center of the screen.
+- Panning a zoomed photo is now constrained to the photo's edges, so you can no longer drag it off-screen.
