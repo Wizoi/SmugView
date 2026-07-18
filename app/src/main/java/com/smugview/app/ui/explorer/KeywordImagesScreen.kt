@@ -326,7 +326,7 @@ fun KeywordImagesScreen(
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        itemsIndexed(filteredPhotos) { index, photo ->
+                        itemsIndexed(filteredPhotos, key = { _, photo -> photo.imageKey }) { index, photo ->
                             Box(
                                 modifier = Modifier
                                     .aspectRatio(1f)

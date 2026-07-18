@@ -425,7 +425,7 @@ fun HomeTabView(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        items(recentSites) { site ->
+                                        items(recentSites, key = { it }) { site ->
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(12.dp))
@@ -682,7 +682,7 @@ fun HomeTabView(
                                 )
                             }
 
-                            items(discoveredSites) { site ->
+                            items(discoveredSites, key = { it.nickname }) { site ->
                                 DiscoveredSiteCard(
                                     site = site,
                                     onExploreSite = { viewModel.selectSite(site.nickname) }
@@ -876,7 +876,7 @@ fun HomeTabView(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(albums) { album ->
+                        items(albums, key = { it.albumKey }) { album ->
                             Card(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = SurfaceDark),

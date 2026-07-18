@@ -279,7 +279,7 @@ fun CollectionsTabView(
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
                         }
-                        items(folders) { f ->
+                        items(folders, key = { it.itemKey }) { f ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -334,7 +334,7 @@ fun CollectionsTabView(
                                 modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                             )
                         }
-                        items(albums) { a ->
+                        items(albums, key = { it.itemKey }) { a ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -653,7 +653,7 @@ fun CollectionsTabView(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(collections) { col ->
+                    items(collections, key = { it.id }) { col ->
                         val glowColor = neonColors[Math.abs(col.id.hashCode()) % neonColors.size]
                         Card(
                             shape = RoundedCornerShape(20.dp),
