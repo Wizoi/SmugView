@@ -1,5 +1,6 @@
 package com.smugview.app
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -88,7 +89,7 @@ fun SmugViewNavigation() {
                     viewModel = viewModel,
                     onNavigateToAlbum = { albumKey, albumTitle ->
                         viewModel.cancelSearchJob()
-                        navController.navigate("photo_grid/$albumKey/$albumTitle")
+                        navController.navigate("photo_grid/$albumKey/${Uri.encode(albumTitle)}")
                     },
                     onNavigateToExplorer = {},
                     onNavigateToSearchPhotoDetail = { imageKey, index ->
@@ -148,7 +149,7 @@ fun SmugViewNavigation() {
                                 // password-protected, PhotoGridScreen's selectAlbum path renders the
                                 // password prompt (the detail screen has no prompt dialog).
                                 val title = viewModel.getAlbumName(key)
-                                navController.navigate("photo_grid/$key/$title")
+                                navController.navigate("photo_grid/$key/${Uri.encode(title)}")
                             }
                         }
                     }
@@ -202,7 +203,7 @@ fun SmugViewNavigation() {
                         navController.popBackStack("browser", false)
                     },
                     onNavigateToGallery = { key, title ->
-                        navController.navigate("photo_grid/$key/$title") {
+                        navController.navigate("photo_grid/$key/${Uri.encode(title)}") {
                             popUpTo("browser") { saveState = true }
                             launchSingleTop = true
                             restoreState = true
@@ -246,7 +247,7 @@ fun SmugViewNavigation() {
                                 // Navigate straight to the gallery grid; PhotoGridScreen prompts
                                 // for a password if the album is locked (see handleAlbumLoadError).
                                 val title = viewModel.getAlbumName(albumKey)
-                                navController.navigate("photo_grid/$albumKey/$title")
+                                navController.navigate("photo_grid/$albumKey/${Uri.encode(title)}")
                             }
                         }
                     },

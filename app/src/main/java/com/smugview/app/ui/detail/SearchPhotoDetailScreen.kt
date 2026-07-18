@@ -38,6 +38,10 @@ import coil.request.ImageRequest
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.ui.theme.SurfaceGlass
 import com.smugview.app.ui.viewmodel.SmugViewModel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -95,6 +99,7 @@ fun SearchPhotoDetailScreen(
     var showExifSheet by remember { mutableStateOf(false) }
     var showAddToCollectionDialog by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(false) }
+    var isResolvingAlbum by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         Box(
@@ -136,23 +141,47 @@ fun SearchPhotoDetailScreen(
                 if (currentPhoto != null) {
                     Button(
                         onClick = {
-                            val photoAlbumKey = detailedPhoto?.uris?.album?.substringAfterLast("/")
+                            val immediate = detailedPhoto?.uris?.album?.substringAfterLast("/")
                                 ?: detailedPhoto?.uris?.imageAlbum?.substringAfterLast("/")
                                 ?: currentPhoto.uris?.album?.substringAfterLast("/")
                                 ?: currentPhoto.uris?.imageAlbum?.substringAfterLast("/")
                                 ?: ""
-                            if (photoAlbumKey.isNotEmpty()) {
-                                onNavigateToGallery(photoAlbumKey, currentPhoto.imageKey)
-                            } else {
-                                val reason = if (detailedPhoto == null) "Loading details..." else "Album key could not be resolved."
-                                Toast.makeText(context, "Gallery Navigation Failed: $reason", Toast.LENGTH_SHORT).show()
+                            if (immediate.isNotEmpty()) {
+                                onNavigateToGallery(immediate, currentPhoto.imageKey)
+                            } else if (!isResolvingAlbum) {
+                                // Search photos come from image!search, which omits the per-image
+                                // album reference — so the album is only known once the full image
+                                // details load. Resolve it on demand instead of failing the tap.
+                                val imageKey = currentPhoto.imageKey
+                                scope.launch {
+                                    isResolvingAlbum = true
+                                    val resolved = withTimeoutOrNull(8000) {
+                                        viewModel.getImageDetails(imageKey)
+                                            .map { result ->
+                                                val d = result?.getOrNull()
+                                                d?.uris?.album?.substringAfterLast("/")
+                                                    ?: d?.uris?.imageAlbum?.substringAfterLast("/") ?: ""
+                                            }
+                                            .first { it.isNotEmpty() }
+                                    }
+                                    isResolvingAlbum = false
+                                    if (!resolved.isNullOrEmpty()) {
+                                        onNavigateToGallery(resolved, imageKey)
+                                    } else {
+                                        Toast.makeText(context, "Couldn't find this photo's gallery. Please try again.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = SurfaceGlass),
                         shape = RoundedCornerShape(16.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.FolderOpen, "Jump to Gallery", tint = Color.White, modifier = Modifier.size(18.dp))
+                        if (isResolvingAlbum) {
+                            CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        } else {
+                            Icon(Icons.Default.FolderOpen, "Jump to Gallery", tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Jump to Gallery", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
