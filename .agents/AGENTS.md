@@ -62,19 +62,29 @@ This project is now worked on primarily via the **Claude Code** extension (not A
 *   **Coordination (legacy Antigravity note)**: If concurrent developer agents are working the codebase under Antigravity, their logs live at `C:\Users\kidzi\.gemini\antigravity-ide\brain\<sibling-conversation-id>\.system_generated\logs\transcript.jsonl`. Under Claude Code this does not apply — use git. Either way, take care not to regress features when editing shared god-files like `BrowserScreen.kt` (~4k lines) or `SmugViewModel.kt` (~3.2k lines).
 
 ## 🚀 SmugMug API Optimization Guidelines
-*   **AlbumKeywords Expansion**: To fetch all keywords for an album without downloading heavy image payloads, use `GET album/{albumKey}?_expand=AlbumKeywords&_filter=Uri&_verbosity=1`.
-*   **Multi-Get/Batch Queries**: You can query keywords for multiple albums at once by joining their keys with commas: `GET album/id1,id2,id3`.
-*   **URL Length & Chunking**: To avoid HTTP client or server-side URL length limit rejections, limit multi-get requests to a maximum of 25-30 album keys. Use chunking (e.g. `albumList.chunked(25)`) to process larger collections.
-*   **Dynamic On-Demand Loading**: Avoid loading full image sets for an entire folder scope upfront. Query the lightweight keywords first to render the UI (like Tag Clouds), and only fetch matching gallery images on-demand when a specific tag is selected.
-*   **Security/Password Grouping**: When querying password-protected galleries in batches, group the galleries by their saved/unlocked passwords and execute one batch query per unique password.
+*   **Tag cloud / keyword scan is `getUserTopKeywords`, NOT a per-album `AlbumKeywords` batch scan.**
+    The shipping implementation (`TagSearchController.triggerTagScopeScan`) fetches the whole
+    scope's top keywords in a single `GET user/{nickname}!topkeywords?NodeID={scopeId}` call, then
+    filters photos locally against each photo's own `Keywords`/`KeywordArray` fields — which every
+    image endpoint already returns inline (see "Tokenized Tag Cloud Local Filtering" below). It
+    never needs a separate per-album keyword fetch.
+*   **`AlbumKeywords` Expansion (`GET album/{albumKey}?_expand=AlbumKeywords&_filter=Uri&_verbosity=1`,
+    batchable via `GET album/id1,id2,id3`, chunked to 25-30 keys/request to avoid URL-length limits)
+    exists in the API client (`SmugMugRepository.getAlbumKeywords`) and is unit-tested, but is
+    NOT called from any current production code path** — confirmed 2026-08-01 (`TagSearchController`
+    used to hold an `_albumKeywordsMap` cache for it that was reset twice and never populated or
+    read; removed as dead state). Kept the repository/API method itself rather than deleting it:
+    it's correct and its tests document a real, non-obvious API nuance (expansion maps come back
+    empty when anonymous, populated once unlocked — see "Mock Verification of API Visibility
+    Rules" below). If you're about to build a feature that needs per-album keywords in bulk, this
+    is the tool for it; don't rebuild it from scratch, and don't assume it's already wired up
+    anywhere.
 *   **Search Filter Payload Shrink**: Optimize the `_filter` query parameter on search endpoints to omit heavy payloads like `ArchivedUri` and `OriginalWidth`/`OriginalHeight`/`OriginalSize`. However, to prevent parent gallery navigation failures, **always preserve `WebUri` and the nested `Uris` dictionary (along with `ImageAlbum` in `_filteruri`)** so the app can resolve parent gallery keys for locked or anonymous media.
 *   **Retrofit Query Encoding**: Do not manually URL-encode parameters passed to `@Query` annotations in Retrofit interfaces. Retrofit automatically encodes these parameters; manually doing so leads to double encoding (e.g. `%` to `%25`) and server lookup failures.
 
-**Follow-up status:** ⚠️ PARTIAL (as of 2026-07-31) — the "Security/Password Grouping" bullet
-describes a batch-scan pattern (`SmugMugRepository.getAlbumKeywords`) that's unit-tested but not
-actually called from any production code; the shipping tag-cloud feature uses `getUserTopKeywords`
-instead. See tracker row #7 — needs a decision on whether this is dead code or a missed
-integration.
+**Follow-up status:** ✅ DONE (2026-08-01) — see tracker row #7. Verdict: the dead `_albumKeywordsMap`
+state was removed; `getAlbumKeywords` itself was kept (correct, tested, potentially useful) but the
+guidance above now describes what's actually implemented instead of an abandoned approach.
 
 ## 🔍 Search & Indexing Optimization (Searchable: No / HTTP 429)
 *   **Local Caching Fallback for Folders/Galleries**: SmugMug's global `node!search` hides nodes marked with `"Searchable: No"`. To bypass this, always combine global API node search results with a local database query of `cached_nodes` (`title LIKE %query%`).
@@ -164,12 +174,12 @@ Status legend: 🔲 **TODO — analysis** (needs a codebase investigation before
 | # | Item | Source | Status | Next step |
 |---|---|---|---|---|
 | 1 | `retryInterceptor` (`AppModule.kt`) still blocks the OkHttp dispatcher thread with `Thread.sleep` on 429/5xx instead of a suspending retry | Retro v4 | 🔲 TODO — analysis | Confirmed still present as of 2026-07-31. Needs a design for a non-blocking retry (e.g. an async OkHttp `Interceptor` replacement or Retrofit-level retry) that preserves the existing exponential-backoff + `Retry-After` behavior — not a drop-in one-liner. |
-| 2 | `getAllCachedNodes()` (full-table scan, verified to hang 20+s under load) still called directly at ~6 sites in `SmugViewModel.kt` | Retro v4 | ⚠️ PARTIAL | `getUnlockedPassword` was fixed (now uses indexed `getNodeByIdOrKey`, comment references the incident). Remaining sites (search/photo-detail parent-gallery resolution fallbacks, roughly lines 848, 1145, 1911, 1928, 2189, 2227 as of 2026-07-31) still need the same treatment or a documented reason they're safe (e.g. rare code path, small cache). |
-| 3 | Naming/trademark exposure — "SmugView" as an unofficial SmugMug client risks a Play impersonation-policy flag | `DESIGN.md` §5 | 🔲 TODO — decision | Not a code task. Needs an explicit call: keep the name + rely on the non-affiliation disclaimer, or rebrand. |
-| 4 | Single shared `SMUGMUG_API_KEY` compiled into every install — no capacity plan if installs spike | `DESIGN.md` §5 | 🔲 TODO — decision | Needs a call on whether per-user auth / multiple pooled keys is worth the complexity, or the current ceiling is acceptable. |
+| 2 | ~~`getAllCachedNodes()` full-table scan at ~6 sites~~ | Retro v4 | ✅ DONE (2026-08-01) | All 6 remaining sites in `SmugViewModel.kt` fixed: 3 exact nodeId-or-albumKey lookups now use the already-indexed `getNodeByIdOrKey` (no full materialization at all); 3 webUri-substring-matching fallbacks (which genuinely can't become a pure indexed lookup) now use a new `getCachedNodesForActiveSite()` / `dao.getCachedNodesForNickname()`, scoped via the existing `index_cached_nodes_nickname` index instead of scanning every node ever cached across every site the user has visited. Full test suite green. |
+| 3 | ~~Naming/trademark exposure~~ | `PUBLISH.md` §5 | ✅ DONE (2026-08-01) | Confirmed directly with SmugMug — not a policy risk. No code/doc change needed beyond removing the open-question framing (done in `PUBLISH.md` §5). |
+| 4 | ~~Single shared `SMUGMUG_API_KEY` — no capacity plan~~ | `PUBLISH.md` §5 | ✅ DONE (2026-08-01) | Decision made: single shared key is the intended model going forward, not a gap to close. Reframed in `PUBLISH.md` §5 as a documented constraint rather than an open question. |
 | 5 | `PUBLISH.md` §4 checklist (data safety form, content rating, ads declaration, closed-testing, production release, etc.) still shows every box unchecked | `PUBLISH.md` §4 | 🔲 TODO — analysis | In tension with a verified fact: v0.7.1/v0.7.2 both published as full `completed` releases on alpha, which the doc says shouldn't be possible until this checklist clears. Someone needs to open Play Console, check actual status of each item, and reconcile the doc either way. |
 | 6 | "Mock Elimination via Snapshots" QA rule only adopted in `SmugMugApiTest.kt`; `SmugMugRepositoryTest.kt`/`SmugViewModelTest.kt` still use hand-written inline JSON mocks | QA/Tester & Data-Layer Snapshot Rules | 🔲 TODO — skill/doc update or analysis | Either migrate those two files to snapshot-backed mocks (real work, many tests), or narrow the rule's stated scope to live-API-shape-sensitive tests only, so it stops reading as an unmet blanket policy. |
-| 7 | `SmugMugRepository.getAlbumKeywords` (+ the "group locked galleries by saved password, batch per password" optimization it was built for) is unit-tested but never called from production code — the shipping tag-cloud feature uses `getUserTopKeywords` instead | SmugMug API Optimization Guidelines | 🔲 TODO — analysis | Determine whether this is dead code to delete (and correct the AGENTS.md guidance that still describes it as the pattern), or whether `TagSearchController` should actually be using it and isn't. |
+| 7 | ~~`getAlbumKeywords` unused in production~~ | SmugMug API Optimization Guidelines | ✅ DONE (2026-08-01) | Verdict: not a missed integration. The dead `_albumKeywordsMap` cache in `TagSearchController` (declared, reset twice, never populated/read) was removed. `getAlbumKeywords` itself was kept — correct, tested, a real API-visibility nuance worth having available — but AGENTS.md guidance was rewritten to describe the actual shipping approach (`getUserTopKeywords` + per-photo `Keywords`/`KeywordArray`). |
 
 **Recently closed (for the audit trail):**
 *   Retro v3's "Live Configuration Regression Safeguard" (an integration test that pings every
@@ -178,6 +188,8 @@ Status legend: 🔲 **TODO — analysis** (needs a codebase investigation before
 *   Retro v6's two production bugs (gallery search cache reconciliation + recursive subtree
     indexing) and the flaky-test dispatcher injection — ✅ DONE, shipped in v0.7.1 (versionCode 19)
     and v0.7.2 (versionCode 20).
+*   Rows #3 and #4 (naming/trademark, single API key) — ✅ DONE 2026-08-01, both resolved by an
+    explicit user decision rather than a code change; see `DESIGN.md` §5.
 
 ## 📈 Site Discovery & Autocomplete Learnings (2026-07-16/17 Retro)
 *   **Compose Annotations Target Boundaries**: In Kotlin/Compose, never place annotations like `@OptIn` or `@Composable` directly on data classes or standard objects. These annotations are only applicable to functions, file levels, or local declarations, and placing them on classes will cause immediate compiler errors.
@@ -236,12 +248,12 @@ Distilled from a large security/quality review + the incremental album-index fea
 *   **Separate "regression I introduced" from "pre-existing bug my change exposed."** Removing a crutch (e.g. a brute-force password replay) can surface a latent bug that only *looked* like a new regression. State which it is, with evidence.
 *   **Know when to stabilize vs keep digging.** A single feature (locked-gallery jump) spiraled through 5+ layers of pre-existing issues. When a fix keeps revealing deeper pre-existing problems, land the safe/verified pieces, document the blocker precisely, and stop — don't destabilize verified work chasing the tail.
 
-**Follow-up status:** ⚠️ PARTIAL — most bullets are applied lessons, but two named action items are
-still open, tracked as tracker rows #1 and #2:
+**Follow-up status:** ⚠️ PARTIAL — most bullets are applied lessons, but one named action item is
+still open (tracker row #1):
 *   The "retry interceptor should eventually move to suspending `delay`" line (Room/DB performance
     bullet 2) — 🔲 still `Thread.sleep`, unaddressed.
 *   "Never use `getAllCachedNodes()` ... in a hot/navigation path" (Room/DB performance bullet 1)
-    — ⚠️ one call site fixed, ~6 others in `SmugViewModel.kt` still do it.
+    — ✅ DONE 2026-08-01 (tracker row #2): all remaining call sites fixed.
 The "persist + incremental-sync pattern" bullet is ✅ DONE and was directly reused/extended in
 Retro v6. The "inject dispatchers for testability" bullet is ✅ DONE in principle (the pattern was
 correct) but wasn't applied to `SmugViewModel` until Retro v6 caught the gap — a good example of

@@ -97,20 +97,21 @@ scripted via Gradle Play Publisher:
 
 ---
 
-## 5. Two things worth deciding on, not just checking off
+## 5. Two decisions that were open, now resolved
 
-- **Naming/trademark exposure**: SmugView talks to SmugMug's public API under a name built
-  from "Smug." Google Play's impersonation policy sometimes flags unofficial API clients
-  named after the service they wrap. The full description's non-affiliation disclaimer
-  mitigates this but doesn't eliminate it. Not urgent, but worth a conscious decision rather
-  than discovering it via a Play Console rejection.
-- **Shared API key at public scale**: the app compiles in a single developer SmugMug API key
-  (`BuildConfig.SMUGMUG_API_KEY`, from `local.properties`) that every install shares. That's
-  fine for internal testing; at public scale, every user's browsing/search traffic counts
-  against that one key's SmugMug rate limit (the app already handles 429s with backoff, per
-  `docs/SMUGMUG.md`, but backoff just degrades gracefully — it doesn't add capacity). Worth
-  knowing this ceiling exists before a spike in installs, even though it's not a launch
-  blocker.
+- **Naming/trademark exposure** (resolved 2026-08-01): SmugView talks to SmugMug's public API
+  under a name built from "Smug." Google Play's impersonation policy sometimes flags unofficial
+  API clients named after the service they wrap, and the full description's non-affiliation
+  disclaimer only partially mitigates that. **Confirmed directly with SmugMug that this is not a
+  policy risk** — no rebrand needed.
+- **Shared API key at public scale** (resolved 2026-08-01): the app compiles in a single
+  developer SmugMug API key (`BuildConfig.SMUGMUG_API_KEY`, from `local.properties`) that every
+  install shares, so every user's browsing/search traffic counts against that one key's SmugMug
+  rate limit (the app already handles 429s with backoff, per `docs/SMUGMUG.md`, but backoff just
+  degrades gracefully — it doesn't add capacity). **Decision: this is the intended model** — a
+  single shared key is what SmugView will keep using, not a gap to close before scale. Documented
+  here as a known constraint, not an open question: if installs spike enough to hit the rate
+  limit in practice, backoff is the only mitigation currently in place.
 
 ---
 
