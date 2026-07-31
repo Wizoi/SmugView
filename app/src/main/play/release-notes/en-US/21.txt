@@ -1,0 +1,4 @@
+Fixed:
+- Searching right after unlocking a password-protected folder could show incomplete results while galleries were still being indexed in the background.
+- Removed a noisy "Not Found" popup that could appear during normal password-protected folder browsing.
+- Improved app responsiveness by fixing slow/blocking network retry behavior and a few database lookups that could hang under load.
