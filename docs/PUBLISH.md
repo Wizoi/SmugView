@@ -77,23 +77,27 @@ changes (e.g. an analytics SDK gets added), the policy needs a matching update.
 These are manual, one-time (or per-release) steps in Play Console — nothing here can be
 scripted via Gradle Play Publisher:
 
-- [ ] **Data safety form** — based on the code: no data collected/shared with third parties
-  beyond SmugMug itself (which the user directs by entering a nickname/password), no
-  advertising ID, nothing sold. Encrypted local storage only.
-- [ ] **Content rating questionnaire** — answer based on app functionality (photo browser,
-  no UGC posting *from* the app itself — see the content-moderation note below).
-- [ ] **Target audience & content** — this is a general-audience app, not for children.
-- [ ] **Ads declaration** — No ads (confirmed: no ad SDK in `build.gradle.kts`).
-- [ ] **App access** — declare that no login is required; all content is public SmugMug
-  data (mention that some galleries need a password the *user* supplies, not a test account).
+- [x] **Data safety form** — confirmed complete in Play Console 2026-08-01. Based on the code:
+  no data collected/shared with third parties beyond SmugMug itself (which the user directs by
+  entering a nickname/password), no advertising ID, nothing sold. Encrypted local storage only.
+- [x] **Content rating questionnaire** — confirmed complete in Play Console 2026-08-01 (photo
+  browser, no UGC posting *from* the app itself — see the content-moderation note below).
+- [ ] **Target audience & content** — this is a general-audience app, not for children. (Not
+  explicitly reconfirmed 2026-08-01 — verify if this is called out separately in Play Console
+  from the content rating questionnaire above.)
+- [x] **Ads declaration** — confirmed complete in Play Console 2026-08-01. No ads (no ad SDK in
+  `build.gradle.kts`).
+- [x] **App access** — confirmed complete in Play Console 2026-08-01: no login required, all
+  content is public SmugMug data (some galleries need a password the *user* supplies, not a test
+  account).
 - [ ] **Store settings** — app category (Photography), contact email, external marketing
-  opt-in.
-- [ ] **Closed testing requirement** — newer personal Play developer accounts must run a
-  closed test with enough opted-in testers for 14 continuous days before production access
-  unlocks. Check this gate in Play Console if it hasn't been cleared yet — it blocks the
-  production track independent of everything else on this list.
-- [ ] **Production release** — once the above are green, promote a release to Production
-  (staged rollout, e.g. 20% → 50% → 100%, is the safer default over a 100% release).
+  opt-in. (Not explicitly reconfirmed 2026-08-01.)
+- [x] **Closed testing requirement** — confirmed satisfied in Play Console 2026-08-01 (14
+  continuous days with enough opted-in testers).
+- [ ] **Production release** — the checklist above is now clear, but promoting to Production is
+  a distinct, deliberate action, not a status to check off in advance. Still todo: promote a
+  release to Production when ready (staged rollout, e.g. 20% → 50% → 100%, is the safer default
+  over a 100% release).
 
 ---
 
