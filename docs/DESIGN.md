@@ -231,6 +231,20 @@ cache that incomplete result as trustworthy until the cache expired or the user 
 **If you add a new background writer to either cache, ask whether any read path needs to wait on
 it the same way**, rather than assuming "it'll usually have finished by the time anyone looks."
 
+**Only the part that actually depends on the cache should wait.** The first version of this fix
+made `performSearch` wait on both flags before doing *anything*, which also delayed photo search —
+even though photos come from a live, paged API call (`performBackgroundSearchImages`,
+`getPagedSearchPhotos`) that never touches `albumsCache`/`cached_nodes` at all. Since the UI
+(`SearchTabView.kt`) gates its entire results shell — tabs, Photos content included — behind
+`SearchUiState.Success`, that meant unlocking a folder and searching could leave the whole search
+screen on a spinner, photos included, for as long as background indexing took. Fixed by reordering
+`performSearch`: photos (Pager + background fetch) are wired up and `_searchState` flips to
+`Success` (with galleries/folders initially empty) immediately, so the UI shell renders and the
+Photos tab starts populating right away; the cache wait only gates the later `_searchState` update
+that fills in the real galleries/folders once it clears. **When adding a wait like this, scope it
+to the specific read that needs it — don't reach for "block the whole function" just because
+that's the easiest place to put it.**
+
 ---
 
 ## 📡 Casting & the Web Companion Server

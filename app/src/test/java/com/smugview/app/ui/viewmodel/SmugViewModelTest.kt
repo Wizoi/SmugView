@@ -189,6 +189,12 @@ class SmugViewModelTest {
      * .unlockAndIndexSubtree walk, matching only whatever galleries it had reached so far, then
      * cache that incomplete snapshot as "fully searched" for 24h. performSearch must wait for
      * repository.isIndexingSubtree to clear before reading the gallery cache.
+     *
+     * Also covers the follow-up: that wait must NOT hold up photo search, which hits a live API
+     * and never reads albumsCache — the UI (SearchTabView.kt) gates its whole results shell behind
+     * SearchUiState.Success, so performSearch flips to Success (photos wired up immediately,
+     * galleries/folders initially empty) right away instead of sitting in Loading until the
+     * gallery-cache wait clears.
      */
     @Test
     fun testPerformSearchWaitsForInProgressSubtreeIndexing() = runTest {
@@ -221,9 +227,17 @@ class SmugViewModelTest {
         viewModel.performSearch("Family")
         advanceUntilIdle()
 
-        // Still indexing: performSearch must be parked waiting, not settled on the (as-yet
-        // incomplete) cache snapshot.
-        assertEquals(SearchUiState.Loading, viewModel.searchState.value)
+        // Still indexing: galleries must not show the (as-yet incomplete) cache snapshot — but
+        // photo search must NOT be blocked by it either. The UI only renders once searchState is
+        // Success (see SearchTabView.kt), so this has to be Success-with-empty-galleries, not
+        // Loading, or the Photos tab would never even mount while indexing is in progress.
+        val stateWhileIndexing = viewModel.searchState.value
+        assertTrue(
+            "Expected Success (with galleries not yet populated) but was: $stateWhileIndexing — " +
+                "photo search must not be blocked behind the gallery-cache wait",
+            stateWhileIndexing is SearchUiState.Success
+        )
+        assertEquals(0, (stateWhileIndexing as SearchUiState.Success).galleries.size)
 
         // Background indexing finishes, and the gallery it was walking toward lands in the cache.
         albumsFlow.value = listOf(

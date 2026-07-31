@@ -187,47 +187,8 @@ class SearchController(
 
                 val scopeUri = activeScope.nodeUri
                 val scopeKey = activeScope.nodeId ?: "site:$nickname"
-
-                // Wait for the gallery cache to finish loading
-                if (!repository.isAlbumsCacheLoaded.value) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch waiting for gallery cache to finish loading")
-                    }
-                    _searchState.value = SearchUiState.Loading
-                    repository.isAlbumsCacheLoaded.first { it }
-                }
-
-                // Wait for any in-progress post-unlock subtree indexing (SmugMugRepository
-                // .unlockAndIndexSubtree) to finish. Without this, searching right after unlocking
-                // a folder can read repository.albumsCache.value mid-write — matching only
-                // whatever galleries the background walk has reached so far — and then cache that
-                // incomplete snapshot as "fully searched" for 24h (below), silently hiding
-                // galleries the walk hadn't indexed yet until the cache expires or a manual
-                // refresh. See the "search reads incomplete data mid-background-sync" fix in
-                // AGENTS.md.
-                if (repository.isIndexingSubtree.value) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch waiting for post-unlock subtree indexing to finish")
-                    }
-                    _searchState.value = SearchUiState.Loading
-                    repository.isIndexingSubtree.first { !it }
-                }
-
-                // 1. Load cached search results from the database IMMEDIATELY (Folders)
-                val cachedFolders = repository.getSearchResultNodes(query, scopeKey, "Folder")
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "performSearch: found ${cachedFolders.size} folders in database cache")
-                }
-
-                // Fetch galleries from in-memory cache
-                val lowerQuery = query.lowercase()
-                val cachedGalleries = repository.albumsCache.value.filter {
-                    it.title.lowercase().contains(lowerQuery)
-                }
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "performSearch: matched ${cachedGalleries.size} galleries from in-memory cache")
-                }
-                val sortedGalleries = sortGalleries(cachedGalleries, searchGallerySortOrder)
+                val apiScopeUri = scopeUri ?: resolvedRootId?.let { "/api/v2/node/$it" }
+                val password = getUnlockedPassword(scopeKey)
 
                 val lastSearchedAt = searchStatusPrefs.getLong("${scopeKey}_${query}_ts", 0L)
                 val cacheAgeMs = System.currentTimeMillis() - lastSearchedAt
@@ -245,7 +206,15 @@ class SearchController(
                     _searchPhotosPagingFlow.value = kotlinx.coroutines.flow.emptyFlow()
                 }
 
-                // Start observing paging flow immediately for cached or fresh photos
+                // --- Photos: a live/paged API-backed flow (performBackgroundSearchImages,
+                // getPagedSearchPhotos) that never reads albumsCache/cached_nodes, so it must not
+                // be held up by the gallery/folder cache wait below. Wire the Pager and kick off
+                // the background fetch right away, then flip _searchState out of Loading so the UI
+                // (which gates the whole results shell — tabs + Photos content — behind
+                // SearchUiState.Success; see SearchTabView.kt) can start rendering photos as they
+                // arrive instead of sitting on one spinner until galleries/folders are also ready.
+                // Galleries/Folders tabs briefly show their real counts as 0 and backfill via a
+                // second _searchState update once the cache wait below clears.
                 _searchPhotosPagingFlow.value = androidx.paging.Pager(
                     config = androidx.paging.PagingConfig(pageSize = 60, enablePlaceholders = true)
                 ) {
@@ -254,30 +223,86 @@ class SearchController(
                     pagingData.map { it.toAlbumImageData() }
                 }.cachedIn(scope)
 
-                if (isFullySearched && !forceRefresh) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch cache is valid (fully searched in past 24h). Displaying cached results.")
-                    }
-                    _isSearchPhotosLoading.value = false
-                    _searchState.value = SearchUiState.Success(
-                        photos = emptyList(),
-                        galleries = sortedGalleries,
-                        folders = cachedFolders,
-                        photosError = null
-                    )
-                    return@launch
-                }
-
                 _searchState.value = SearchUiState.Success(
                     photos = emptyList(), // Replaced by Pager
+                    galleries = emptyList(),
+                    folders = emptyList(),
+                    photosError = null
+                )
+
+                if (isFullySearched && !forceRefresh) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugViewModel", "performSearch: photos cache is valid (fully searched in past 24h); skipping background photo fetch")
+                    }
+                    _isSearchPhotosLoading.value = false
+                } else {
+                    _isSearchPhotosLoading.value = true
+                    backgroundSearchJob?.cancel()
+                    backgroundSearchJob = scope.launch {
+                        try {
+                            repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey, password)
+                            searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
+                        } finally {
+                            _isSearchPhotosLoading.value = false
+                        }
+                    }
+                }
+
+                // --- Galleries/Folders: DO depend on the local node/album cache being complete,
+                // so this part waits.
+                if (!repository.isAlbumsCacheLoaded.value) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugViewModel", "performSearch waiting for gallery cache to finish loading")
+                    }
+                    repository.isAlbumsCacheLoaded.first { it }
+                }
+
+                // Wait for any in-progress post-unlock subtree indexing (SmugMugRepository
+                // .unlockAndIndexSubtree) to finish. Without this, searching right after unlocking
+                // a folder can read repository.albumsCache.value mid-write — matching only
+                // whatever galleries the background walk has reached so far — and then cache that
+                // incomplete snapshot as "fully searched" for 24h (below), silently hiding
+                // galleries the walk hadn't indexed yet until the cache expires or a manual
+                // refresh. See the "search reads incomplete data mid-background-sync" fix in
+                // AGENTS.md.
+                if (repository.isIndexingSubtree.value) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugViewModel", "performSearch waiting for post-unlock subtree indexing to finish")
+                    }
+                    repository.isIndexingSubtree.first { !it }
+                }
+
+                // 1. Load cached search results from the database (Folders)
+                val cachedFolders = repository.getSearchResultNodes(query, scopeKey, "Folder")
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugViewModel", "performSearch: found ${cachedFolders.size} folders in database cache")
+                }
+
+                // Fetch galleries from in-memory cache
+                val lowerQuery = query.lowercase()
+                val cachedGalleries = repository.albumsCache.value.filter {
+                    it.title.lowercase().contains(lowerQuery)
+                }
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugViewModel", "performSearch: matched ${cachedGalleries.size} galleries from in-memory cache")
+                }
+                val sortedGalleries = sortGalleries(cachedGalleries, searchGallerySortOrder)
+
+                _searchState.value = SearchUiState.Success(
+                    photos = emptyList(),
                     galleries = sortedGalleries,
                     folders = cachedFolders,
                     photosError = null
                 )
 
-                // 2. Search folders and galleries from API (node!search) first
-                val password = getUnlockedPassword(scopeKey)
-                val apiScopeUri = scopeUri ?: resolvedRootId?.let { "/api/v2/node/$it" }
+                if (isFullySearched && !forceRefresh) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugViewModel", "performSearch cache is valid (fully searched in past 24h). Skipping remote gallery/folder refresh.")
+                    }
+                    return@launch
+                }
+
+                // 2. Search folders and galleries from API (node!search)
                 if (apiScopeUri != null) {
                     try {
                         // Note: searchNodesRemote still fetches folders if available from SmugMug search API.
@@ -296,18 +321,6 @@ class SearchController(
                     folders = updatedFolders,
                     photosError = null
                 )
-
-                // 3. Trigger background API fetcher
-                _isSearchPhotosLoading.value = true
-                backgroundSearchJob?.cancel()
-                backgroundSearchJob = scope.launch {
-                    try {
-                        repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey, password)
-                        searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
-                    } finally {
-                        _isSearchPhotosLoading.value = false
-                    }
-                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Throwable) {
