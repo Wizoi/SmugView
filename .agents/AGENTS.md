@@ -350,6 +350,24 @@ plus a flaky `SmugViewModelTest` failure surfaced while adding regression covera
     test actually catch the bug" without a throwaway branch** — stash just the production fix,
     run the new test (expect red), `git stash pop` to restore. Safe because it's fully reversible
     and scoped, unlike editing the fix out and back in by hand.
+*   **Fixing a cache-write bug isn't enough if a concurrent read can still race the writer.**
+    `unlockAndIndexSubtree`'s recursive indexing (above) writes `albumsCache` correctly, but nothing
+    stopped `SearchController.performSearch` from reading `albumsCache.value` *while* that
+    background walk was still running — matching only whatever it had indexed so far, then caching
+    that incomplete snapshot as "fully searched" for 24h. Fixed with a counter-backed
+    `isIndexingSubtree: StateFlow<Boolean>` on the repository (a counter, not a boolean, because two
+    overlapping unlocks means two overlapping walks — the flag must stay true until the *last* one
+    finishes) that `performSearch` awaits before reading the cache, mirroring the existing
+    `isAlbumsCacheLoaded` wait pattern. **General lesson**: whenever a background coroutine writes
+    to a cache another part of the app reads synchronously, ask explicitly whether the reader needs
+    to wait for the writer, not just whether the writer eventually converges — a "will usually have
+    finished by then" assumption is exactly the kind of thing that's fine until it silently isn't.
+*   **A test asserting relative completion order between two independent real-time `delay()` calls
+    under `runBlocking`'s single-threaded event loop is not reliable** — verified: two ~200ms
+    delays scheduled moments apart still resolved close enough together that which one's
+    continuation ran first wasn't guaranteed, flaking a test that assumed "started first = finishes
+    first." Fixed by making one path deterministically slower (more BFS levels → more sequential
+    delays) instead of relying on timing margins between two near-simultaneous real delays.
 
 **Follow-up status:** ✅ No open items — both production bugs (including the depth-2 follow-up gap
 caught the same day) and the flaky-test dispatcher injection all shipped, verified, and published
