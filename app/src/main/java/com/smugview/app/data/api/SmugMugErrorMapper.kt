@@ -19,6 +19,15 @@ object SmugMugErrorMapper {
     )
 
     /**
+     * Whether a failure at this HTTP status should surface a user-facing Toast, vs. just being
+     * logged. 404 is excluded: SmugMug returns it as the EXPECTED signal for a locked folder (see
+     * the "HTTP 404 Not Found on Password Folder Queries" gotcha in docs/SMUGMUG.md) — the app
+     * already handles that gracefully by prompting for a password, so popping "Not Found" on that
+     * normal flow was noise, not a real error worth interrupting the user for.
+     */
+    fun shouldShowToast(code: Int): Boolean = code != 404
+
+    /**
      * Extracts and maps a friendly error message from the response code and body content.
      */
     fun getFriendlyMessage(code: Int, httpMessage: String, responseBodyContent: String?): String {

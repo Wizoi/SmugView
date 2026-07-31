@@ -155,9 +155,11 @@ object AppModule {
                         "${request.method} ${request.url.encodedPath} -> ${response.code} ($friendlyMessage)"
                     )
 
-                    val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-                    mainHandler.post {
-                        android.widget.Toast.makeText(context, friendlyMessage, android.widget.Toast.LENGTH_LONG).show()
+                    if (com.smugview.app.data.api.SmugMugErrorMapper.shouldShowToast(response.code)) {
+                        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                        mainHandler.post {
+                            android.widget.Toast.makeText(context, friendlyMessage, android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
             }

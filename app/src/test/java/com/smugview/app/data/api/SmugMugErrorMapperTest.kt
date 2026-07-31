@@ -100,4 +100,20 @@ class SmugMugErrorMapperTest {
         val msg = SmugMugErrorMapper.getFriendlyMessage(500, "Server Error", "<html>oops</html>")
         assertTrue(msg.contains("Internal Server Error"))
     }
+
+    // --- shouldShowToast ---
+
+    @Test
+    fun shouldShowToast_falseFor404() {
+        // SmugMug returns 404 as the expected signal for a locked folder, which the app already
+        // handles gracefully via the password prompt — not worth interrupting the user for.
+        assertEquals(false, SmugMugErrorMapper.shouldShowToast(404))
+    }
+
+    @Test
+    fun shouldShowToast_trueForOtherErrorCodes() {
+        for (code in listOf(400, 401, 403, 429, 500, 502, 503, 504)) {
+            assertEquals("code $code should still Toast", true, SmugMugErrorMapper.shouldShowToast(code))
+        }
+    }
 }
