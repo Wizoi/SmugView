@@ -48,13 +48,13 @@ steps:
     gate: "Same as publishReleaseBundle — this is a real Play Console action. Confirm with the user before running."
 
 known_issues:
-  - name: "App is still in Play Console DRAFT status (as of 2026-07-18) — any non-internal-track release needs --release-status draft"
+  - name: "RESOLVED 2026-07-31: Play Console draft-app restriction no longer applies"
     detail: |
-      Both `publishReleaseBundle` and `promoteArtifact` default to a `completed` release, which Play rejects
-      with "Only releases with status draft may be created on draft app" for any track beyond internal, until
-      the app clears the docs/PUBLISH.md §4 checklist (store listing, content rating, data safety form, etc.
-      — internal testing tolerates an incomplete listing, closed/open/production tracks don't). Until that's
-      cleared, pass `--release-status draft` (or `releaseStatus.set(ReleaseStatus.DRAFT)`) for alpha/beta/
-      production pushes — the release lands in Play Console as a draft for the user to manually review and
-      roll out. Re-check this the next time a non-internal publish is requested; if the checklist has since
-      been completed, a normal `completed` status should work and this note can be removed.
+      Previously (as of 2026-07-18), the app's Play Console listing was still in draft status overall, so
+      `publishReleaseBundle`/`promoteArtifact`'s default `completed` release was rejected for any track beyond
+      internal ("Only releases with status draft may be created on draft app") until the docs/PUBLISH.md §4
+      checklist was cleared — `--release-status draft` was required as a workaround for alpha/beta/production.
+      Verified resolved on the v0.7.1 (versionCode 19) release: both `publishReleaseBundle` (to internal) and
+      `promoteArtifact --promote-track alpha` succeeded with the default `completed` status, no draft flag
+      needed. Don't add `--release-status draft` preemptively — only fall back to it if a future publish
+      actually hits the "draft app" rejection again (e.g. if a listing field regresses).

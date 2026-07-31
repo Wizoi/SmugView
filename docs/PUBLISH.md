@@ -135,13 +135,14 @@ $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
 ./gradlew promoteArtifact --from-track internal --promote-track alpha
 ```
 
-**Known issue (as of 2026-07-18): this app is still in Play Console draft status.** Both
-`publishReleaseBundle` and `promoteArtifact` default to a `completed` release, which Play
-rejects ("Only releases with status draft may be created on draft app") for any track beyond
-internal until the §4 checklist below is cleared — internal testing tolerates an incomplete
-listing, closed/open/production tracks don't. Until then, append `--release-status draft` to
-either command; the release lands in Play Console as a draft for manual review/rollout. Once §4
-is fully cleared, this should no longer be necessary — worth re-testing then.
+**Resolved 2026-07-31**: the "still in Play Console draft status" restriction noted below (as of
+2026-07-18) no longer applies — verified on the v0.7.1 (versionCode 19) release, where both
+`publishReleaseBundle` (internal) and `promoteArtifact --promote-track alpha` succeeded with the
+default `completed` release status, no `--release-status draft` needed. For reference, the old
+behavior: Play used to reject a `completed` release ("Only releases with status draft may be
+created on draft app") for any track beyond internal until the §4 checklist below was cleared —
+internal testing tolerated an incomplete listing, closed/open/production tracks didn't. Only add
+`--release-status draft` back if a future publish actually hits that rejection again.
 
 Switching the default `track` in `app/build.gradle.kts` from `internal` to `production` is the
 actual "go public" switch for the *default* publish target — do that only once the checklist in
