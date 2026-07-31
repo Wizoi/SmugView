@@ -769,6 +769,44 @@ class SmugMugRepository @Inject constructor(
     }
 
     /**
+     * Walks a just-unlocked folder's entire subtree (BFS, same password) so every nested gallery —
+     * not just the folder's direct children — gets merged into the flat search index via
+     * [getNodeChildren]'s own [mergeAlbumsIntoIndex] call. Without this, unlocking a folder whose
+     * galleries live under sub-folders (e.g. locked "Family" -> "School" -> the actual gallery)
+     * only indexes the direct children, leaving search still blind to anything nested deeper even
+     * though the folder itself now shows as unlocked. A sub-folder that turns out to need a
+     * different password is skipped, not treated as fatal to the rest of the walk. [maxNodes] caps
+     * the crawl so a pathologically large hierarchy can't turn one password entry into an unbounded
+     * background fetch.
+     */
+    suspend fun unlockAndIndexSubtree(rootNodeId: String, apiKey: String, password: String, maxNodes: Int = 300) {
+        val visited = mutableSetOf(rootNodeId)
+        val queue = mutableListOf(rootNodeId)
+        var nodesFetched = 0
+
+        while (queue.isNotEmpty() && nodesFetched < maxNodes) {
+            val currentNodeId = queue.removeAt(0)
+            nodesFetched++
+            try {
+                getNodeChildren(currentNodeId, apiKey, forceRefresh = true, password = password, ignoreErrors = "true")
+                    .first()
+                    .onSuccess { children ->
+                        for (child in children) {
+                            if (child.type == "Folder" && visited.add(child.nodeId)) {
+                                queue.add(child.nodeId)
+                            }
+                        }
+                    }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Skip this sub-folder (wrong password / other failure) and keep walking the rest.
+            }
+            kotlinx.coroutines.delay(200)
+        }
+    }
+
+    /**
      * Upserts any Album-type nodes into the flat gallery index ([CachedAlbum] / [albumsCache]) so
      * they're searchable, and refreshes the in-memory cache. Existing metadata we don't have from a
      * node-children fetch (urlPath, galleryStyle) is preserved from the prior index entry if present.

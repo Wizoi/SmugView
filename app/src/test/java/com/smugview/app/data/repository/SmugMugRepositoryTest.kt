@@ -959,6 +959,88 @@ class SmugMugRepositoryTest {
     }
 
     @Test
+    fun testUnlockAndIndexSubtreeFindsGalleriesNestedUnderSubfolders() = runBlocking {
+        // Regression test for: unlocking a folder only merged its DIRECT children into the search
+        // index. Real sites commonly nest galleries under sub-folders (locked "family" ->
+        // "school" -> the actual gallery), so a single-level fetch left search still blind to
+        // anything deeper even though the folder itself showed as unlocked.
+        val fakeDao = FakeCollectionDao()
+
+        val mockInterceptor = Interceptor { chain ->
+            val url = chain.request().url.toString()
+            val json = if (url.contains("node/family!children")) {
+                """
+                {
+                  "Response": {
+                    "Uri": "/api/v2/node/family!children",
+                    "Node": [
+                      {
+                        "Uri": "/api/v2/node/school",
+                        "NodeID": "school",
+                        "Type": "Folder",
+                        "Name": "School",
+                        "Uris": { "ChildNodes": "/api/v2/node/school!children" }
+                      }
+                    ]
+                  },
+                  "Code": 200,
+                  "Message": "Ok"
+                }
+                """.trimIndent()
+            } else if (url.contains("node/school!children")) {
+                """
+                {
+                  "Response": {
+                    "Uri": "/api/v2/node/school!children",
+                    "Node": [
+                      {
+                        "Uri": "/api/v2/node/graduationAlbum",
+                        "NodeID": "graduationAlbum",
+                        "Type": "Album",
+                        "Name": "Graduation Day",
+                        "DateModified": "2026-07-20T10:00:00+00:00",
+                        "Uris": {
+                          "Album": "/api/v2/album/graduationAlbum",
+                          "ParentNode": "/api/v2/node/school"
+                        }
+                      }
+                    ]
+                  },
+                  "Code": 200,
+                  "Message": "Ok"
+                }
+                """.trimIndent()
+            } else {
+                """{"Response": {"Node": []}, "Code": 200, "Message": "Ok"}"""
+            }
+
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+
+        assertTrue(repository.albumsCache.value.isEmpty())
+
+        repository.unlockAndIndexSubtree("family", "dummy_key", "gallery")
+
+        // Fetching "family"'s direct children alone would only see the "school" sub-folder, not
+        // the gallery underneath it. The recursive walk must have descended into "school" too.
+        val indexed = repository.albumsCache.value.find { it.title == "Graduation Day" }
+        assertNotNull(
+            "Gallery nested two levels under the unlocked folder should be indexed for search",
+            indexed
+        )
+        assertEquals("graduationAlbum", indexed?.nodeId)
+    }
+
+    @Test
     fun testRepositoryGetNodeCachingPrioritizesSecurityType() = runBlocking {
         val fakeDao = FakeCollectionDao()
         val mockNodeData = com.smugview.app.data.api.NodeData(

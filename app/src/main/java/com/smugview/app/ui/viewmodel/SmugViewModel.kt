@@ -558,6 +558,7 @@ class SmugViewModel @Inject constructor(
     fun updateKeywordPhotosSortOrder(order: String) = tag.updateKeywordPhotosSortOrder(order)
 
     private var treeSyncJob: kotlinx.coroutines.Job? = null
+    private var unlockSubtreeIndexJob: kotlinx.coroutines.Job? = null
 
     fun performSearch(query: String, forceRefresh: Boolean = false) = search.performSearch(query, forceRefresh)
 
@@ -1249,6 +1250,14 @@ class SmugViewModel @Inject constructor(
                 } catch (e: Exception) {
                     // Ignore pre-fetch failures if unlock succeeded
                 }
+                // The synchronous fetch above only reaches the unlocked folder's DIRECT children,
+                // which merges any galleries found at that level into the search index (see
+                // SmugMugRepository.mergeAlbumsIntoIndex). Real sites commonly nest galleries under
+                // sub-folders (e.g. locked "Family" -> "School" -> the actual gallery), so without
+                // descending further those deeper galleries stay invisible to search even though the
+                // folder itself now shows as unlocked. Index the rest of the subtree in the
+                // background so unlocking doesn't block navigation into the folder just opened.
+                indexUnlockedSubtreeInBackground(node.nodeId, password)
                 true
             } else {
                 false
@@ -1256,6 +1265,19 @@ class SmugViewModel @Inject constructor(
         } else {
             val albumKey = node.getAlbumKey()
             repository.verifyAlbumPassword(albumKey, apiKey, password)
+        }
+    }
+
+    /**
+     * Walks the rest of a just-unlocked folder's subtree so every nested gallery gets merged into
+     * the search index, not just the folder's direct children — see
+     * [SmugMugRepository.unlockAndIndexSubtree]. Runs in the background so unlocking doesn't block
+     * navigation into the folder just opened; search results simply fill in as this progresses.
+     */
+    private fun indexUnlockedSubtreeInBackground(rootNodeId: String, password: String) {
+        unlockSubtreeIndexJob?.cancel()
+        unlockSubtreeIndexJob = viewModelScope.launch(defaultDispatcher) {
+            repository.unlockAndIndexSubtree(rootNodeId, apiKey, password)
         }
     }
 
