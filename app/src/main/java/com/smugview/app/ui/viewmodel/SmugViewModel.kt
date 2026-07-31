@@ -843,10 +843,9 @@ class SmugViewModel @Inject constructor(
     }
 
     suspend fun getNodeByAlbumKey(albumKey: String): CachedNode? {
-        val directNode = repository.getNodeById(albumKey)
-        if (directNode != null) return directNode
-        val allNodes = repository.getAllCachedNodes()
-        return allNodes.find { it.getAlbumKey() == albumKey }
+        // Indexed lookup (nodeId PK, then a bounded albumUri match) instead of loading every
+        // cached node into memory to scan — see the "getAllCachedNodes() full-table scan" rule.
+        return repository.getNodeById(albumKey) ?: repository.getNodeByIdOrKey(albumKey)
     }
 
     // Browsing folder contents
@@ -1142,8 +1141,7 @@ class SmugViewModel @Inject constructor(
             if (isAccessDenied) {
                 var node = repository.getNodeById(albumKey)
                 if (node == null) {
-                    val allNodes = repository.getAllCachedNodes()
-                    node = allNodes.find { it.nodeId == albumKey || it.getAlbumKey() == albumKey }
+                    node = repository.getNodeByIdOrKey(albumKey)
                 }
                 if (node == null) {
                     val matchedAlbum = _userAlbums?.find { it.albumKey == albumKey }
@@ -1908,7 +1906,7 @@ class SmugViewModel @Inject constructor(
                             val partBefore = finalThumbnailUrl.substringBefore(delimiter)
                             val albumSegment = partBefore.substringAfterLast('/')
                             if (albumSegment.isNotEmpty()) {
-                                val allNodes = repository.getAllCachedNodes()
+                                val allNodes = repository.getCachedNodesForActiveSite()
                                 val matchedNode = allNodes.find { it.webUri?.contains(albumSegment) == true }
                                 resolvedKey = matchedNode?.getAlbumKey() ?: matchedNode?.nodeId
                             }
@@ -1925,8 +1923,7 @@ class SmugViewModel @Inject constructor(
                     }
 
                     if (!resolvedKey.isNullOrEmpty()) {
-                        val allNodes = repository.getAllCachedNodes()
-                        val matchedNode = allNodes.find { it.nodeId == resolvedKey || it.getAlbumKey() == resolvedKey }
+                        val matchedNode = repository.getNodeByIdOrKey(resolvedKey)
                         val accessType = matchedNode?.access ?: "Public"
 
                         if (accessType != "Password") {
@@ -2186,7 +2183,7 @@ class SmugViewModel @Inject constructor(
         } ?: return null
 
         val segments = path.trim('/').split('/')
-        val allNodes = repository.getAllCachedNodes()
+        val allNodes = repository.getCachedNodesForActiveSite()
         
         for (i in segments.indices.reversed()) {
             val parentPath = segments.subList(0, i + 1).joinToString("/").lowercase()
@@ -2224,7 +2221,7 @@ class SmugViewModel @Inject constructor(
         } ?: return null
 
         val segments = path.trim('/').split('/')
-        val allNodes = repository.getAllCachedNodes()
+        val allNodes = repository.getCachedNodesForActiveSite()
         
         for (i in segments.indices.reversed()) {
             val parentPath = segments.subList(0, i + 1).joinToString("/").lowercase()

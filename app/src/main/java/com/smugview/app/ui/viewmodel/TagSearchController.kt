@@ -77,7 +77,6 @@ class TagSearchController(
     val keywordPhotosTotal: StateFlow<Int> = _keywordPhotosTotal.asStateFlow()
 
     // Tag Search Optimizations Caching
-    private val _albumKeywordsMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     private val loadedAlbumImages = ConcurrentHashMap<String, List<AlbumImageData>>()
     private var scopeAlbums = emptyList<CachedNode>()
 
@@ -247,7 +246,6 @@ class TagSearchController(
         nextStartToLoad = 1
         nextUrlToLoad = null
         scopeLoadingSuppressed = false
-        _albumKeywordsMap.value = emptyMap()
         loadedAlbumImages.clear()
         scopeAlbums = emptyList()
     }
@@ -464,7 +462,6 @@ class TagSearchController(
             if (clearSelected) {
                 _selectedTags.value = emptyMap()
             }
-            _albumKeywordsMap.value = emptyMap()
             loadedAlbumImages.clear()
             scopeAlbums = emptyList()
 

@@ -98,6 +98,12 @@ interface CollectionDao {
     @Query("SELECT * FROM cached_nodes")
     suspend fun getAllCachedNodes(): List<CachedNode>
 
+    /** Same shape as [getAllCachedNodes] but scoped to one site via the existing nickname index,
+     *  so a multi-site user's fallback lookups (webUri path matching) don't scan every node
+     *  they've ever cached across every SmugMug site they've ever browsed — just the active one. */
+    @Query("SELECT * FROM cached_nodes WHERE nickname = :nickname OR nickname = ''")
+    suspend fun getCachedNodesForNickname(nickname: String): List<CachedNode>
+
     @Query("SELECT * FROM cached_nodes WHERE albumUri IN (:albumUris)")
     suspend fun getNodesByAlbumUris(albumUris: List<String>): List<CachedNode>
 

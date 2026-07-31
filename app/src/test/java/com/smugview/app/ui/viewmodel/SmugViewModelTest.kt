@@ -506,8 +506,10 @@ class SmugViewModelTest {
             webUri = "https://gallery.idzifamily.com/Family/School/2026-06-13--Laurel-Graduation-Day"
         )
         
-        Mockito.`when`(mockRepository.getAllCachedNodes())
+        Mockito.`when`(mockRepository.getCachedNodesForActiveSite())
             .thenReturn(listOf(albumNode))
+        Mockito.`when`(mockRepository.getNodeByIdOrKey(testAlbumKey))
+            .thenReturn(albumNode)
 
         // The password saved for THIS album is what must be used. (Previously the production code
         // brute-forced every saved password against the endpoint; that replay was removed, so the
@@ -573,7 +575,8 @@ class SmugViewModelTest {
             webUri = "https://gallery.idzifamily.com/Family/School/2026-06-13--Laurel-Graduation-Day"
         )
 
-        Mockito.`when`(mockRepository.getAllCachedNodes()).thenReturn(listOf(albumNode))
+        Mockito.`when`(mockRepository.getCachedNodesForActiveSite()).thenReturn(listOf(albumNode))
+        Mockito.`when`(mockRepository.getNodeByIdOrKey(testAlbumKey)).thenReturn(albumNode)
 
         // A password belonging to a completely different album.
         fakePasswordStore.savePassword("some_other_album", "gallery")
@@ -956,7 +959,7 @@ class SmugViewModelTest {
             ).thenReturn(flowOf(Result.success(emptyList())))
                 
             Mockito.`when`(mockRepository.getNodeById(lockedAlbumKey)).thenReturn(null)
-            Mockito.`when`(mockRepository.getAllCachedNodes()).thenReturn(emptyList())
+            Mockito.`when`(mockRepository.getNodeByIdOrKey(lockedAlbumKey)).thenReturn(null)
         }
         
         viewModel.selectSite(testNickname)

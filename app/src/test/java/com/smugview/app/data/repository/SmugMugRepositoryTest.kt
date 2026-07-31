@@ -83,6 +83,9 @@ class SmugMugRepositoryTest {
 
         override suspend fun getAllCachedNodes(): List<CachedNode> = nodes
 
+        override suspend fun getCachedNodesForNickname(nickname: String): List<CachedNode> =
+            nodes.filter { it.nickname == nickname || it.nickname.isEmpty() }
+
         val albumIndex = mutableListOf<CachedAlbum>()
         override suspend fun upsertAlbums(albums: List<CachedAlbum>) {
             for (a in albums) {

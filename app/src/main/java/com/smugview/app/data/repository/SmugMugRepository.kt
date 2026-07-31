@@ -1070,6 +1070,18 @@ class SmugMugRepository @Inject constructor(
         return (dbNodes + memNodes).distinctBy { it.nodeId }
     }
 
+    /**
+     * Same as [getAllCachedNodes] but scoped to the active site via [dao.getCachedNodesForNickname]
+     * (uses the existing nickname index) instead of every node cached across every site the user
+     * has ever browsed. Prefer this for in-memory scan fallbacks (webUri path matching, etc.) —
+     * see the "getAllCachedNodes() full-table scan" rule in AGENTS.md.
+     */
+    suspend fun getCachedNodesForActiveSite(): List<CachedNode> {
+        val dbNodes = dao.getCachedNodesForNickname(activeNickname)
+        val memNodes = albumsCache.value
+        return (dbNodes + memNodes).distinctBy { it.nodeId }
+    }
+
     suspend fun getNodesByAlbumUris(albumUris: List<String>): List<CachedNode> {
         if (albumUris.isEmpty()) return emptyList()
         return dao.getNodesByAlbumUris(albumUris)
