@@ -193,3 +193,52 @@ Distilled from replacing the guessed-URL pinch-to-zoom with real SmugMug `ImageS
 *   **`LaunchedEffect(key) { if (gate) commit(key) }` can miss the exact recomposition where `gate` flips true**, if the key's value happens to be numerically unchanged across that transition (a `coerceAtMost` clamp can easily produce this). Compose only re-runs the effect when the KEY changes, not when values referenced inside the block change. Always include the gate in the key list: `LaunchedEffect(key, gate)`.
 *   **Real multi-touch pinch cannot be reliably synthesized via adb in this environment — stop trying.** Parallel `input touchscreen swipe` calls don't merge into one gesture; `monkey --pct-pinchzoom` emitted single-pointer events only and relaunched the app (destroying nav state); raw `sendevent`/`getevent` can't even see `adb shell input` taps (they bypass the device nodes via InputManager injection). For gesture-gated Compose logic, get a human to pinch-test on-device, or write an instrumented test using Compose's `performTouchInput { pinch(...) }`. Full detail in `find_root_cause.yaml`'s emulator playbook.
 *   **The R8 release-smoke-test gate paid for itself again**: `assembleRelease` compiling clean said nothing about whether the new Gson model classes (already covered by the existing `com.smugview.app.data.api.**` keep rule) would actually parse under minification — installing the signed release APK and re-navigating to the immersive pager confirmed it before publishing, per the existing "Minification (R8)" rule above. No proguard changes were needed this time because the new classes landed inside the already-kept package — but always re-check the keep rule covers a new model's actual package before assuming that.
+
+## 📈 Cache Reconciliation & Dispatcher-Injection Learnings (2026-07-31 Retro v6)
+Distilled from two production bug reports (gallery search stuck at 0 after unlocking a
+password-protected folder; folders not showing new/updated galleries without a manual refresh)
+plus a flaky `SmugViewModelTest` failure surfaced while adding regression coverage.
+
+*   **The v4 "persist + incremental-sync" pattern (`cached_albums` flat index vs. `cached_nodes`
+    tree) was documented but never reconciled — that gap was the root cause of both bugs.**
+    Unlocking a password-protected folder fetches its children via `getNodeChildren` into
+    `cached_nodes` (proven by photo search working), but nothing ever merged the revealed Album
+    rows into `cached_albums`/`albumsCache` — the only store gallery search reads — so galleries
+    stayed invisible to search forever. Separately, `getNodeChildren` caches a folder's children
+    with no TTL/staleness check (`if (cached.isNotEmpty() && !forceRefresh) return`), and the
+    startup tree crawl (`startFolderTreeSync`) always passes `forceRefresh = false`, so it's
+    permanently a no-op after the first launch — a folder's cached listing never learns about a
+    new or updated gallery underneath it. Fixed by (a) having `getNodeChildren` merge any
+    Album-type children it fetches into the flat gallery index too
+    (`SmugMugRepository.mergeAlbumsIntoIndex`), and (b) giving `CachedAlbum` a `parentNodeId`
+    (from the API's `Uris.ParentNode`, already returned but previously discarded) so the existing
+    cheap `LastUpdated` delta sync can evict just the affected parent folder's `cached_nodes` rows
+    when one of its galleries is new or changed (`dao.deleteNodesByParent`). Two independent
+    caches for the same underlying data need an explicit reconciliation path — building the second
+    cache is not enough; write down (or code) how each write to one propagates to the other.
+*   **A cache invalidation fix is easy to get backwards without a failing-first test.** Both
+    regression tests (`testUnlockingFolderMakesItsGalleriesSearchable`,
+    `testGalleryUpdateInvalidatesParentFolderCache`) were verified to actually fail against the
+    pre-fix code via `git stash` on just the repository file before being trusted — a test that
+    only asserts the fix's own new code path can pass for the wrong reason (e.g. testing the mock
+    setup, not the production logic) if it's never run red first.
+*   **The v4 "inject dispatchers for testability" rule wasn't applied everywhere it should have
+    been, and the gap silently corrupted an unrelated test's result.** `SmugViewModel` had two
+    `Dispatchers.Default` references — an eagerly-shared `StateFlow` (`unlockedNodeIds`, started at
+    construction via `SharingStarted.Eagerly`, so present in *every* test in the class, not just
+    the ones exercising it directly) and an on-demand `viewModelScope.launch` inside
+    `getImageDetails()`. `Dispatchers.setMain(testDispatcher)` only redirects `Dispatchers.Main`;
+    there is no `Dispatchers.setDefault()` in kotlinx-coroutines, so both ran on the real JVM
+    thread pool, untracked by `runTest`'s virtual scheduler. When one of those coroutines finished
+    (or threw) after its originating test method had already returned, the exception surfaced as
+    `UncaughtExceptionsBeforeTest` on whatever *unrelated* test's `runTest` happened to check next
+    — so the failing test name in a flaky run is not necessarily where the problem is. Fixed by
+    following `DefaultCastManager`'s exact precedent: a Hilt-provided `CoroutineDispatcher` binding
+    (`AppModule.provideDefaultDispatcher`, real `Dispatchers.Default` in production) injected into
+    the constructor, with the test constructing the ViewModel with `testDispatcher` instead.
+    Verified with 10 isolated + 5 full-suite reruns (15/15 green) — for a leaked-coroutine flake, a
+    single passing run after a fix proves nothing; only repeated reruns do.
+*   **`git stash push -- <path>`, scoped to a single file, is a clean way to verify "does this
+    test actually catch the bug" without a throwaway branch** — stash just the production fix,
+    run the new test (expect red), `git stash pop` to restore. Safe because it's fully reversible
+    and scoped, unlike editing the fix out and back in by hand.
