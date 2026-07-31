@@ -216,6 +216,22 @@ plus a flaky `SmugViewModelTest` failure surfaced while adding regression covera
     when one of its galleries is new or changed (`dao.deleteNodesByParent`). Two independent
     caches for the same underlying data need an explicit reconciliation path — building the second
     cache is not enough; write down (or code) how each write to one propagates to the other.
+*   **That first fix was verified-correct but still shipped incomplete (caught in production on
+    v0.7.1/versionCode 19, same day).** `mergeAlbumsIntoIndex` only merges a folder's DIRECT
+    children on unlock. Real sites commonly nest galleries several folders deep (locked "Family"
+    -> "School" -> the actual gallery); the unlocked folder's direct children are then all type
+    `Folder`, not `Album`, so there's nothing to merge and search stays blind to anything nested,
+    even though the folder itself now shows unlocked. The original regression test didn't catch
+    this because it only modeled one level of nesting — it proved the merge mechanism works, not
+    that it reaches deep enough. Fixed with `SmugMugRepository.unlockAndIndexSubtree`: a
+    background BFS (same password, capped at `maxNodes = 300`) that walks the rest of the subtree
+    after unlock, so `getNodeChildren`'s existing per-level merge fires at every depth, not just
+    the first. **Lesson**: when a bug report says "still broken after the fix," re-derive the
+    failure from the user's exact scenario before assuming the original diagnosis was wrong — here
+    the diagnosis (two unreconciled caches) was right, the *scope* of the fix (one level vs. the
+    whole subtree) was the gap. A regression test with only one level of tree depth can't catch a
+    bug that only manifests at depth two — mirror the real reported topology, not the simplest
+    shape that reproduces the symptom.
 *   **A cache invalidation fix is easy to get backwards without a failing-first test.** Both
     regression tests (`testUnlockingFolderMakesItsGalleriesSearchable`,
     `testGalleryUpdateInvalidatesParentFolderCache`) were verified to actually fail against the
