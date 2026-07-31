@@ -70,6 +70,12 @@ This project is now worked on primarily via the **Claude Code** extension (not A
 *   **Search Filter Payload Shrink**: Optimize the `_filter` query parameter on search endpoints to omit heavy payloads like `ArchivedUri` and `OriginalWidth`/`OriginalHeight`/`OriginalSize`. However, to prevent parent gallery navigation failures, **always preserve `WebUri` and the nested `Uris` dictionary (along with `ImageAlbum` in `_filteruri`)** so the app can resolve parent gallery keys for locked or anonymous media.
 *   **Retrofit Query Encoding**: Do not manually URL-encode parameters passed to `@Query` annotations in Retrofit interfaces. Retrofit automatically encodes these parameters; manually doing so leads to double encoding (e.g. `%` to `%25`) and server lookup failures.
 
+**Follow-up status:** ⚠️ PARTIAL (as of 2026-07-31) — the "Security/Password Grouping" bullet
+describes a batch-scan pattern (`SmugMugRepository.getAlbumKeywords`) that's unit-tested but not
+actually called from any production code; the shipping tag-cloud feature uses `getUserTopKeywords`
+instead. See tracker row #7 — needs a decision on whether this is dead code or a missed
+integration.
+
 ## 🔍 Search & Indexing Optimization (Searchable: No / HTTP 429)
 *   **Local Caching Fallback for Folders/Galleries**: SmugMug's global `node!search` hides nodes marked with `"Searchable: No"`. To bypass this, always combine global API node search results with a local database query of `cached_nodes` (`title LIKE %query%`).
 *   **Tokenized Tag Cloud Local Filtering**: When filtering search results by tag cloud selections locally, split multi-word tags into tokens and match them against tokenized sets of image keywords, titles, captions, and filenames (removing non-alphanumeric punctuation). This prevents empty states on assets without explicit keywords that matched the API text query.
@@ -121,6 +127,11 @@ This project is now worked on primarily via the **Claude Code** extension (not A
     *   **Summary Report Structure (`test_result.md`)**: Grouped by test category using a Markdown table with columns: `Verdict | Test Scenario | Source Query / API Endpoint | Expected Data / Fields | Actual Data / Status`. The status column must remain concise and end with a relative link to the detailed report: `[Details](test_details.md#<lowercase-scenario-name>)`.
     *   **Detailed Log Structure (`test_details.md`)**: Contains anchor headers (`<a name="<lowercase-scenario-name>"></a>\n## <Scenario>`), full response details, bulleted step lists, and verification logs.
 
+**Follow-up status:** ⚠️ PARTIAL (as of 2026-07-31) — the "Mock Elimination via Snapshots" bullet is
+only adopted in `SmugMugApiTest.kt` (via `PlaybackInterceptor` + `app/src/test/resources/snapshots/`).
+`SmugMugRepositoryTest.kt` and `SmugViewModelTest.kt` still use hand-written inline JSON mocks. See
+tracker row #6.
+
 ## 📈 Project Manager Scrum & Retro Rules
 *   **Automatic Retrospectives**: Every scenario update or bug fix task must conclude with an automatic retrospective review conducted by the Project Manager.
 *   **Continuous Instruction Refinement**: The Project Manager must trace the log trajectory (in `transcript.jsonl`), locate misdirections, identify gaps in sibling personas (UX, Android, API, QA, Smart Device), and update workspace config/instruction guides to continually prevent repeat mistakes.
@@ -139,22 +150,63 @@ This project is now worked on primarily via the **Claude Code** extension (not A
 ## 📖 Documentation Reference & Maintenance
 *   **Referencing Docs**: Respective developer agents must refer to the documentation files in the [docs](file:///c:/src/kidzi/GitHub/SmugView/docs) directory (including [DESIGN.md](file:///c:/src/kidzi/GitHub/SmugView/docs/DESIGN.md), [SMUGMUG.md](file:///c:/src/kidzi/GitHub/SmugView/docs/SMUGMUG.md), and [README.md](file:///c:/src/kidzi/GitHub/SmugView/docs/README.md)) to understand system design, SmugMug API specifications, and codebase setup. For Play Store publishing/listing work, see [PUBLISH.md](file:///c:/src/kidzi/GitHub/SmugView/docs/PUBLISH.md) and [PRIVACY_POLICY.md](file:///c:/src/kidzi/GitHub/SmugView/docs/PRIVACY_POLICY.md) — if a change alters what data the app collects/stores/transmits or what permissions it needs, update PRIVACY_POLICY.md to match.
 
+## 🗂️ Retro Follow-Up Tracker
+Every retro below can name an action item without anyone ever coming back to it. This tracker is
+the one place to check that nothing did. **Rule going forward**: any retro bullet that implies
+future work (not just a lesson already fully baked into the fix that prompted it) gets a row here.
+When a row is closed, keep it (marked ✅) rather than deleting it — the audit trail of "this was
+open for N sessions before someone verified it" is more valuable than a clean list.
+
+Status legend: 🔲 **TODO — analysis** (needs a codebase investigation before a fix can be scoped) ·
+🔲 **TODO — decision** (needs a human call, not more digging) · 🔲 **TODO — skill/doc update**
+(the guidance itself needs to change) · ⚠️ **PARTIAL** (some but not all of it done) · ✅ **DONE**
+
+| # | Item | Source | Status | Next step |
+|---|---|---|---|---|
+| 1 | `retryInterceptor` (`AppModule.kt`) still blocks the OkHttp dispatcher thread with `Thread.sleep` on 429/5xx instead of a suspending retry | Retro v4 | 🔲 TODO — analysis | Confirmed still present as of 2026-07-31. Needs a design for a non-blocking retry (e.g. an async OkHttp `Interceptor` replacement or Retrofit-level retry) that preserves the existing exponential-backoff + `Retry-After` behavior — not a drop-in one-liner. |
+| 2 | `getAllCachedNodes()` (full-table scan, verified to hang 20+s under load) still called directly at ~6 sites in `SmugViewModel.kt` | Retro v4 | ⚠️ PARTIAL | `getUnlockedPassword` was fixed (now uses indexed `getNodeByIdOrKey`, comment references the incident). Remaining sites (search/photo-detail parent-gallery resolution fallbacks, roughly lines 848, 1145, 1911, 1928, 2189, 2227 as of 2026-07-31) still need the same treatment or a documented reason they're safe (e.g. rare code path, small cache). |
+| 3 | Naming/trademark exposure — "SmugView" as an unofficial SmugMug client risks a Play impersonation-policy flag | `DESIGN.md` §5 | 🔲 TODO — decision | Not a code task. Needs an explicit call: keep the name + rely on the non-affiliation disclaimer, or rebrand. |
+| 4 | Single shared `SMUGMUG_API_KEY` compiled into every install — no capacity plan if installs spike | `DESIGN.md` §5 | 🔲 TODO — decision | Needs a call on whether per-user auth / multiple pooled keys is worth the complexity, or the current ceiling is acceptable. |
+| 5 | `PUBLISH.md` §4 checklist (data safety form, content rating, ads declaration, closed-testing, production release, etc.) still shows every box unchecked | `PUBLISH.md` §4 | 🔲 TODO — analysis | In tension with a verified fact: v0.7.1/v0.7.2 both published as full `completed` releases on alpha, which the doc says shouldn't be possible until this checklist clears. Someone needs to open Play Console, check actual status of each item, and reconcile the doc either way. |
+| 6 | "Mock Elimination via Snapshots" QA rule only adopted in `SmugMugApiTest.kt`; `SmugMugRepositoryTest.kt`/`SmugViewModelTest.kt` still use hand-written inline JSON mocks | QA/Tester & Data-Layer Snapshot Rules | 🔲 TODO — skill/doc update or analysis | Either migrate those two files to snapshot-backed mocks (real work, many tests), or narrow the rule's stated scope to live-API-shape-sensitive tests only, so it stops reading as an unmet blanket policy. |
+| 7 | `SmugMugRepository.getAlbumKeywords` (+ the "group locked galleries by saved password, batch per password" optimization it was built for) is unit-tested but never called from production code — the shipping tag-cloud feature uses `getUserTopKeywords` instead | SmugMug API Optimization Guidelines | 🔲 TODO — analysis | Determine whether this is dead code to delete (and correct the AGENTS.md guidance that still describes it as the pattern), or whether `TagSearchController` should actually be using it and isn't. |
+
+**Recently closed (for the audit trail):**
+*   Retro v3's "Live Configuration Regression Safeguard" (an integration test that pings every
+    featured onboarding nickname) — ✅ DONE, implemented as `testFeaturedSitesValidity` in
+    `SmugMugApiTest.kt`, verified present 2026-07-31.
+*   Retro v6's two production bugs (gallery search cache reconciliation + recursive subtree
+    indexing) and the flaky-test dispatcher injection — ✅ DONE, shipped in v0.7.1 (versionCode 19)
+    and v0.7.2 (versionCode 20).
+
 ## 📈 Site Discovery & Autocomplete Learnings (2026-07-16/17 Retro)
 *   **Compose Annotations Target Boundaries**: In Kotlin/Compose, never place annotations like `@OptIn` or `@Composable` directly on data classes or standard objects. These annotations are only applicable to functions, file levels, or local declarations, and placing them on classes will cause immediate compiler errors.
 *   **GSON Mock Schema Key Congruency**: When writing unit test mock JSON responses for SmugMug API endpoints (e.g. `image!search`), verify that the JSON keys in the mocked payload match the `@SerializedName` annotations in the production models (e.g., `"Image"` instead of `"AlbumImage"`). Failure to match these exactly results in GSON silently parsing the payload to an empty list, causing unit test assertions to fail.
 
+**Follow-up status:** ✅ No open items — both bullets are coding rules already fully applied at the
+time they were written (not deferred work).
+
 ## 📈 Refined Gallery Hub & Suspend Mocking Learnings (2026-07-17 Retro)
 *   **API Filter Navigation Integrity**: When applying a custom `_filter` query on endpoints (like `user!recentimages`), ensure the `Uris` envelope is preserved if downstream navigation requires parent gallery details (like `ImageAlbum` / `albumKey`). Stripping `Uris` breaks photo detail clicks.
 *   **Kotlin Suspend Function Mocking inside Unit Tests**: To stub Kotlin suspend functions with arguments in Mockito tests, wrap the stubs in `kotlinx.coroutines.runBlocking { ... }` and use standard `Mockito.when(...)` with exact Kotlin argument types. Avoid calling `doReturn().when(mock).suspendMethod(any())` from outside coroutine scopes as it causes compilation errors due to hidden Continuation parameter mismatches.
+
+**Follow-up status:** ✅ No open items — both bullets are coding rules already fully applied at the
+time they were written.
 
 ## 📈 Password Caching & Mockito Matchers Corruption Learnings (2026-07-17 Retro v2)
 *   **Privacy vs SecurityType Mapping Coexistence**: SmugMug API responses for password-protected items can return `"Privacy": "Public"` (or `"Unlisted"`) alongside `"SecurityType": "Password"`. When parsing API response nodes to cache models, always prioritize `securityType` over `privacy` to prevent storing locked items with public access values.
 *   **Mockito Suspend Verification Gotcha**: Verifying suspend functions using standard Mockito `verify(...)` is fragile due to the hidden `Continuation` parameter appended by the Kotlin compiler. Avoid verifying suspend functions with Mockito matchers; prefer testing via concrete fakes (e.g., `FakeCollectionDao`) or checking state/return value results directly.
 *   **Mockito Global State Corruption**: Any mismatched/unfinished matcher in a Mockito test (like mixing matchers and concrete arguments or incomplete verification statements) corrupts Mockito's global thread-local state. This causes unrelated subsequent tests in the suite to fail with `UnfinishedVerificationException` or `InvalidUseOfMatchersException`. Ensure every Mockito stubbing/verification call uses matchers for all parameters and completes correctly.
 
+**Follow-up status:** ✅ No open items — all three bullets are coding rules already fully applied
+at the time they were written.
+
 ## 📈 Featured Sites Selection & Live API Validation Learnings (2026-07-17 Retro v3)
 *   **Onboarding / Exploration Hardcoded Portfolios**: When curating featured portfolios or onboarding sites on the client-side (such as carousels in `BrowserScreen.kt`), do not use individual photographers who are prone to profile deletion or nickname updates. Instead, select official company-managed portals (`smugmugfilms`, `Tutorial`) and established public institutions (`uphs`, `corvettemuseum`, `daemenuniversity`).
 *   **Live Configuration Regression Safeguards**: To protect hardcoded onboarding configurations from decaying over time, implement a target integration test in the live API test suite (`SmugMugApiTest.kt`) that queries each nickname. Wrap the test in credentials and network capability checks so that it skips gracefully in offline CI environments instead of causing build failure.
+
+**Follow-up status:** ✅ DONE — the regression safeguard was implemented (`testFeaturedSitesValidity`
+in `SmugMugApiTest.kt`, verified present 2026-07-31). See the tracker's "Recently closed" list.
 
 ## 📈 Full-Codebase Review & Album-Sync Learnings (2026-07-17 Retro v4)
 Distilled from a large security/quality review + the incremental album-index feature. These are the highest-leverage, most non-obvious facts for this project.
@@ -184,6 +236,18 @@ Distilled from a large security/quality review + the incremental album-index fea
 *   **Separate "regression I introduced" from "pre-existing bug my change exposed."** Removing a crutch (e.g. a brute-force password replay) can surface a latent bug that only *looked* like a new regression. State which it is, with evidence.
 *   **Know when to stabilize vs keep digging.** A single feature (locked-gallery jump) spiraled through 5+ layers of pre-existing issues. When a fix keeps revealing deeper pre-existing problems, land the safe/verified pieces, document the blocker precisely, and stop — don't destabilize verified work chasing the tail.
 
+**Follow-up status:** ⚠️ PARTIAL — most bullets are applied lessons, but two named action items are
+still open, tracked as tracker rows #1 and #2:
+*   The "retry interceptor should eventually move to suspending `delay`" line (Room/DB performance
+    bullet 2) — 🔲 still `Thread.sleep`, unaddressed.
+*   "Never use `getAllCachedNodes()` ... in a hot/navigation path" (Room/DB performance bullet 1)
+    — ⚠️ one call site fixed, ~6 others in `SmugViewModel.kt` still do it.
+The "persist + incremental-sync pattern" bullet is ✅ DONE and was directly reused/extended in
+Retro v6. The "inject dispatchers for testability" bullet is ✅ DONE in principle (the pattern was
+correct) but wasn't applied to `SmugViewModel` until Retro v6 caught the gap — a good example of
+why this tracker exists: a rule being *written down* isn't the same as it being *applied
+everywhere it should be*.
+
 ## 📈 Progressive Pinch-to-Zoom & Publish-Verification Learnings (2026-07-18 Retro v5)
 Distilled from replacing the guessed-URL pinch-to-zoom with real SmugMug `ImageSizeDetails`-driven tiers, and the v0.6.3 publish.
 
@@ -193,6 +257,10 @@ Distilled from replacing the guessed-URL pinch-to-zoom with real SmugMug `ImageS
 *   **`LaunchedEffect(key) { if (gate) commit(key) }` can miss the exact recomposition where `gate` flips true**, if the key's value happens to be numerically unchanged across that transition (a `coerceAtMost` clamp can easily produce this). Compose only re-runs the effect when the KEY changes, not when values referenced inside the block change. Always include the gate in the key list: `LaunchedEffect(key, gate)`.
 *   **Real multi-touch pinch cannot be reliably synthesized via adb in this environment — stop trying.** Parallel `input touchscreen swipe` calls don't merge into one gesture; `monkey --pct-pinchzoom` emitted single-pointer events only and relaunched the app (destroying nav state); raw `sendevent`/`getevent` can't even see `adb shell input` taps (they bypass the device nodes via InputManager injection). For gesture-gated Compose logic, get a human to pinch-test on-device, or write an instrumented test using Compose's `performTouchInput { pinch(...) }`. Full detail in `find_root_cause.yaml`'s emulator playbook.
 *   **The R8 release-smoke-test gate paid for itself again**: `assembleRelease` compiling clean said nothing about whether the new Gson model classes (already covered by the existing `com.smugview.app.data.api.**` keep rule) would actually parse under minification — installing the signed release APK and re-navigating to the immersive pager confirmed it before publishing, per the existing "Minification (R8)" rule above. No proguard changes were needed this time because the new classes landed inside the already-kept package — but always re-check the keep rule covers a new model's actual package before assuming that.
+
+**Follow-up status:** ✅ No open items — every bullet is a lesson already applied at the time it was
+written (the "always re-check the keep rule" and "curl the live endpoint first" bullets are
+standing verification habits for *future* work, not unfinished work from this retro itself).
 
 ## 📈 Cache Reconciliation & Dispatcher-Injection Learnings (2026-07-31 Retro v6)
 Distilled from two production bug reports (gallery search stuck at 0 after unlocking a
@@ -258,3 +326,8 @@ plus a flaky `SmugViewModelTest` failure surfaced while adding regression covera
     test actually catch the bug" without a throwaway branch** — stash just the production fix,
     run the new test (expect red), `git stash pop` to restore. Safe because it's fully reversible
     and scoped, unlike editing the fix out and back in by hand.
+
+**Follow-up status:** ✅ No open items — both production bugs (including the depth-2 follow-up gap
+caught the same day) and the flaky-test dispatcher injection all shipped, verified, and published
+(v0.7.1 versionCode 19, v0.7.2 versionCode 20). This retro also *surfaced* the two Retro v4 items
+that are still open (tracker rows #1 and #2) — see the tracker at the top of this file.
