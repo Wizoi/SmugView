@@ -209,6 +209,28 @@ updating too:
     `cached_nodes` rows, so the next time that folder is opened it re-fetches fresh content instead
     of serving a listing that predates the change.
 
+### Waiting on in-flight background writers before reading the cache
+
+Merging data into these caches correctly (above) isn't enough on its own — a foreground read that
+runs *while* a background writer is still mid-write can still observe (and worse, permanently
+cache) an incomplete snapshot. Two `StateFlow<Boolean>` signals on `SmugMugRepository` exist so a
+read path can wait instead of racing:
+
+*   **`isAlbumsCacheLoaded`** — true once `buildInMemoryGalleryCache`'s initial sync has published
+    at least one snapshot of `albumsCache`.
+*   **`isIndexingSubtree`** — true while any `unlockAndIndexSubtree` walk (the background subtree
+    indexer described above) is actively running. Backed by a counter, not a plain boolean, since
+    unlocking two folders back-to-back means two overlapping walks — the flag must stay true until
+    the *last* one finishes, not the first.
+
+`SearchController.performSearch` awaits both before reading `albumsCache.value` for gallery
+matching. Without the second one specifically: searching right after unlocking a folder could read
+the cache mid-write, matching only whatever galleries the background walk had reached so far, and
+then — since `performSearch` marks a query "fully searched" for 24h once it completes — silently
+cache that incomplete result as trustworthy until the cache expired or the user forced a refresh.
+**If you add a new background writer to either cache, ask whether any read path needs to wait on
+it the same way**, rather than assuming "it'll usually have finished by the time anyone looks."
+
 ---
 
 ## 📡 Casting & the Web Companion Server

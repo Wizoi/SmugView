@@ -197,6 +197,22 @@ class SearchController(
                     repository.isAlbumsCacheLoaded.first { it }
                 }
 
+                // Wait for any in-progress post-unlock subtree indexing (SmugMugRepository
+                // .unlockAndIndexSubtree) to finish. Without this, searching right after unlocking
+                // a folder can read repository.albumsCache.value mid-write — matching only
+                // whatever galleries the background walk has reached so far — and then cache that
+                // incomplete snapshot as "fully searched" for 24h (below), silently hiding
+                // galleries the walk hadn't indexed yet until the cache expires or a manual
+                // refresh. See the "search reads incomplete data mid-background-sync" fix in
+                // AGENTS.md.
+                if (repository.isIndexingSubtree.value) {
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugViewModel", "performSearch waiting for post-unlock subtree indexing to finish")
+                    }
+                    _searchState.value = SearchUiState.Loading
+                    repository.isIndexingSubtree.first { !it }
+                }
+
                 // 1. Load cached search results from the database IMMEDIATELY (Folders)
                 val cachedFolders = repository.getSearchResultNodes(query, scopeKey, "Folder")
                 if (BuildConfig.DEBUG) {

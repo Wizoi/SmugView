@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import org.junit.Assert.*
 import org.junit.Test
 import okhttp3.ResponseBody
@@ -1041,6 +1043,91 @@ class SmugMugRepositoryTest {
             indexed
         )
         assertEquals("graduationAlbum", indexed?.nodeId)
+    }
+
+    @Test
+    fun testIsIndexingSubtreeReflectsInProgressState() = runBlocking {
+        // Regression coverage for the "search reads incomplete data mid-background-sync" fix:
+        // SearchController waits on this flag before trusting repository.albumsCache.value, so it
+        // must actually flip true while unlockAndIndexSubtree is running and back to false once done.
+        val fakeDao = FakeCollectionDao()
+        val mockInterceptor = Interceptor { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(
+                    """{"Response": {"Node": []}, "Code": 200, "Message": "Ok"}"""
+                        .toResponseBody("application/json".toMediaTypeOrNull())
+                )
+                .build()
+        }
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+
+        assertFalse("Should be idle before any indexing starts", repository.isIndexingSubtree.value)
+
+        val job = launch { repository.unlockAndIndexSubtree("folderA", "dummy_key", "pw") }
+        yield() // let the job run up to its first suspension point
+        assertTrue("Flag should be true while indexing is in progress", repository.isIndexingSubtree.value)
+
+        job.join()
+        assertFalse("Should be idle again after indexing completes", repository.isIndexingSubtree.value)
+    }
+
+    @Test
+    fun testIsIndexingSubtreeStaysTrueUntilAllOverlappingCallsFinish() = runBlocking {
+        // Two folders unlocked back-to-back must not have the FIRST call's completion
+        // prematurely clear the flag while the SECOND is still walking its subtree. "shortFolder"
+        // has no children (one BFS iteration); "longFolder" has a chain of nested sub-folders
+        // (several iterations, each with its own internal delay), so it deterministically finishes
+        // later than shortFolder — relying on two independent real-time delays racing each other
+        // under runBlocking's single-threaded event loop is not reliable (verified: flaked because
+        // both ~200ms delays resolved close enough together that completion order wasn't
+        // guaranteed).
+        val fakeDao = FakeCollectionDao()
+        fun childrenResponse(nextNodeId: String?): String {
+            val nodesJson = if (nextNodeId == null) "[]" else """
+                [{
+                    "Uri": "/api/v2/node/$nextNodeId",
+                    "NodeID": "$nextNodeId",
+                    "Type": "Folder",
+                    "Name": "Sub",
+                    "Uris": { "ChildNodes": "/api/v2/node/$nextNodeId!children" }
+                }]
+            """.trimIndent()
+            return """{"Response": {"Node": $nodesJson}, "Code": 200, "Message": "Ok"}"""
+        }
+        val mockInterceptor = Interceptor { chain ->
+            val url = chain.request().url.toString()
+            val json = when {
+                url.contains("node/longFolder!children") -> childrenResponse("longFolderSub1")
+                url.contains("node/longFolderSub1!children") -> childrenResponse("longFolderSub2")
+                url.contains("node/longFolderSub2!children") -> childrenResponse("longFolderSub3")
+                else -> childrenResponse(null) // shortFolder and the end of longFolder's chain
+            }
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+
+        val shortJob = launch { repository.unlockAndIndexSubtree("shortFolder", "dummy_key", "pw1") }
+        val longJob = launch { repository.unlockAndIndexSubtree("longFolder", "dummy_key", "pw2") }
+        yield()
+        assertTrue(repository.isIndexingSubtree.value)
+
+        shortJob.join()
+        assertTrue("longJob is still running — flag must stay true", repository.isIndexingSubtree.value)
+
+        longJob.join()
+        assertFalse("Both jobs finished — flag must clear", repository.isIndexingSubtree.value)
     }
 
     @Test

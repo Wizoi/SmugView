@@ -73,7 +73,10 @@ class SmugViewModelTest {
         
         Mockito.`when`(mockRepository.isAlbumsCacheLoaded)
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(true))
-            
+
+        Mockito.`when`(mockRepository.isIndexingSubtree)
+            .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(false))
+
         Mockito.`when`(mockRepository.albumsCache)
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyList()))
             
@@ -179,6 +182,66 @@ class SmugViewModelTest {
     // removed. They hit the live SmugMug API over the network (flaky, non-deterministic,
     // CI-hostile), asserted nothing, and embedded a real API key in source. Live-API probing
     // belongs in a manually-run scratch tool, never in the unit suite.
+
+    /**
+     * Regression test for: searching right after unlocking a password-protected folder could read
+     * repository.albumsCache.value mid-write from the background SmugMugRepository
+     * .unlockAndIndexSubtree walk, matching only whatever galleries it had reached so far, then
+     * cache that incomplete snapshot as "fully searched" for 24h. performSearch must wait for
+     * repository.isIndexingSubtree to clear before reading the gallery cache.
+     */
+    @Test
+    fun testPerformSearchWaitsForInProgressSubtreeIndexing() = runTest {
+        viewModel.setActiveNicknameForTest("testUser")
+
+        val indexingFlow = MutableStateFlow(true)
+        val albumsFlow = MutableStateFlow<List<CachedNode>>(emptyList())
+        Mockito.`when`(mockRepository.isIndexingSubtree).thenReturn(indexingFlow)
+        Mockito.`when`(mockRepository.albumsCache).thenReturn(albumsFlow)
+
+        Mockito.`when`(mockRepository.getUserRootNodeId(Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(flowOf(Result.success("4zqWw")))
+        Mockito.`when`(mockRepository.getSearchResultNodes("Family", "site:testUser", "Folder"))
+            .thenReturn(emptyList())
+        Mockito.`when`(mockRepository.hasSearchPhotosInDb("Family", "site:testUser")).thenReturn(false)
+        Mockito.`when`(
+            mockRepository.searchNodesRemote(
+                Mockito.anyString(), Mockito.anyString(), Mockito.anyString(),
+                Mockito.anyString(), Mockito.nullable(String::class.java)
+            )
+        ).thenReturn(flowOf(Result.success(emptyList())))
+        val mockPagingSource = object : androidx.paging.PagingSource<Int, SearchResult>() {
+            override fun getRefreshKey(state: androidx.paging.PagingState<Int, SearchResult>): Int? = null
+            override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SearchResult> =
+                LoadResult.Page(data = emptyList(), prevKey = null, nextKey = null)
+        }
+        Mockito.`when`(mockRepository.getPagedSearchPhotos(Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+            .thenReturn(mockPagingSource)
+
+        viewModel.performSearch("Family")
+        advanceUntilIdle()
+
+        // Still indexing: performSearch must be parked waiting, not settled on the (as-yet
+        // incomplete) cache snapshot.
+        assertEquals(SearchUiState.Loading, viewModel.searchState.value)
+
+        // Background indexing finishes, and the gallery it was walking toward lands in the cache.
+        albumsFlow.value = listOf(
+            CachedNode(
+                nodeId = "album1", parentNodeId = "root", type = "Album", title = "Family Reunion",
+                description = null, access = "Public", passwordHint = null,
+                uri = "/api/v2/node/album1", childNodesUri = null, albumUri = "/api/v2/album/album1"
+            )
+        )
+        indexingFlow.value = false
+        advanceUntilIdle()
+
+        val state = viewModel.searchState.value
+        assertTrue("Expected Success state but was: $state", state is SearchUiState.Success)
+        val galleries = (state as SearchUiState.Success).galleries
+        assertEquals(1, galleries.size)
+        assertEquals("Family Reunion", galleries.first().title)
+    }
 
     @Test
     fun testPerformSearchCacheHitSkipsRemote() = runTest {

@@ -99,6 +99,22 @@ class SmugMugRepository @Inject constructor(
 
     private val _isAlbumsCacheLoaded = kotlinx.coroutines.flow.MutableStateFlow(false)
     val isAlbumsCacheLoaded: kotlinx.coroutines.flow.StateFlow<Boolean> = _isAlbumsCacheLoaded
+
+    /**
+     * True while any [unlockAndIndexSubtree] walk is actively writing to [albumsCache] /
+     * `cached_nodes` in the background. A counter (not a plain boolean) because more than one
+     * unlock can be in flight — the flag should only drop once the LAST one finishes, not the
+     * first.
+     *
+     * Exists so a foreground read that depends on the cache being complete (e.g. gallery search
+     * matching `albumsCache.value` right after the user unlocks a folder) can wait for the
+     * background writer to finish instead of racing it and silently caching/showing incomplete
+     * results — see the "search reads incomplete data mid-background-sync" fix in AGENTS.md.
+     */
+    private val activeSubtreeIndexJobs = java.util.concurrent.atomic.AtomicInteger(0)
+    private val _isIndexingSubtree = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isIndexingSubtree: kotlinx.coroutines.flow.StateFlow<Boolean> = _isIndexingSubtree
+
     // Helper to parse NodeID from Uri path
     fun parseNodeIdFromUri(uri: String): String {
         return uri.substringAfterLast("/").substringBefore("!")
@@ -780,29 +796,38 @@ class SmugMugRepository @Inject constructor(
      * background fetch.
      */
     suspend fun unlockAndIndexSubtree(rootNodeId: String, apiKey: String, password: String, maxNodes: Int = 300) {
-        val visited = mutableSetOf(rootNodeId)
-        val queue = mutableListOf(rootNodeId)
-        var nodesFetched = 0
+        if (activeSubtreeIndexJobs.incrementAndGet() == 1) {
+            _isIndexingSubtree.value = true
+        }
+        try {
+            val visited = mutableSetOf(rootNodeId)
+            val queue = mutableListOf(rootNodeId)
+            var nodesFetched = 0
 
-        while (queue.isNotEmpty() && nodesFetched < maxNodes) {
-            val currentNodeId = queue.removeAt(0)
-            nodesFetched++
-            try {
-                getNodeChildren(currentNodeId, apiKey, forceRefresh = true, password = password, ignoreErrors = "true")
-                    .first()
-                    .onSuccess { children ->
-                        for (child in children) {
-                            if (child.type == "Folder" && visited.add(child.nodeId)) {
-                                queue.add(child.nodeId)
+            while (queue.isNotEmpty() && nodesFetched < maxNodes) {
+                val currentNodeId = queue.removeAt(0)
+                nodesFetched++
+                try {
+                    getNodeChildren(currentNodeId, apiKey, forceRefresh = true, password = password, ignoreErrors = "true")
+                        .first()
+                        .onSuccess { children ->
+                            for (child in children) {
+                                if (child.type == "Folder" && visited.add(child.nodeId)) {
+                                    queue.add(child.nodeId)
+                                }
                             }
                         }
-                    }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Skip this sub-folder (wrong password / other failure) and keep walking the rest.
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Skip this sub-folder (wrong password / other failure) and keep walking the rest.
+                }
+                kotlinx.coroutines.delay(200)
             }
-            kotlinx.coroutines.delay(200)
+        } finally {
+            if (activeSubtreeIndexJobs.decrementAndGet() == 0) {
+                _isIndexingSubtree.value = false
+            }
         }
     }
 
