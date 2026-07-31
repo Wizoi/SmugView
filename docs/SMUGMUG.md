@@ -185,9 +185,20 @@ To maintain a resilient and high-performing integration, any future changes or o
 *   **Gotcha**: `getAlbumKeywords` deliberately sets `_filteruri = ""` (empty) — the keyword-scan batch call only wants the `AlbumKeywords` expansion itself, not any of the album's other `Uris` entries, so it blanks the filter rather than omitting it (an omitted `_filteruri` falls back to the server default, which is not empty).
 
 ### 5. Automatic Retry & Backoff (429 / 5xx)
-*   **Where**: `AppModule.kt` registers a Retrofit/OkHttp `Interceptor` (`retryInterceptor`) on the shared `OkHttpClient`, so every SmugMug API call gets this for free — no per-repository-method retry logic needed.
+*   **Where**: `AppModule.provideRetryingCallFactory` wraps the shared `OkHttpClient` in
+    `RetryingCallFactory` (`data/api/RetryingCallFactory.kt`), used as the `Call.Factory` for both
+    Retrofit (`provideSmugMugApi`) and Coil's image loader (`SmugViewApp.newImageLoader`) — so
+    every SmugMug API call *and* every image load gets this for free, no per-repository-method
+    retry logic needed.
 *   **Behavior**: on a `429` or any `5xx` response, retries up to **5 times**. Delay starts at 500ms and doubles each attempt (exponential backoff: 500ms, 1s, 2s, 4s, 8s). For a `429` specifically, it first checks the `Retry-After` header (seconds) and sleeps that long instead of the computed backoff value if present.
-*   **Caveat**: the sleep is a blocking `Thread.sleep` on the OkHttp dispatcher thread, not a suspending `delay` — under heavy concurrent load this can starve the dispatcher's thread pool (see the "Room / DB performance" retro notes in `AGENTS.md` for the incident this caused). Don't add a second layer of manual retry/backoff in repository code on top of this interceptor — it already covers every request.
+*   **Non-blocking as of 2026-08-01**: this used to be a plain OkHttp `Interceptor` that called a
+    blocking `Thread.sleep` on the dispatcher thread — under heavy concurrent load that could
+    starve the dispatcher's thread pool (see AGENTS.md's Retro v4/v6 for the incident and fix).
+    It's now a decorating `Call.Factory` that schedules retries on a `ScheduledExecutorService`
+    instead, so a backing-off request releases the dispatcher thread instead of parking it.
+    `Interceptor.intercept()` can't do this — it's a synchronous API by design, so retry logic had
+    to move up a layer. Don't add a second layer of manual retry/backoff in repository code — this
+    already covers every request made through the shared `Call.Factory`.
 
 ### 6. Concurrent Request Deduplication & Caching Optimizations
 *   **Problem**: Parallel background synchronization and foreground UI activities triggered simultaneous, identical HTTP requests for the same folder node. Additionally, search operations called sequential requests for the same user root node ID, and pager swiping caused redundant album re-fetches and UI blanking out.

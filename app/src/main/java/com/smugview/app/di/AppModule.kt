@@ -3,6 +3,7 @@ package com.smugview.app.di
 import android.content.Context
 import androidx.room.Room
 import androidx.work.WorkManager
+import com.smugview.app.data.api.RetryingCallFactory
 import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.CollectionDao
@@ -19,7 +20,6 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -51,40 +51,6 @@ object AppModule {
             chain.proceed(request)
         }
 
-        val errorInterceptor = Interceptor { chain ->
-            val request = chain.request()
-            val response = chain.proceed(request)
-            val isApiRequest = request.url.host == "api.smugmug.com" && request.url.encodedPath.contains("/api/v2/")
-            if (!response.isSuccessful && isApiRequest && request.header("X-Ignore-Errors") != "true") {
-                val code = response.code
-                val httpMessage = response.message
-                val responseBodyContent = try {
-                    val peekBody = response.peekBody(1024 * 1024L) // Peek up to 1MB
-                    peekBody.string()
-                } catch (e: Exception) {
-                    null
-                }
-                val friendlyMessage = com.smugview.app.data.api.SmugMugErrorMapper.getFriendlyMessage(code, httpMessage, responseBodyContent)
-
-                // Log every surfaced API failure so these are findable from the app's own tag
-                // (path + code), not just as a transient toast.
-                com.smugview.app.util.SmugLog.e(
-                    "SmugMugApiError",
-                    "${request.method} ${request.url.encodedPath} -> $code ($friendlyMessage)"
-                )
-
-                val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-                mainHandler.post {
-                    android.widget.Toast.makeText(
-                        context,
-                        friendlyMessage,
-                        android.widget.Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-            response
-        }
-
         // Cache Interceptor: Force OkHttp to cache GET responses by replacing 'no-cache/no-store' with a 5-minute cache header.
         // IMPORTANT: Search endpoints are explicitly excluded — they must always hit the network for fresh results.
         val cacheInterceptor = Interceptor { chain ->
@@ -109,39 +75,6 @@ object AppModule {
             } else {
                 response
             }
-        }
-
-        val retryInterceptor = Interceptor { chain ->
-            var request = chain.request()
-            var response = chain.proceed(request)
-            var tryCount = 0
-            val maxLimit = 5
-            var delayMs = 500L
-
-            // Retry for server failures or rate limiting (429, 5xx)
-            while (!response.isSuccessful && (response.code == 429 || response.code in 500..599) && tryCount < maxLimit) {
-                tryCount++
-                
-                var sleepTimeMs = delayMs
-                if (response.code == 429) {
-                    val retryAfterHeader = response.header("Retry-After") ?: response.header("retry-after")
-                    val retryAfterSeconds = retryAfterHeader?.toLongOrNull()
-                    if (retryAfterSeconds != null) {
-                        sleepTimeMs = retryAfterSeconds * 1000L
-                    }
-                }
-
-                response.close()
-                try {
-                    Thread.sleep(sleepTimeMs)
-                } catch (e: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw IOException(e)
-                }
-                delayMs *= 2 // Exponential backoff
-                response = chain.proceed(request)
-            }
-            response
         }
 
         val cookieJar = object : okhttp3.CookieJar {
@@ -172,21 +105,71 @@ object AppModule {
             .cache(cache)
             .cookieJar(cookieJar)
             .addInterceptor(headerInterceptor)
-            .addInterceptor(errorInterceptor)
             .addNetworkInterceptor(cacheInterceptor)
             .addInterceptor(loggingInterceptor)
-            .addInterceptor(retryInterceptor)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .build()
     }
 
+    /**
+     * Wraps [provideOkHttpClient] with non-blocking 429/5xx retry (see [RetryingCallFactory] for
+     * why this has to be a [okhttp3.Call.Factory] decorator rather than an `Interceptor`) plus the
+     * user-facing error Toast that used to live in an `errorInterceptor`. That reporting logic
+     * moved here — instead of a chain-positioned `Interceptor` — specifically so it fires exactly
+     * once per *logical* request (after retries settle), not once per retry attempt: a decorator
+     * wrapping the whole client re-runs the full interceptor chain on every retry, so a plain
+     * `Interceptor` in that chain would Toast on every intermediate 429/500, not just the final
+     * outcome.
+     *
+     * Both Retrofit ([provideSmugMugApi]) and Coil (`SmugViewApp.newImageLoader`) are wired to
+     * this instead of the raw [OkHttpClient] bean, so image loads keep the same retry/error
+     * behavior as API calls — see the "Aggressive Image Loading Cache (Coil)" note in
+     * `docs/SMUGMUG.md` ("routes all image file queries through the same ... retry policies used
+     * by Retrofit").
+     */
     @Provides
     @Singleton
-    fun provideSmugMugApi(okHttpClient: OkHttpClient): SmugMugApi {
+    fun provideRetryingCallFactory(
+        okHttpClient: OkHttpClient,
+        @ApplicationContext context: Context
+    ): okhttp3.Call.Factory {
+        return RetryingCallFactory(
+            delegate = okHttpClient,
+            onFinalResponse = { request, response ->
+                val isApiRequest = request.url.host == "api.smugmug.com" && request.url.encodedPath.contains("/api/v2/")
+                if (isApiRequest && request.header("X-Ignore-Errors") != "true") {
+                    val responseBodyContent = try {
+                        response.peekBody(1024 * 1024L).string() // Peek up to 1MB
+                    } catch (e: Exception) {
+                        null
+                    }
+                    val friendlyMessage = com.smugview.app.data.api.SmugMugErrorMapper.getFriendlyMessage(
+                        response.code, response.message, responseBodyContent
+                    )
+
+                    // Log every surfaced API failure so these are findable from the app's own tag
+                    // (path + code), not just as a transient toast.
+                    com.smugview.app.util.SmugLog.e(
+                        "SmugMugApiError",
+                        "${request.method} ${request.url.encodedPath} -> ${response.code} ($friendlyMessage)"
+                    )
+
+                    val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                    mainHandler.post {
+                        android.widget.Toast.makeText(context, friendlyMessage, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideSmugMugApi(callFactory: okhttp3.Call.Factory): SmugMugApi {
         return Retrofit.Builder()
             .baseUrl("https://api.smugmug.com/api/v2/")
-            .client(okHttpClient)
+            .callFactory(callFactory)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(SmugMugApi::class.java)
