@@ -118,7 +118,7 @@ class SmugViewModelTest {
         }
         
         fakePasswordStore = com.smugview.app.data.security.FakePasswordStore()
-        viewModel = SmugViewModel(mockApp, mockRepository, mockWorkManager, mockCastManager, fakePasswordStore)
+        viewModel = SmugViewModel(mockApp, mockRepository, mockWorkManager, mockCastManager, fakePasswordStore, testDispatcher)
     }
 
     @After

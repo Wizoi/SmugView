@@ -186,6 +186,29 @@ returning visitors can spot what's new without re-browsing everything.
     spacer so the badge appearing/disappearing never shifts the grid layout (CLS prevention, per
     the UX Designer persona's skeleton-loader/layout-shift rules elsewhere in this doc).
 
+### Cache reconciliation: `cached_nodes` (tree) vs. `cached_albums` (flat index)
+
+These are two independent Room tables covering overlapping data, and nothing keeps them in sync
+automatically — every place that writes to one must explicitly decide whether the other needs
+updating too:
+
+*   **`cached_nodes`** is the browsable folder tree (`FoldersTabView`), populated per-folder by
+    `getNodeChildren` on demand. It has **no staleness check**: once a folder's children are
+    cached, they're served from Room forever until an explicit `forceRefresh = true` (e.g. a
+    pull-to-refresh, or the unlock re-fetch above). `startFolderTreeSync`'s background crawl always
+    passes `forceRefresh = false`, so it re-reads the existing cache, not the server — it does not
+    by itself keep folders fresh.
+*   **`cached_albums`** is the flat gallery index gallery *search* reads exclusively
+    (`SearchController` never queries `cached_nodes` for galleries). It's synced by
+    `buildInMemoryGalleryCache` at site load/switch via the incremental `LastUpdated` delta
+    described above.
+*   **The reconciliation**: `getNodeChildren` merges any Album-type children it fetches into
+    `cached_albums` too (`mergeAlbumsIntoIndex`), so anything browsable is also searchable. And
+    `buildInMemoryGalleryCache`'s delta sync — since it already knows exactly which galleries are
+    new or changed, via `CachedAlbum.parentNodeId` — evicts just those galleries' parent folders'
+    `cached_nodes` rows, so the next time that folder is opened it re-fetches fresh content instead
+    of serving a listing that predates the change.
+
 ---
 
 ## 📡 Casting & the Web Companion Server
@@ -293,7 +316,7 @@ graph TD
 ### Key Data Flow Cycles
 1. **Explore Site Flow**: User enters nickname ➡️ `SmugViewModel` triggers API request via `SmugMugRepository` ➡️ API returns root node ➡️ UI transitions to standard photo explorer.
 2. **Offline Bookmark & Sync Flow**: User toggles offline sync on a collection ➡️ Repository inserts metadata in `AppDatabase` ➡️ Repository schedules `OfflineDownloadWorker` via `WorkManager` ➡️ Worker verifies local device storage ➡️ Worker fetches full-resolution images from `SmugMugApi` and saves files directly to internal directory, updating Room DB metadata status to `downloaded` (rendered as a green cloud checkmark in UI).
-3. **Password Unlock Flow**: User accesses a password-marked node ➡️ API query fails with `401/404` ➡️ App prompts user for password ➡️ Repository calls `!unlock` POST endpoint to save the session tokens in Retrofit's OkHttp `CookieJar` ➡️ Subsequent requests succeed.
+3. **Password Unlock Flow**: User accesses a password-marked node ➡️ API query fails with `401/404` ➡️ App prompts user for password ➡️ Repository calls `!unlock` POST endpoint to save the session tokens in Retrofit's OkHttp `CookieJar` ➡️ Repository re-fetches the node's children (now authenticated) and caches them in `cached_nodes` **and** merges any revealed galleries into the flat `cached_albums` search index (`SmugMugRepository.mergeAlbumsIntoIndex`) ➡️ Subsequent requests succeed, and the newly-unlocked galleries are immediately findable via search, not just via browsing. See "Folder & Gallery Update Indicators" below for how the two caches (`cached_nodes` tree vs. `cached_albums` flat index) are kept from drifting apart more generally.
 
 ---
 

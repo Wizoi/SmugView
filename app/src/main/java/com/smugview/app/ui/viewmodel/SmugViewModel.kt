@@ -58,6 +58,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
@@ -121,7 +122,17 @@ class SmugViewModel @Inject constructor(
     private val repository: SmugMugRepository,
     private val workManager: WorkManager,
     val castManager: CastManager,
-    private val passwordStore: com.smugview.app.data.security.PasswordStore
+    private val passwordStore: com.smugview.app.data.security.PasswordStore,
+    /**
+     * Backs the off-main-thread work below (the [unlockedNodeIds] combine and the
+     * [getImageDetails] background resolution). Production gets the real [Dispatchers.Default]
+     * via Hilt ([com.smugview.app.di.AppModule.provideDefaultDispatcher]); tests inject a
+     * [kotlinx.coroutines.test.TestDispatcher] so this work runs under the test scheduler's
+     * virtual time instead of the real thread pool — otherwise it escapes `Dispatchers.setMain`
+     * (which only redirects `Dispatchers.Main`) and can leak a coroutine past its originating
+     * test, surfacing as an `UncaughtExceptionsBeforeTest` failure on an unrelated later test.
+     */
+    private val defaultDispatcher: CoroutineDispatcher
 ) : AndroidViewModel(application) {
 
     private val apiKey = BuildConfig.SMUGMUG_API_KEY
@@ -144,7 +155,7 @@ class SmugViewModel @Inject constructor(
         ) { savedKeys, nodes ->
             computeUnlockedNodeIds(savedKeys, nodes)
         }
-            .flowOn(Dispatchers.Default)
+            .flowOn(defaultDispatcher)
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     private fun computeUnlockedNodeIds(
@@ -1841,7 +1852,7 @@ class SmugViewModel @Inject constructor(
     fun getImageDetails(imageKey: String): StateFlow<Result<AlbumImageData>?> {
         val flow = _imageDetailsStates.getOrPut(imageKey) {
             val stateFlow = MutableStateFlow<Result<AlbumImageData>?>(null)
-            viewModelScope.launch(Dispatchers.Default) {
+            viewModelScope.launch(defaultDispatcher) {
                 val albumKey = _currentAlbumKey.value
                 val searchPhoto = searchPhotosList.find { it.imageKey == imageKey }
                 val webUri = searchPhoto?.webUri

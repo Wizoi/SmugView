@@ -206,6 +206,10 @@ class SmugMugRepositoryTest {
         override suspend fun clearAllCachedNodes() {
             nodes.clear()
         }
+
+        override suspend fun deleteNodesByParent(parentNodeId: String) {
+            nodes.removeAll { it.parentNodeId == parentNodeId }
+        }
     }
 
     private fun createMockApi(interceptor: Interceptor): SmugMugApi {
@@ -790,6 +794,168 @@ class SmugMugRepositoryTest {
         assertNotNull(uphs)
         assertEquals(1, uphs!!.previewPhotos.size)
         assertEquals("https://uphs.smugmug.com", uphs.webUri)
+    }
+
+    @Test
+    fun testUnlockingFolderMakesItsGalleriesSearchable() = runBlocking {
+        // Regression test for: after unlocking a password-protected folder, its galleries stayed
+        // invisible to search forever because getNodeChildren only wrote them into cached_nodes,
+        // never into the flat gallery index (cached_albums / albumsCache) that gallery search reads.
+        val fakeDao = FakeCollectionDao()
+
+        val mockInterceptor = Interceptor { chain ->
+            val json = """
+            {
+              "Response": {
+                "Uri": "/api/v2/node/folder1!children",
+                "Locator": "Node",
+                "LocatorType": "Objects",
+                "Node": [
+                  {
+                    "Uri": "/api/v2/node/albumX",
+                    "NodeID": "albumX",
+                    "Type": "Album",
+                    "Name": "Family Photos",
+                    "DateModified": "2026-07-20T10:00:00+00:00",
+                    "Uris": {
+                      "Album": "/api/v2/album/albumX",
+                      "ParentNode": "/api/v2/node/folder1"
+                    }
+                  }
+                ]
+              },
+              "Code": 200,
+              "Message": "Ok"
+            }
+            """.trimIndent()
+
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+
+        // Before unlock: gallery search (which filters repository.albumsCache.value by title) finds nothing.
+        assertTrue(repository.albumsCache.value.isEmpty())
+
+        // Simulate the unlock flow's post-unlock prefetch (SmugViewModel.apiTestFetch calls
+        // getNodeChildren(node.nodeId, apiKey, forceRefresh = true, password) on success).
+        val result = repository.getNodeChildren("folder1", "dummy_key", forceRefresh = true, password = "gallery").first()
+        assertTrue(result.isSuccess)
+
+        // The revealed gallery must now be in the searchable in-memory index...
+        val indexed = repository.albumsCache.value.find { it.title == "Family Photos" }
+        assertNotNull("Unlocked gallery should be merged into the searchable album index", indexed)
+        assertEquals("albumX", indexed?.nodeId)
+
+        // ...and persisted, so it survives process death / the next cache load.
+        val persisted = fakeDao.getAlbumIndex("").find { it.albumKey == "albumX" }
+        assertNotNull("Unlocked gallery should be persisted into cached_albums", persisted)
+    }
+
+    @Test
+    fun testGalleryUpdateInvalidatesParentFolderCache() = runBlocking {
+        // Regression test for: a new/updated gallery under a folder wasn't reflected in that
+        // folder's browsable listing until a manual refresh, because getNodeChildren caches a
+        // folder's children forever and nothing ever invalidated that cache when a gallery changed
+        // server-side, even though buildInMemoryGalleryCache already does a cheap LastUpdated-based
+        // delta query at every startup that could drive that invalidation.
+        val fakeDao = FakeCollectionDao()
+
+        // Baseline: album already indexed with an older LastUpdated (as if from a previous sync).
+        fakeDao.albumIndex.add(
+            CachedAlbum(
+                albumKey = "albumX",
+                nodeId = "albumX",
+                name = "Family Photos",
+                securityType = "Public",
+                passwordHint = null,
+                uri = "/api/v2/album/albumX",
+                webUri = null,
+                urlPath = null,
+                imageCount = 10,
+                dateModified = "2026-01-01T00:00:00+00:00",
+                galleryStyle = null,
+                highlightImageUrl = null,
+                sortIndex = 0,
+                nickname = "testuser",
+                parentNodeId = "folder1"
+            )
+        )
+        // Baseline: folder1's children are already cached from a previous browse (this is the
+        // stale listing that should get evicted once we learn albumX changed).
+        fakeDao.nodes.add(
+            CachedNode(
+                nodeId = "albumX",
+                parentNodeId = "folder1",
+                type = "Album",
+                title = "Family Photos",
+                description = null,
+                access = "Public",
+                passwordHint = null,
+                uri = "/api/v2/album/albumX",
+                childNodesUri = null,
+                albumUri = "/api/v2/album/albumX"
+            )
+        )
+
+        val mockInterceptor = Interceptor { chain ->
+            val json = """
+            {
+              "Response": {
+                "Album": [
+                  {
+                    "Uri": "/api/v2/album/albumX",
+                    "AlbumKey": "albumX",
+                    "NodeID": "albumX",
+                    "Name": "Family Photos",
+                    "LastUpdated": "2026-07-20T10:00:00+00:00",
+                    "Uris": {
+                      "ParentNode": "/api/v2/node/folder1"
+                    }
+                  }
+                ],
+                "Pages": { "Total": 1, "Start": 1, "Count": 1 }
+              },
+              "Code": 200,
+              "Message": "Ok"
+            }
+            """.trimIndent()
+
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaTypeOrNull()))
+                .build()
+        }
+
+        val api = createMockApi(mockInterceptor)
+        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+
+        // Sanity: folder1's stale listing is present before the sync.
+        assertEquals(1, fakeDao.nodes.count { it.parentNodeId == "folder1" })
+
+        repository.buildInMemoryGalleryCache("testuser", "dummy_key")
+
+        // The gallery index picked up the new LastUpdated...
+        val updated = fakeDao.getAlbumIndex("testuser").find { it.albumKey == "albumX" }
+        assertEquals("2026-07-20T10:00:00+00:00", updated?.dateModified)
+
+        // ...and folder1's cached children were evicted so the Folders tab re-fetches fresh
+        // content next time it's opened, instead of showing the stale pre-update listing.
+        assertEquals(
+            "Stale parent folder listing should be invalidated after a gallery under it changed",
+            0,
+            fakeDao.nodes.count { it.parentNodeId == "folder1" }
+        )
     }
 
     @Test

@@ -42,6 +42,11 @@ interface CollectionDao {
     @Query("DELETE FROM cached_nodes")
     suspend fun clearAllCachedNodes()
 
+    /** Evicts a folder's cached child listing so the next [getCachedNodesByParent] read misses
+     *  cache and `getNodeChildren` refetches from the API instead of serving stale data. */
+    @Query("DELETE FROM cached_nodes WHERE parentNodeId = :parentNodeId")
+    suspend fun deleteNodesByParent(parentNodeId: String)
+
     @Query("""
         WITH RECURSIVE descendants(nodeId) AS (
             SELECT :scopeNodeId

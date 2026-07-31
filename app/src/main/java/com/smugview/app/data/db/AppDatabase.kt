@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ViewedGalleryUpdate::class,
         CachedAlbum::class
     ],
-    version = 14,
+    version = 15,
     // Schemas are exported to app/schemas (see the KSP room.schemaLocation arg in
     // build.gradle.kts) so migrations can be validated with MigrationTestHelper.
     exportSchema = true
@@ -99,6 +99,20 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_cached_albums_nickname` ON `cached_albums` (`nickname`)"
                 )
+            }
+        }
+
+        /**
+         * v14 -> v15: cached_albums gains parentNodeId (the containing folder's nodeId).
+         *
+         * Lets the incremental gallery sync in [com.smugview.app.data.repository.SmugMugRepository
+         * .buildInMemoryGalleryCache] invalidate a specific parent folder's cached_nodes listing
+         * when one of its galleries is new or its LastUpdated changes, instead of the Folders tab
+         * showing stale content until a manual refresh.
+         */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE cached_albums ADD COLUMN parentNodeId TEXT")
             }
         }
     }

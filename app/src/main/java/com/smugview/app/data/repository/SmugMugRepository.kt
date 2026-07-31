@@ -273,6 +273,11 @@ class SmugMugRepository @Inject constructor(
                 // Save to database
                 insertNodesScoped(dbNodes)
                 dao.updateChildCount(nodeId, dbNodes.size)
+                // Any Album-type children (e.g. galleries revealed by unlocking a password-protected
+                // parent folder) also need to land in the flat gallery index, since search matches
+                // galleries exclusively against it (see buildInMemoryGalleryCache) — otherwise a
+                // freshly-unlocked folder's galleries are cached here but stay invisible to search.
+                mergeAlbumsIntoIndex(dbNodes)
                 emit(Result.success(dbNodes))
             } catch (e: CancellationException) {
                 throw e
@@ -724,7 +729,8 @@ class SmugMugRepository @Inject constructor(
                                 galleryStyle = album.galleryStyle,
                                 highlightImageUrl = highlightUrl,
                                 sortIndex = sortBase++,
-                                nickname = nickname
+                                nickname = nickname,
+                                parentNodeId = album.uris?.parentNode?.let { parseNodeIdFromUri(it) }
                             )
                         )
                     }
@@ -740,6 +746,17 @@ class SmugMugRepository @Inject constructor(
                     if (com.smugview.app.BuildConfig.DEBUG) {
                         android.util.Log.d("SmugMugRepository", "album index synced: ${changed.size} new/changed, total=${_albumsCache.value.size}")
                     }
+                    // A gallery that's new or whose LastUpdated moved means its parent folder's
+                    // cached child listing (cached_nodes, used by the Folders tab) may be stale —
+                    // evict it so the next visit re-fetches from the API instead of showing old
+                    // content until a manual refresh. Skipped on the first-ever sync since nothing
+                    // was cached yet to go stale.
+                    if (!isFirstSync) {
+                        val staleParents = changed.mapNotNull { it.parentNodeId }.distinct()
+                        for (parentId in staleParents) {
+                            dao.deleteNodesByParent(parentId)
+                        }
+                    }
                 } else if (isFirstSync) {
                     _albumsCache.value = emptyList()
                 }
@@ -749,6 +766,41 @@ class SmugMugRepository @Inject constructor(
                 _isAlbumsCacheLoaded.value = true
             }
         }
+    }
+
+    /**
+     * Upserts any Album-type nodes into the flat gallery index ([CachedAlbum] / [albumsCache]) so
+     * they're searchable, and refreshes the in-memory cache. Existing metadata we don't have from a
+     * node-children fetch (urlPath, galleryStyle) is preserved from the prior index entry if present.
+     */
+    private suspend fun mergeAlbumsIntoIndex(nodes: List<CachedNode>) {
+        val albums = nodes.filter { it.type == "Album" }
+        if (albums.isEmpty()) return
+        val nickname = activeNickname
+        val existingByKey = dao.getAlbumIndex(nickname).associateBy { it.albumKey }
+        val toUpsert = albums.map { node ->
+            val albumKey = node.getAlbumKey()
+            val existing = existingByKey[albumKey]
+            CachedAlbum(
+                albumKey = albumKey,
+                nodeId = node.nodeId,
+                name = node.title,
+                securityType = node.access ?: existing?.securityType,
+                passwordHint = node.passwordHint ?: existing?.passwordHint,
+                uri = node.albumUri ?: node.uri,
+                webUri = node.webUri ?: existing?.webUri,
+                urlPath = existing?.urlPath,
+                imageCount = node.childCount ?: existing?.imageCount,
+                dateModified = node.dateModified ?: existing?.dateModified,
+                galleryStyle = existing?.galleryStyle,
+                highlightImageUrl = node.highlightImageUrl ?: existing?.highlightImageUrl,
+                sortIndex = existing?.sortIndex ?: node.sortIndex,
+                nickname = nickname,
+                parentNodeId = node.parentNodeId ?: existing?.parentNodeId
+            )
+        }
+        dao.upsertAlbums(toUpsert)
+        _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
     }
 
     fun getSavedPasswordForNode(node: CachedNode): String? {

@@ -11,6 +11,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -190,6 +192,16 @@ object AppModule {
             .create(SmugMugApi::class.java)
     }
 
+    /**
+     * Injected so [com.smugview.app.ui.viewmodel.SmugViewModel]'s off-main-thread work can be
+     * swapped for a [kotlinx.coroutines.test.TestDispatcher] in unit tests — `Dispatchers.setMain`
+     * only redirects `Dispatchers.Main`, so a hardcoded `Dispatchers.Default` reference would keep
+     * running on the real thread pool under `runTest` and could leak a coroutine past its test.
+     */
+    @Provides
+    @Singleton
+    fun provideDefaultDispatcher(): CoroutineDispatcher = Dispatchers.Default
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -198,8 +210,8 @@ object AppModule {
             AppDatabase::class.java,
             "smugview_db"
         )
-            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14)
-            // v12 -> v13 / v13 -> v14 have real migrations above, so users keep their data.
+            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15)
+            // v12 -> v13 / v13 -> v14 / v14 -> v15 have real migrations above, so users keep their data.
             //
             // Versions 1..11 (all prior production releases) shipped with
             // fallbackToDestructiveMigration(), so there is NO real migration path from

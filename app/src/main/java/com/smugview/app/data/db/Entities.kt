@@ -64,7 +64,11 @@ data class CachedAlbum(
     val galleryStyle: String?,
     val highlightImageUrl: String?,
     val sortIndex: Int = 0,
-    @ColumnInfo(defaultValue = "") val nickname: String = ""
+    @ColumnInfo(defaultValue = "") val nickname: String = "",
+    /** Containing folder's nodeId, when known. Drives targeted [CachedNode] invalidation when a
+     *  gallery is new or its LastUpdated changes, so the parent folder's cached child list is
+     *  refetched instead of staying stale until a manual refresh. */
+    val parentNodeId: String? = null
 ) {
     /** Maps to the flat [CachedNode] shape the rest of the app consumes via albumsCache. */
     fun toCachedNode(): CachedNode = CachedNode(
