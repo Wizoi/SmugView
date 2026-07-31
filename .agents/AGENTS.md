@@ -368,8 +368,30 @@ plus a flaky `SmugViewModelTest` failure surfaced while adding regression covera
     continuation ran first wasn't guaranteed, flaking a test that assumed "started first = finishes
     first." Fixed by making one path deterministically slower (more BFS levels → more sequential
     delays) instead of relying on timing margins between two near-simultaneous real delays.
+*   **A blocking-wait fix can itself over-block if placed at the top of a function instead of
+    around the specific read that needs it.** The `isIndexingSubtree` wait above initially sat at
+    the top of `performSearch`, ahead of everything — including photo search, which hits a live API
+    and never touches `albumsCache` at all. Since the UI (`SearchTabView.kt`) gates its whole
+    results shell behind `SearchUiState.Success`, that meant unlocking a folder and searching could
+    leave the *entire* search screen — photos included — on a spinner for as long as background
+    indexing took, which is exactly the kind of regression a "just add a wait" fix can introduce
+    without deliberately checking what else that wait now blocks. Fixed by reordering: photos wire
+    up and `_searchState` flips to `Success` (galleries/folders empty) immediately; only the later
+    gallery/folder update waits. **Lesson**: when adding a wait for correctness, explicitly trace
+    what else is sequenced after the insertion point before assuming "top of the function" is a
+    safe place to put it — a race-condition fix and a needless-blocking regression can be the same
+    three lines of code in the wrong spot vs. the right one.
+*   **A test that asserts on a `StateFlow` set inside a fire-and-forget `scope.launch` (not awaited
+    by the coroutine under test) can be racy even under `runTest`/`advanceUntilIdle()`** if the
+    launched work completes essentially synchronously (an unstubbed Mockito suspend call resolves
+    without a real suspension point) — the flag can flip back before the assertion runs. Prefer
+    asserting on a value the coroutine *actually* leaves in that state durably (here,
+    `_searchState` staying `Success`-with-empty-galleries for as long as the gate condition holds)
+    over a transient loading flag whose timing depends on how "slow" the mock happens to be.
 
 **Follow-up status:** ✅ No open items — both production bugs (including the depth-2 follow-up gap
-caught the same day) and the flaky-test dispatcher injection all shipped, verified, and published
-(v0.7.1 versionCode 19, v0.7.2 versionCode 20). This retro also *surfaced* the two Retro v4 items
-that are still open (tracker rows #1 and #2) — see the tracker at the top of this file.
+caught the same day), the flaky-test dispatcher injection, the background-indexing search race, and
+its own follow-up (photos shouldn't block on the gallery-cache wait) all shipped, verified, and
+published (v0.7.1 versionCode 19, v0.7.2 versionCode 20, v0.7.3 versionCode 21). This retro also
+*surfaced* the two Retro v4 items that are still open (tracker rows #1 and #2) — see the tracker at
+the top of this file.
