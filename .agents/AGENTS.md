@@ -130,17 +130,30 @@ guidance above now describes what's actually implemented instead of an abandoned
 ## 🧪 QA/Tester & Data-Layer Snapshot Rules
 *   **Scenario Update Test Planning**: Every workflow or scenario update must begin with a QA/Tester subagent-approved test coverage plan.
 *   **Test Gap & Impact Analysis**: Every implementation plan must detail why a bug was missed by existing tests, how to address it in future tests, and how existing tests or snapshots are impacted (including updating snapshots and expectations). If a new field or model property is added to API queries or cache entities, the QA/Tester must explicitly identify and update all related inline mock test stubs or external JSON snapshots to include the new field (preventing mock fields from being parsed as null during test runs).
-*   **Mock Elimination via Snapshots**: Transition test suites away from static mock data layers. Capture raw, live API response JSON payloads and inject them at the lowest data layer (e.g. mock server or network level) to guarantee that all fields, schemas, and relationships (like `Uris` and `WebUri`) are identical to actual server payloads.
+*   **Mock Elimination via Snapshots — scoped to shape/parsing-fidelity tests, not business-logic
+    tests** (clarified 2026-08-01, see tracker row #6): use captured live API response JSON
+    (`app/src/test/resources/snapshots/` + `PlaybackInterceptor`, as `SmugMugApiTest.kt` already
+    does) for tests whose job is verifying the Kotlin models correctly deserialize genuine server
+    payloads — that's what guarantees fields/schemas/relationships (`Uris`, `WebUri`, etc.) match
+    reality. It does **not** mean every test everywhere must use snapshots. Repository/ViewModel
+    tests (`SmugMugRepositoryTest.kt`, `SmugViewModelTest.kt`) are testing business logic given a
+    deliberately-constructed scenario (a gallery nested two folders deep, a stale parent listing,
+    a locked node) — hand-written inline JSON is the *right* tool there, since it gives precise
+    control over the exact scenario, which a live snapshot capture can't reliably provide and
+    would be brittle to fake through an extra layer of indirection. Use snapshots when the
+    question is "does this parse correctly"; use hand-written fixtures when the question is "does
+    the logic behave correctly given this shape."
 *   **Field Congruency Verification**: Before implementing tests, manually execute the target query against the SmugMug API. The QA/Tester must verify that all fields, URIs, and formats expected in the repository queries exist in the captured raw response before updating snapshots.
 
 *   **Dual Test Reports & Verification**: After every test execution, the QA/Tester is responsible for generating, updating, and verifying the accuracy of the portable relative-linked summary (`test_result.md`) and deep-dive (`test_details.md`) reports. The Project Manager must verify these artifacts. Note that these are transient files created during the testing/build phase.
     *   **Summary Report Structure (`test_result.md`)**: Grouped by test category using a Markdown table with columns: `Verdict | Test Scenario | Source Query / API Endpoint | Expected Data / Fields | Actual Data / Status`. The status column must remain concise and end with a relative link to the detailed report: `[Details](test_details.md#<lowercase-scenario-name>)`.
     *   **Detailed Log Structure (`test_details.md`)**: Contains anchor headers (`<a name="<lowercase-scenario-name>"></a>\n## <Scenario>`), full response details, bulleted step lists, and verification logs.
 
-**Follow-up status:** ⚠️ PARTIAL (as of 2026-07-31) — the "Mock Elimination via Snapshots" bullet is
-only adopted in `SmugMugApiTest.kt` (via `PlaybackInterceptor` + `app/src/test/resources/snapshots/`).
-`SmugMugRepositoryTest.kt` and `SmugViewModelTest.kt` still use hand-written inline JSON mocks. See
-tracker row #6.
+**Follow-up status:** ✅ DONE (2026-08-01) — see tracker row #6. Verdict: not actually a gap. The
+rule's wording was ambiguous enough to read as a blanket policy; it's now explicit that it applies
+to shape/parsing-fidelity tests (`SmugMugApiTest.kt`, correctly using snapshots) and not to
+business-logic tests (`SmugMugRepositoryTest.kt`/`SmugViewModelTest.kt`), which need hand-crafted
+scenario control that snapshots can't provide. No test migration needed.
 
 ## 📈 Project Manager Scrum & Retro Rules
 *   **Automatic Retrospectives**: Every scenario update or bug fix task must conclude with an automatic retrospective review conducted by the Project Manager.
@@ -178,7 +191,7 @@ Status legend: 🔲 **TODO — analysis** (needs a codebase investigation before
 | 3 | ~~Naming/trademark exposure~~ | `PUBLISH.md` §5 | ✅ DONE (2026-08-01) | Confirmed directly with SmugMug — not a policy risk. No code/doc change needed beyond removing the open-question framing (done in `PUBLISH.md` §5). |
 | 4 | ~~Single shared `SMUGMUG_API_KEY` — no capacity plan~~ | `PUBLISH.md` §5 | ✅ DONE (2026-08-01) | Decision made: single shared key is the intended model going forward, not a gap to close. Reframed in `PUBLISH.md` §5 as a documented constraint rather than an open question. |
 | 5 | `PUBLISH.md` §4 checklist (data safety form, content rating, ads declaration, closed-testing, production release, etc.) still shows every box unchecked | `PUBLISH.md` §4 | 🔲 TODO — analysis | In tension with a verified fact: v0.7.1/v0.7.2 both published as full `completed` releases on alpha, which the doc says shouldn't be possible until this checklist clears. Someone needs to open Play Console, check actual status of each item, and reconcile the doc either way. |
-| 6 | "Mock Elimination via Snapshots" QA rule only adopted in `SmugMugApiTest.kt`; `SmugMugRepositoryTest.kt`/`SmugViewModelTest.kt` still use hand-written inline JSON mocks | QA/Tester & Data-Layer Snapshot Rules | 🔲 TODO — skill/doc update or analysis | Either migrate those two files to snapshot-backed mocks (real work, many tests), or narrow the rule's stated scope to live-API-shape-sensitive tests only, so it stops reading as an unmet blanket policy. |
+| 6 | ~~"Mock Elimination via Snapshots" only adopted in `SmugMugApiTest.kt`~~ | QA/Tester & Data-Layer Snapshot Rules | ✅ DONE (2026-08-01) | Verdict: not a gap — the rule was ambiguously worded. Narrowed to explicitly scope it to parsing-fidelity tests; business-logic tests correctly use hand-written fixtures for scenario control. No migration performed (would have been large and lower-value than the rule's original wording implied). |
 | 7 | ~~`getAlbumKeywords` unused in production~~ | SmugMug API Optimization Guidelines | ✅ DONE (2026-08-01) | Verdict: not a missed integration. The dead `_albumKeywordsMap` cache in `TagSearchController` (declared, reset twice, never populated/read) was removed. `getAlbumKeywords` itself was kept — correct, tested, a real API-visibility nuance worth having available — but AGENTS.md guidance was rewritten to describe the actual shipping approach (`getUserTopKeywords` + per-photo `Keywords`/`KeywordArray`). |
 
 **Recently closed (for the audit trail):**
