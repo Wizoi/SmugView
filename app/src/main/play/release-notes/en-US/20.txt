@@ -1,0 +1,2 @@
+Fixed:
+- Search now finds galleries nested inside unlocked folders, even when they're several folders deep (the previous fix only caught galleries directly inside the unlocked folder).
