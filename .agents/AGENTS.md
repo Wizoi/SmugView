@@ -186,7 +186,7 @@ Status legend: 🔲 **TODO — analysis** (needs a codebase investigation before
 
 | # | Item | Source | Status | Next step |
 |---|---|---|---|---|
-| 1 | `retryInterceptor` (`AppModule.kt`) still blocks the OkHttp dispatcher thread with `Thread.sleep` on 429/5xx instead of a suspending retry | Retro v4 | 🔲 TODO — analysis | Confirmed still present as of 2026-07-31. Needs a design for a non-blocking retry (e.g. an async OkHttp `Interceptor` replacement or Retrofit-level retry) that preserves the existing exponential-backoff + `Retry-After` behavior — not a drop-in one-liner. |
+| 1 | ~~`retryInterceptor` blocked the OkHttp dispatcher thread with `Thread.sleep`~~ | Retro v4 | ✅ DONE (2026-08-01) | Replaced with `RetryingCallFactory` — a decorating `okhttp3.Call.Factory` that retries via `ScheduledExecutorService` instead of blocking. Had to move as a `Call.Factory` (not an `Interceptor`) because `Interceptor.intercept()` is inherently synchronous. Preserves exact retry/backoff/`Retry-After` behavior; the user-facing error Toast (`errorInterceptor`) moved to an `onFinalResponse` callback so it still fires exactly once per logical request instead of once per retry attempt (a real regression risk in the naive version of this fix — a decorator wrapping the whole client re-runs the full interceptor chain per retry). Coil's image loader was also switched to the same `Call.Factory` so it keeps parity with Retrofit's retry behavior, matching documented intent in `SMUGMUG.md`. New `RetryingCallFactoryTest.kt` tests the real class directly (retry+success, exhausted retries, non-retryable pass-through, IOException not retried, callback fires exactly once, sync `execute()` path) — replaced `NetworkRetryTest.kt`, which only tested a hand-copied duplicate of the old logic, not the production code. |
 | 2 | ~~`getAllCachedNodes()` full-table scan at ~6 sites~~ | Retro v4 | ✅ DONE (2026-08-01) | All 6 remaining sites in `SmugViewModel.kt` fixed: 3 exact nodeId-or-albumKey lookups now use the already-indexed `getNodeByIdOrKey` (no full materialization at all); 3 webUri-substring-matching fallbacks (which genuinely can't become a pure indexed lookup) now use a new `getCachedNodesForActiveSite()` / `dao.getCachedNodesForNickname()`, scoped via the existing `index_cached_nodes_nickname` index instead of scanning every node ever cached across every site the user has visited. Full test suite green. |
 | 3 | ~~Naming/trademark exposure~~ | `PUBLISH.md` §5 | ✅ DONE (2026-08-01) | Confirmed directly with SmugMug — not a policy risk. No code/doc change needed beyond removing the open-question framing (done in `PUBLISH.md` §5). |
 | 4 | ~~Single shared `SMUGMUG_API_KEY` — no capacity plan~~ | `PUBLISH.md` §5 | ✅ DONE (2026-08-01) | Decision made: single shared key is the intended model going forward, not a gap to close. Reframed in `PUBLISH.md` §5 as a documented constraint rather than an open question. |
@@ -261,12 +261,11 @@ Distilled from a large security/quality review + the incremental album-index fea
 *   **Separate "regression I introduced" from "pre-existing bug my change exposed."** Removing a crutch (e.g. a brute-force password replay) can surface a latent bug that only *looked* like a new regression. State which it is, with evidence.
 *   **Know when to stabilize vs keep digging.** A single feature (locked-gallery jump) spiraled through 5+ layers of pre-existing issues. When a fix keeps revealing deeper pre-existing problems, land the safe/verified pieces, document the blocker precisely, and stop — don't destabilize verified work chasing the tail.
 
-**Follow-up status:** ⚠️ PARTIAL — most bullets are applied lessons, but one named action item is
-still open (tracker row #1):
+**Follow-up status:** ✅ DONE (2026-08-01) — both named action items are now closed:
 *   The "retry interceptor should eventually move to suspending `delay`" line (Room/DB performance
-    bullet 2) — 🔲 still `Thread.sleep`, unaddressed.
+    bullet 2) — ✅ DONE (tracker row #1): replaced with `RetryingCallFactory`.
 *   "Never use `getAllCachedNodes()` ... in a hot/navigation path" (Room/DB performance bullet 1)
-    — ✅ DONE 2026-08-01 (tracker row #2): all remaining call sites fixed.
+    — ✅ DONE (tracker row #2): all remaining call sites fixed.
 The "persist + incremental-sync pattern" bullet is ✅ DONE and was directly reused/extended in
 Retro v6. The "inject dispatchers for testability" bullet is ✅ DONE in principle (the pattern was
 correct) but wasn't applied to `SmugViewModel` until Retro v6 caught the gap — a good example of
