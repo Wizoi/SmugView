@@ -1,0 +1,2 @@
+Fixed:
+- Photo search results could get stuck loading while galleries/folders were still being indexed in the background, even though photos don't depend on that step. Photos now load immediately regardless.
