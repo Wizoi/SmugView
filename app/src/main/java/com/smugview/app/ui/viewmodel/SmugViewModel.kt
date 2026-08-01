@@ -545,6 +545,8 @@ class SmugViewModel @Inject constructor(
 
     val isSearchPhotosLoading: StateFlow<Boolean> get() = search.isSearchPhotosLoading
 
+    val isGalleriesFoldersLoading: StateFlow<Boolean> get() = search.isGalleriesFoldersLoading
+
     val searchGallerySortOrder: String get() = search.searchGallerySortOrder
 
     fun updateSearchGallerySortOrder(order: String) = search.updateSearchGallerySortOrder(order)

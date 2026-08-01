@@ -85,6 +85,19 @@ class SearchController(
     private val _isSearchPhotosLoading = MutableStateFlow(false)
     val isSearchPhotosLoading: StateFlow<Boolean> = _isSearchPhotosLoading.asStateFlow()
 
+    /**
+     * True while galleries/folders are still resolving — specifically, while waiting on
+     * [SmugMugRepository.isAlbumsCacheLoaded] / [SmugMugRepository.isIndexingSubtree]. Without
+     * this, [SearchUiState.Success] with empty `galleries`/`folders` is indistinguishable from
+     * "search found nothing": since photos are decoupled and can arrive first, the Galleries/
+     * Folders tabs would show "(0)" — reading as zero results — for as long as that wait takes
+     * (verified live: up to 18+ seconds after unlocking a folder with several sub-folders), with
+     * no indication anything is still happening. UI should show a loading state for those two
+     * tabs specifically while this is true, not a "no results" empty state.
+     */
+    private val _isGalleriesFoldersLoading = MutableStateFlow(false)
+    val isGalleriesFoldersLoading: StateFlow<Boolean> = _isGalleriesFoldersLoading.asStateFlow()
+
     // Search Gallery Sort Order: "Ascending" or "Descending"
     var searchGallerySortOrder by mutableStateOf(sharedPrefs.getString("search_gallery_sort_order", "Ascending") ?: "Ascending")
         private set
@@ -143,6 +156,7 @@ class SearchController(
         _searchPhotosPagingFlow.value = kotlinx.coroutines.flow.emptyFlow()
         _searchState.value = SearchUiState.Idle
         _isSearchPhotosLoading.value = false
+        _isGalleriesFoldersLoading.value = false
     }
 
     fun cancelSearchJob() {
@@ -161,6 +175,7 @@ class SearchController(
             searchJob?.cancel()
             backgroundSearchJob?.cancel()
             _searchState.value = SearchUiState.Idle
+            _isGalleriesFoldersLoading.value = false
             return
         }
         _searchState.value = SearchUiState.Loading
@@ -174,6 +189,7 @@ class SearchController(
                 val nickname = activeNickname.value
                 if (nickname.isNullOrEmpty()) {
                     _searchState.value = SearchUiState.Error("No active site profile loaded")
+                    _isGalleriesFoldersLoading.value = false
                     return@launch
                 }
 
@@ -229,6 +245,7 @@ class SearchController(
                     folders = emptyList(),
                     photosError = null
                 )
+                _isGalleriesFoldersLoading.value = true
 
                 if (isFullySearched && !forceRefresh) {
                     if (BuildConfig.DEBUG) {
@@ -294,6 +311,7 @@ class SearchController(
                     folders = cachedFolders,
                     photosError = null
                 )
+                _isGalleriesFoldersLoading.value = false
 
                 if (isFullySearched && !forceRefresh) {
                     if (BuildConfig.DEBUG) {
@@ -326,6 +344,7 @@ class SearchController(
             } catch (e: Throwable) {
                 e.printStackTrace()
                 _isSearchPhotosLoading.value = false
+                _isGalleriesFoldersLoading.value = false
                 _searchState.value = SearchUiState.Error(e.localizedMessage ?: "Error during search job")
             }
         }

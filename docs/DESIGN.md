@@ -245,6 +245,19 @@ that fills in the real galleries/folders once it clears. **When adding a wait li
 to the specific read that needs it — don't reach for "block the whole function" just because
 that's the easiest place to put it.**
 
+**A wait that eventually resolves can still look completely broken if nothing tells the user it's
+still working.** Verified live on-device: the `unlockAndIndexSubtree` wait can take 18+ seconds on
+a real site with several sub-folders. Once photos (decoupled, per above) start arriving before that
+finishes, `SearchUiState.Success` has real photos but `galleries = []`/`folders = []` — structurally
+identical to "search found nothing." `SearchController.isGalleriesFoldersLoading` (a
+`StateFlow<Boolean>`, mirroring the existing `isSearchPhotosLoading`) exists specifically so
+`SearchTabView.kt` can tell these apart: the Galleries/Folders tab labels show `(…)` instead of
+`(0)`, and their content areas show a spinner + "Loading galleries/folders..." instead of "No
+galleries/folders found," for as long as this is true. **Any time a wait is added between "show
+empty state" and "show real state," check whether that gap needs its own loading signal** — an
+empty list and a not-yet-populated list look the same in the data, but must not look the same to
+the user.
+
 ---
 
 ## 📡 Casting & the Web Companion Server

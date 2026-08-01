@@ -126,6 +126,7 @@ fun SearchTabView(
     val pagingFlow by viewModel.searchPhotosPagingFlow.collectAsState()
     val searchPhotosPagingItems = pagingFlow.collectAsLazyPagingItems()
     val isSearchPhotosLoading by viewModel.isSearchPhotosLoading.collectAsState()
+    val isGalleriesFoldersLoading by viewModel.isGalleriesFoldersLoading.collectAsState()
     val activeScope by viewModel.searchScope.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
     val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
@@ -314,18 +315,28 @@ fun SearchTabView(
                             modifier = Modifier.fillMaxSize()
                         ) {
                             Text(
-                                text = if (isSearchPhotosLoading) "Loading photos..." else "Enter a word or phrase to search",
+                                text = when {
+                                    isSearchPhotosLoading && isGalleriesFoldersLoading -> "Loading results..."
+                                    isSearchPhotosLoading -> "Loading photos..."
+                                    isGalleriesFoldersLoading -> "Loading galleries and folders..."
+                                    else -> "Enter a word or phrase to search"
+                                },
                                 color = Color.White.copy(alpha = 0.4f),
                                 fontWeight = FontWeight.Medium
                             )
                         }
                     } else {
                         Column(modifier = Modifier.fillMaxSize()) {
-                            // Secondary indicator for tab selection
+                            // Secondary indicator for tab selection. Galleries/Folders show a
+                            // pending "…" instead of "(0)" while isGalleriesFoldersLoading is true
+                            // — otherwise, since photos (decoupled, can arrive first) make this tab
+                            // row appear before galleries/folders are resolved, "(0)" reads as "no
+                            // results" rather than "still loading" (verified: this looked exactly
+                            // like a broken/empty search for as long as background indexing ran).
                             val tabs = listOf(
                                 "Photos (${searchPhotosPagingItems.itemCount})",
-                                "Galleries (${state.galleries.size})",
-                                "Folders (${state.folders.size})"
+                                if (isGalleriesFoldersLoading) "Galleries (…)" else "Galleries (${state.galleries.size})",
+                                if (isGalleriesFoldersLoading) "Folders (…)" else "Folders (${state.folders.size})"
                             )
                             
                             TabRow(
@@ -454,7 +465,15 @@ fun SearchTabView(
                                     1 -> { // Galleries tab
                                         if (state.galleries.isEmpty()) {
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                Text("No galleries found", color = Color.White.copy(alpha = 0.4f))
+                                                if (isGalleriesFoldersLoading) {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        CircularProgressIndicator(color = NeonBlue, modifier = Modifier.size(28.dp))
+                                                        Spacer(modifier = Modifier.height(12.dp))
+                                                        Text("Loading galleries...", color = Color.White.copy(alpha = 0.4f))
+                                                    }
+                                                } else {
+                                                    Text("No galleries found", color = Color.White.copy(alpha = 0.4f))
+                                                }
                                             }
                                         } else {
                                             Column(modifier = Modifier.fillMaxSize()) {
@@ -529,7 +548,15 @@ fun SearchTabView(
                                     2 -> { // Folders tab
                                         if (state.folders.isEmpty()) {
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                Text("No folders found", color = Color.White.copy(alpha = 0.4f))
+                                                if (isGalleriesFoldersLoading) {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        CircularProgressIndicator(color = NeonBlue, modifier = Modifier.size(28.dp))
+                                                        Spacer(modifier = Modifier.height(12.dp))
+                                                        Text("Loading folders...", color = Color.White.copy(alpha = 0.4f))
+                                                    }
+                                                } else {
+                                                    Text("No folders found", color = Color.White.copy(alpha = 0.4f))
+                                                }
                                             }
                                         } else {
                                             androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid(

@@ -195,6 +195,11 @@ class SmugViewModelTest {
      * SearchUiState.Success, so performSearch flips to Success (photos wired up immediately,
      * galleries/folders initially empty) right away instead of sitting in Loading until the
      * gallery-cache wait clears.
+     *
+     * And the second follow-up: with galleries/folders empty AND visible (Success, not Loading),
+     * isGalleriesFoldersLoading must be true so the UI can distinguish "still loading" from "found
+     * nothing" — verified live to otherwise look identical to a broken/empty search for as long as
+     * the background indexing walk runs (up to 18+ seconds observed on a real site).
      */
     @Test
     fun testPerformSearchWaitsForInProgressSubtreeIndexing() = runTest {
@@ -238,6 +243,10 @@ class SmugViewModelTest {
             stateWhileIndexing is SearchUiState.Success
         )
         assertEquals(0, (stateWhileIndexing as SearchUiState.Success).galleries.size)
+        assertTrue(
+            "isGalleriesFoldersLoading must be true so the UI shows a loading state, not '(0)'",
+            viewModel.isGalleriesFoldersLoading.value
+        )
 
         // Background indexing finishes, and the gallery it was walking toward lands in the cache.
         albumsFlow.value = listOf(
@@ -255,6 +264,10 @@ class SmugViewModelTest {
         val galleries = (state as SearchUiState.Success).galleries
         assertEquals(1, galleries.size)
         assertEquals("Family Reunion", galleries.first().title)
+        assertFalse(
+            "isGalleriesFoldersLoading must clear once galleries/folders actually resolved",
+            viewModel.isGalleriesFoldersLoading.value
+        )
     }
 
     @Test
