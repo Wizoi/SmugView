@@ -388,10 +388,32 @@ plus a flaky `SmugViewModelTest` failure surfaced while adding regression covera
     asserting on a value the coroutine *actually* leaves in that state durably (here,
     `_searchState` staying `Success`-with-empty-galleries for as long as the gate condition holds)
     over a transient loading flag whose timing depends on how "slow" the mock happens to be.
+*   **A correct fix can still read as "broken" in production if a live-verification pass isn't
+    part of shipping it.** Unit tests proved photos-decoupled-from-galleries worked; they could not
+    have caught that the *user-visible result* was still "galleries and folders just empty" for
+    18+ real seconds, because `SearchUiState.Success(galleries=[], folders=[])` is indistinguishable
+    — in the data — from a genuinely empty result. Only running the actual repro on-device (clear
+    storage → unlock a real locked folder → search) surfaced it, via the exact 18-second gap in
+    `adb logcat`. Added `SearchController.isGalleriesFoldersLoading` so the UI can tell "still
+    resolving" apart from "found nothing." **Lesson**: when a fix changes what state transitions
+    happen and in what order, don't stop at unit tests proving the transitions are correct — drive
+    the real flow on a device/emulator and watch what the *screen* does during every intermediate
+    state, not just the final one.
+*   **A stuck/unresponsive-looking emulator screen is not necessarily an app bug** — this session's
+    live-verification pass hit an AVD with a genuinely broken screen config (`wm size` reported
+    "Physical size: 320x640" — far smaller than any real device), which rendered text wrapped
+    mid-word and made every tap miss its target, looking exactly like a frozen app. `adb shell wm
+    size 1080x1920` (temporary override, no AVD rebuild needed) fixed it immediately. Check `adb
+    shell wm size` before assuming a non-interactive screen is an app-level hang.
 
 **Follow-up status:** ✅ No open items — both production bugs (including the depth-2 follow-up gap
-caught the same day), the flaky-test dispatcher injection, the background-indexing search race, and
-its own follow-up (photos shouldn't block on the gallery-cache wait) all shipped, verified, and
-published (v0.7.1 versionCode 19, v0.7.2 versionCode 20, v0.7.3 versionCode 21). This retro also
-*surfaced* the two Retro v4 items that are still open (tracker rows #1 and #2) — see the tracker at
-the top of this file.
+caught the same day), the flaky-test dispatcher injection, the background-indexing search race, its
+own follow-up (photos shouldn't block on the gallery-cache wait), and *that* follow-up's own gap
+(no loading indicator for galleries/folders while they wait) all shipped, verified — the last one
+via live on-device repro, not just unit tests — and published: v0.7.1 versionCode 19, v0.7.2
+versionCode 20, v0.7.3 versionCode 21 (also carries the full Retro Follow-Up Tracker backlog
+cleanup — rows #1, #2, #6, #7 — since it was published from the same HEAD), v0.7.4 versionCode 22,
+v0.7.5 versionCode 23.
+This retro also *surfaced* two Retro v4 items (tracker rows #1 and #2) that had been sitting open
+since 2026-07-17 — both since closed in the same session (see the tracker at the top of this file,
+which as of this writing has zero rows still genuinely open).
