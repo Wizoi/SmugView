@@ -1,0 +1,2 @@
+Fixed:
+- After unlocking a password-protected folder, the Galleries and Folders tabs in search could look empty for up to 20+ seconds while results were still loading in the background. They now clearly show "Loading..." instead of looking like zero results were found.
