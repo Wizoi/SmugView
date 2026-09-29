@@ -365,6 +365,7 @@ fun PhotoActionCapsule(
     onRequestAddToCollection: () -> Unit
 ) {
     val context = LocalContext.current
+    var showShareDialog by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(32.dp))
@@ -386,7 +387,7 @@ fun PhotoActionCapsule(
         }
         IconButton(onClick = {
             if (photo.webUri != null || photo.archivedUri != null) {
-                sharePhoto(context, scope, photo)
+                showShareDialog = true
             } else {
                 Toast.makeText(context, "Loading photo details, please wait...", Toast.LENGTH_SHORT).show()
             }
@@ -401,6 +402,18 @@ fun PhotoActionCapsule(
         IconButton(onClick = onShowExif) {
             Icon(Icons.Default.Info, "Info Details", tint = Color.White, modifier = Modifier.size(26.dp))
         }
+    }
+
+    if (showShareDialog) {
+        val shareUrl = photo.webUri ?: photo.archivedUri ?: ""
+        com.smugview.app.ui.component.QrShareDialog(
+            title = photo.title?.takeIf { it.isNotBlank() } ?: (photo.fileName ?: "Photo"),
+            url = shareUrl,
+            onDismissRequest = { showShareDialog = false },
+            // Keep the richer native flow: it shares the actual downloaded image file plus the
+            // link, not just the link as plain text.
+            onShareVia = { ctx -> sharePhoto(ctx, scope, photo) }
+        )
     }
 }
 

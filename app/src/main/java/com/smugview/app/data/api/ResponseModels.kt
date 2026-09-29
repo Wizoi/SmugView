@@ -293,7 +293,8 @@ data class AlbumPreview(
 )
 
 data class SingleNodeResponse(
-    @SerializedName("Response") val response: SingleNodePayload
+    @SerializedName("Response") val response: SingleNodePayload,
+    @SerializedName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
 )
 
 data class SingleNodePayload(

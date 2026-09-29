@@ -609,76 +609,6 @@ class SmugMugRepository @Inject constructor(
     }
 
 
-    suspend fun syncAllUserAlbums(nickname: String, apiKey: String, rootNodeId: String) {
-        try {
-            val response = api.getUserAlbums(nickname, apiKey)
-            val albums = response.response.albums ?: emptyList()
-            
-            val nodesToInsert = mutableMapOf<String, CachedNode>()
-            
-            albums.forEach { album ->
-                val pathStr = album.urlPath ?: ""
-                val pathParts = pathStr.split("/").filter { it.isNotEmpty() }
-                
-                var parentId = rootNodeId
-                var currentPath = ""
-                
-                // Construct virtual folder nodes for all parts EXCEPT the last one
-                for (i in 0 until pathParts.size - 1) {
-                    val part = pathParts[i]
-                    currentPath += "/" + part
-                    val folderNodeId = "virtual:$currentPath"
-                    
-                    if (!nodesToInsert.containsKey(folderNodeId)) {
-                        nodesToInsert[folderNodeId] = CachedNode(
-                            nodeId = folderNodeId,
-                            parentNodeId = parentId,
-                            type = "Folder",
-                            title = part,
-                            description = null,
-                            access = "Public",
-                            passwordHint = null,
-                            uri = folderNodeId,
-                            childNodesUri = null,
-                            albumUri = null,
-                            highlightImageUrl = null,
-                            childCount = null,
-                            sortIndex = 0,
-                            webUri = null
-                        )
-                    }
-                    parentId = folderNodeId
-                }
-                
-                val actualNodeId = album.nodeId ?: album.albumKey
-                val existing = dao.getNodeById(actualNodeId)
-                val albumNode = CachedNode(
-                    nodeId = actualNodeId,
-                    parentNodeId = existing?.parentNodeId?.takeIf { it != "root" && !it.startsWith("virtual:") } ?: parentId,
-                    type = "Album",
-                    title = album.name,
-                    description = existing?.description,
-                    access = album.securityType ?: existing?.access ?: "Public",
-                    passwordHint = album.passwordHint ?: existing?.passwordHint,
-                    uri = album.uri,
-                    childNodesUri = existing?.childNodesUri,
-                    albumUri = album.uri,
-                    highlightImageUrl = existing?.highlightImageUrl,
-                    childCount = album.imageCount ?: existing?.childCount,
-                    sortIndex = existing?.sortIndex ?: 0,
-                    webUri = album.webUri ?: existing?.webUri
-                )
-                nodesToInsert[actualNodeId] = albumNode
-            }
-            
-            if (nodesToInsert.isNotEmpty()) {
-                insertNodesScoped(nodesToInsert.values.toList())
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("SmugMugRepository", "API syncAllUserAlbums failed", e)
-        }
-    }
-
     /**
      * Loads the persisted album index instantly, then refreshes it incrementally.
      *
@@ -690,11 +620,11 @@ class SmugMugRepository @Inject constructor(
      * - Only gallery *metadata* (incl. the cover thumbnail) is synced. Gallery contents (photos)
      *   are still loaded on demand when a gallery is opened.
      */
-    suspend fun buildInMemoryGalleryCache(nickname: String, apiKey: String) {
+    suspend fun buildInMemoryGalleryCache(nickname: String, apiKey: String): Set<String> {
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache starting for user=$nickname")
         }
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // 1. Instant: publish the persisted index (if any) so UI/search can proceed.
                 val persisted = dao.getAlbumIndex(nickname)
@@ -772,12 +702,19 @@ class SmugMugRepository @Inject constructor(
                         for (parentId in staleParents) {
                             dao.deleteNodesByParent(parentId)
                         }
+                        staleParents.toSet()
+                    } else {
+                        emptySet()
                     }
-                } else if (isFirstSync) {
-                    _albumsCache.value = emptyList()
+                } else {
+                    if (isFirstSync) {
+                        _albumsCache.value = emptyList()
+                    }
+                    emptySet()
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SmugMugRepository", "Failed to sync gallery cache", e)
+                emptySet()
             } finally {
                 _isAlbumsCacheLoaded.value = true
             }
@@ -1468,6 +1405,48 @@ class SmugMugRepository @Inject constructor(
         return api.getNode(nodeId, apiKey, ignoreErrors = ignoreErrors).response.node
     }
 
+    /**
+     * Fetches the site root node's own HighlightImage — the site's actual configured header/cover
+     * image — and caches it as a self-parented [CachedNode] (parentNodeId = null) so it's available
+     * offline. Unlike [getNodeChildren], which only resolves highlight images for a folder's
+     * *children*, the homepage banner needs the root folder's own highlight image.
+     */
+    suspend fun refreshSiteHeaderNode(rootNodeId: String, apiKey: String, ignoreErrors: String? = null): CachedNode? {
+        return try {
+            val response = api.getNode(rootNodeId, apiKey, expand = "HighlightImage", ignoreErrors = ignoreErrors)
+            val node = response.response.node
+            val highlightUri = node.uris.highlightImage
+            val highlightUrl = if (highlightUri != null) {
+                val thumb = response.expansions?.get(highlightUri)?.image?.thumbnailUrl
+                thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
+            } else null
+
+            val existing = dao.getNodeById(rootNodeId)
+            val cachedNode = CachedNode(
+                nodeId = node.nodeId,
+                parentNodeId = null,
+                type = node.type,
+                title = node.name ?: existing?.title ?: "Home",
+                description = node.description,
+                access = node.securityType,
+                passwordHint = node.passwordHint,
+                uri = node.uri,
+                childNodesUri = node.uris.childNodes,
+                albumUri = node.uris.album,
+                highlightImageUrl = highlightUrl ?: existing?.highlightImageUrl,
+                childCount = existing?.childCount,
+                sortIndex = existing?.sortIndex ?: 0,
+                webUri = node.webUri,
+                dateModified = node.dateModified
+            )
+            insertNodes(listOf(cachedNode))
+            cachedNode
+        } catch (e: Exception) {
+            // Offline or the call failed — fall back to whatever we already have cached, if anything.
+            dao.getNodeById(rootNodeId)
+        }
+    }
+
     suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): String {
         var currentId = nodeId
         while (true) {
@@ -1704,13 +1683,13 @@ class SmugMugRepository @Inject constructor(
 
     suspend fun markNodeAsViewed(nodeId: String) {
         val node = dao.getNodeById(nodeId) ?: return
-        
+
         val updates = mutableListOf<ViewedGalleryUpdate>()
         val dateModified = node.dateModified
         if (!dateModified.isNullOrEmpty()) {
             updates.add(ViewedGalleryUpdate(nodeId, dateModified))
         }
-        
+
         // Also get all descendants to recursively satisfy child updates
         val descendants = dao.getAllDescendants(nodeId)
         for (desc in descendants) {
@@ -1719,7 +1698,25 @@ class SmugMugRepository @Inject constructor(
                 updates.add(ViewedGalleryUpdate(desc.nodeId, descDate))
             }
         }
-        
+
+        // Since Folders (not just Albums) can now be flagged "new" on their own (see
+        // getNodesWithActiveUpdates), also walk up every ancestor folder and record its
+        // dateModified as-of-now-viewed — otherwise a folder's dot would never clear, since a
+        // folder's own dateModified bumps whenever anything inside it changes.
+        var parentId = node.parentNodeId
+        val visitedAncestors = mutableSetOf<String>()
+        while (parentId != null && parentId !in visitedAncestors &&
+            parentId != "root" && parentId != "search_result"
+        ) {
+            visitedAncestors.add(parentId)
+            val parent = dao.getNodeById(parentId) ?: break
+            val parentDate = parent.dateModified
+            if (!parentDate.isNullOrEmpty()) {
+                updates.add(ViewedGalleryUpdate(parent.nodeId, parentDate))
+            }
+            parentId = parent.parentNodeId
+        }
+
         if (updates.isNotEmpty()) {
             dao.insertViewedUpdates(updates)
         }

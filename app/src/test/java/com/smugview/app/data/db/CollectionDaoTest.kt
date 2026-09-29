@@ -122,23 +122,40 @@ class CollectionDaoTest {
     }
 
     @Test
-    fun folderWithOwnRecentModification_clearsWhenItsOnlyGalleryIsViewed() = runBlocking {
+    fun folderWithOwnRecentModification_clearsWhenFolderAndGalleryAreViewed() = runBlocking {
         val modified = recent()
         // A folder whose own dateModified is recent (its contents changed) containing one album.
+        // Folders now carry their own "new" dot too (not just bubbled from an album), so a
+        // brand-new folder — or one whose only new content is more sub-folders — lights up on
+        // its own. See getNodesWithActiveUpdates.
         dao.insertNodes(
             listOf(
-                node("root", null, "Folder", dateModified = recent()),
+                node("root", null, "Folder"),
                 node("folderB", "root", "Folder", dateModified = modified),
                 node("albumX", "folderB", "Album", dateModified = modified)
             )
         )
         assertTrue(dao.getNodesWithActiveUpdates().first().contains("folderB"))
+        assertTrue(dao.getNodesWithActiveUpdates().first().contains("albumX"))
 
-        // Viewing only the gallery must also clear the folder — the folder's own recent
-        // dateModified must NOT keep a dot on it forever.
+        // Viewing only the gallery clears the gallery's own dot and the bubbled-up root dot, but
+        // NOT folderB's dot — a folder's own dateModified bumps whenever its contents change, so
+        // it needs its own viewed-entry too. That's what SmugMugRepository.markNodeAsViewed
+        // provides in production: it walks every ancestor folder, not just descendants, whenever
+        // an album or folder is opened.
         dao.insertViewedUpdates(listOf(ViewedGalleryUpdate("albumX", modified)))
+        val afterViewingGalleryOnly = dao.getNodesWithActiveUpdates().first().toSet()
+        assertFalse(afterViewingGalleryOnly.contains("albumX"))
+        assertTrue(
+            "folderB's own recent dateModified should still show until it's explicitly viewed",
+            afterViewingGalleryOnly.contains("folderB")
+        )
+
+        // Now also mark the folder itself as viewed (what markNodeAsViewed does for every
+        // ancestor) — only then does it clear.
+        dao.insertViewedUpdates(listOf(ViewedGalleryUpdate("folderB", modified)))
         val active = dao.getNodesWithActiveUpdates().first().toSet()
-        assertFalse("folder should clear once its only updated gallery is viewed", active.contains("folderB"))
+        assertFalse("folder should clear once it and its gallery are both viewed", active.contains("folderB"))
         assertFalse(active.contains("albumX"))
         assertFalse(active.contains("root"))
     }

@@ -135,9 +135,24 @@ class SiteHubController(
                             }
                         } catch (e: Exception) {
                             if (BuildConfig.DEBUG) {
-                                android.util.Log.e("SmugViewModel", "loadActiveSiteDetails albums failed", e)
+                                android.util.Log.e("SmugViewModel", "loadActiveSiteDetails albums failed, falling back to persisted gallery index", e)
                             }
-                            emptyList()
+                            // Offline (or any other failure): fall back to the persisted gallery
+                            // index built by buildInMemoryGalleryCache, so the Home tab still shows
+                            // whatever galleries were already synced instead of going blank.
+                            repository.albumsCache.value
+                                .filter { it.type == "Album" }
+                                .map { node ->
+                                    HubAlbumItem(
+                                        albumKey = node.getAlbumKey(),
+                                        title = node.title,
+                                        coverUrl = node.highlightImageUrl,
+                                        imageCount = node.childCount ?: 0,
+                                        dateModified = node.dateModified,
+                                        access = node.access,
+                                        passwordHint = node.passwordHint
+                                    )
+                                }
                         }
                     }
                     val topKeywordsDeferred = async {

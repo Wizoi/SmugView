@@ -703,6 +703,8 @@ fun HomeTabView(
         val totalGalleriesOpt by viewModel.activeSiteTotalGalleries.collectAsState()
         val totalPhotosOpt by viewModel.activeSiteTotalPhotos.collectAsState()
 
+        var showShareDialog by remember { mutableStateOf(false) }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -757,18 +759,8 @@ fun HomeTabView(
                             )
                         }
 
-                        val context = LocalContext.current
                         IconButton(
-                            onClick = {
-                                val url = activeUserProfile?.webUri ?: "https://${nickname}.smugmug.com"
-                                val sendIntent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TEXT, url)
-                                    type = "text/plain"
-                                }
-                                val shareIntent = Intent.createChooser(sendIntent, "Share Portfolio")
-                                context.startActivity(shareIntent)
-                            }
+                            onClick = { showShareDialog = true }
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Share,
@@ -928,6 +920,18 @@ fun HomeTabView(
                                     
                                     val unlockedIds by viewModel.unlockedNodeIds.collectAsState()
                                     val isUnlocked = album.albumKey in unlockedIds
+                                    val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
+                                    if (album.albumKey in activeUpdates) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopStart)
+                                                .padding(8.dp)
+                                                .size(10.dp)
+                                                .border(2.dp, Color(0xFF00F0FF).copy(alpha = 0.4f), CircleShape)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF00F0FF))
+                                        )
+                                    }
                                     if (album.access == "Password" || album.access == "Inherited") {
                                         val lockIcon = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock
                                         val lockColor = if (isUnlocked) Color(0xFF00E5FF) else Color(0xFFFFB800)
@@ -1136,6 +1140,15 @@ fun HomeTabView(
                     }
                 }
             }
+        }
+
+        if (showShareDialog) {
+            val shareUrl = activeUserProfile?.webUri ?: "https://${nickname}.smugmug.com"
+            com.smugview.app.ui.component.QrShareDialog(
+                title = nickname?.replaceFirstChar { it.uppercase() } ?: "Portfolio",
+                url = shareUrl,
+                onDismissRequest = { showShareDialog = false }
+            )
         }
     }
 }

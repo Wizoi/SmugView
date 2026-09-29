@@ -82,6 +82,7 @@ fun PhotoGridScreen(
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var showAlbumBookmarkDialog by remember { mutableStateOf(false) }
+    var showAlbumShareDialog by remember { mutableStateOf(false) }
     val currentAlbumStyle = viewModel.currentAlbumStyle
     val sortBy by viewModel.sortBy.collectAsState()
     val isBgLoading by viewModel.isBackgroundLoading.collectAsState()
@@ -587,17 +588,9 @@ fun PhotoGridScreen(
                         )
                     }
 
-                    // Share
+                    // Share (opens the QR code dialog, which also offers the native share sheet)
                     IconButton(
-                        onClick = {
-                            val shareUrl = viewModel.currentAlbumWebUri?.ifEmpty { null }
-                                ?: "https://${viewModel.activeNickname.value}.smugmug.com"
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "Checkout '$albumTitle': $shareUrl")
-                            }
-                            context.startActivity(Intent.createChooser(intent, "Share"))
-                        },
+                        onClick = { showAlbumShareDialog = true },
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                     ) {
                         Icon(
@@ -742,6 +735,16 @@ fun PhotoGridScreen(
             }
         }
     }
+
+        if (showAlbumShareDialog) {
+            val shareUrl = viewModel.currentAlbumWebUri?.ifEmpty { null }
+                ?: "https://${viewModel.activeNickname.value}.smugmug.com"
+            com.smugview.app.ui.component.QrShareDialog(
+                title = albumTitle,
+                url = shareUrl,
+                onDismissRequest = { showAlbumShareDialog = false }
+            )
+        }
 
         if (showAlbumBookmarkDialog) {
             AddToCollectionsDialog(

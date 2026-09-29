@@ -127,6 +127,7 @@ fun FoldersTabView(
     val nickname by viewModel.activeNickname.collectAsState()
     val activeUserProfile by viewModel.activeUserProfile.collectAsState()
     val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
+    val siteHeaderImageUrl by viewModel.siteHeaderImageUrl.collectAsState()
 
     when (uiState) {
         is BrowserUiState.Loading -> {
@@ -154,6 +155,7 @@ fun FoldersTabView(
         is BrowserUiState.Success -> {
             val staggeredGridState = rememberLazyStaggeredGridState()
             var showFolderBookmarkDialog by remember { mutableStateOf(false) }
+            var showShareDialog by remember { mutableStateOf(false) }
 
             val scrollOffset = remember {
                 derivedStateOf {
@@ -196,7 +198,11 @@ fun FoldersTabView(
                 ?: nickname?.replaceFirstChar { it.uppercase() }
                 ?: "Galleries"
             val folderTitle = navStack.lastOrNull()?.title ?: siteName
+            // At the site root, use the site's own configured header image (its HighlightImage),
+            // not an arbitrary child album's cover — that's what the website itself shows as its
+            // header, and is what should appear on the homepage.
             val coverUrl = navStack.lastOrNull()?.highlightImageUrl
+                ?: siteHeaderImageUrl
                 ?: uiState.nodes.firstOrNull { !it.highlightImageUrl.isNullOrEmpty() }?.highlightImageUrl
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -404,18 +410,9 @@ fun FoldersTabView(
                             }
                         }
 
-                        // Share
+                        // Share (opens the QR code dialog, which also offers the native share sheet)
                         IconButton(
-                            onClick = {
-                                val shareUrl = navStack.lastOrNull()?.webUri 
-                                    ?: activeUserProfile?.webUri 
-                                    ?: "https://${nickname}.smugmug.com"
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, "Checkout '$folderTitle': $shareUrl")
-                                }
-                                context.startActivity(Intent.createChooser(intent, "Share"))
-                            },
+                            onClick = { showShareDialog = true },
                             modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
@@ -444,6 +441,17 @@ fun FoldersTabView(
                         }
                     }
                 }
+            }
+
+            if (showShareDialog) {
+                val shareUrl = navStack.lastOrNull()?.webUri
+                    ?: activeUserProfile?.webUri
+                    ?: "https://${nickname}.smugmug.com"
+                com.smugview.app.ui.component.QrShareDialog(
+                    title = folderTitle,
+                    url = shareUrl,
+                    onDismissRequest = { showShareDialog = false }
+                )
             }
 
             if (showFolderBookmarkDialog && currentFolderId != null) {

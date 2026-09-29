@@ -54,6 +54,7 @@ interface SmugMugApi {
     suspend fun getNode(
         @Path("node_id") nodeId: String,
         @Query("APIKey") apiKey: String,
+        @Query("_expand") expand: String? = null,
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl,DateModified",
         @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage,ParentNode",
         @Query("_verbosity") verbosity: Int = 1,

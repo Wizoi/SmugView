@@ -213,13 +213,17 @@ interface CollectionDao {
 
     @Query("""
         WITH RECURSIVE active_nodes(nodeId, parentNodeId) AS (
-            -- Base case: only galleries (Albums) are "updated" on their own. A folder's own
-            -- dateModified bumps when its contents change, so if folders were included here they
-            -- would keep a dot forever even after every updated gallery inside was viewed.
+            -- Base case: both Albums (new/updated galleries) and Folders (new/changed folders,
+            -- including a brand-new empty folder or one whose only new content is more
+            -- sub-folders) are "updated" on their own when unviewed. A folder's own dateModified
+            -- also bumps when its contents change, but that's fine here: markNodeAsViewed marks
+            -- every ancestor folder in the chain (with its dateModified at the time of viewing)
+            -- whenever an album or folder inside is opened, so this doesn't keep a dot forever —
+            -- it only re-lights once something changes again after that visit.
             SELECT n.nodeId, n.parentNodeId
             FROM cached_nodes n
             LEFT JOIN viewed_gallery_updates v ON n.nodeId = v.nodeId
-            WHERE n.type = 'Album'
+            WHERE n.type IN ('Album', 'Folder')
               AND n.dateModified IS NOT NULL
               AND datetime(n.dateModified) >= datetime('now', '-30 days')
               AND (v.lastViewedDateModified IS NULL OR n.dateModified > v.lastViewedDateModified)

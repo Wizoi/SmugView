@@ -603,6 +603,21 @@ class SmugViewModel @Inject constructor(
     private val _activeUserProfile = MutableStateFlow<UserData?>(null)
     val activeUserProfile: StateFlow<UserData?> = _activeUserProfile.asStateFlow()
 
+    // The site's actual configured header/cover image (the root node's own HighlightImage), used
+    // for the homepage banner instead of an arbitrary child album's thumbnail.
+    private val _siteHeaderImageUrl = MutableStateFlow<String?>(null)
+    val siteHeaderImageUrl: StateFlow<String?> = _siteHeaderImageUrl.asStateFlow()
+
+    private fun loadSiteHeaderImage(rootId: String) {
+        // Show whatever's cached immediately (works offline), then refresh from the network.
+        viewModelScope.launch {
+            repository.getNodeById(rootId)?.highlightImageUrl?.let { _siteHeaderImageUrl.value = it }
+            repository.refreshSiteHeaderNode(rootId, apiKey)?.highlightImageUrl?.let {
+                _siteHeaderImageUrl.value = it
+            }
+        }
+    }
+
     // Site discovery + preview + hub dashboard — delegated to SiteHubController.
     // Declared before init{} because loadHistoryAndActiveSite() (in init) drives it.
     private val siteHub = SiteHubController(
@@ -732,14 +747,22 @@ class SmugViewModel @Inject constructor(
                         _splashState.value = SplashUiState.Success(rootId)
                         currentFolderId = rootId
                         
-                        // Launch the thin gallery load cache in the background
+                        // Launch the thin gallery load cache in the background. If it discovers a
+                        // new/changed gallery whose parent folder is the one we're about to show,
+                        // re-load that folder once the sync lands so the new album/dot isn't stuck
+                        // behind a manual refresh (loadFolderContents below may otherwise win the
+                        // race and show the stale cached listing).
                         viewModelScope.launch {
-                            repository.buildInMemoryGalleryCache(nickname, apiKey)
+                            val invalidatedParents = repository.buildInMemoryGalleryCache(nickname, apiKey)
+                            if (currentFolderId != null && currentFolderId in invalidatedParents.orEmpty()) {
+                                loadFolderContents(currentFolderId!!, forceRefresh = true)
+                            }
                         }
-                        
+
                         loadFolderContents(rootId)
                         startFolderTreeSync(rootId)
-                        
+                        loadSiteHeaderImage(rootId)
+
                         // Fetch active site recent images and top keywords in parallel
                         loadActiveSiteDetails(nickname)
                     },
@@ -796,9 +819,13 @@ class SmugViewModel @Inject constructor(
                         // onto the newly selected site.
                         resetPerSiteState()
 
-                        // Launch the thin gallery load cache in the background
+                        // Launch the thin gallery load cache in the background. Re-load the shown
+                        // folder if the sync invalidates it (see the matching comment above).
                         viewModelScope.launch {
-                            repository.buildInMemoryGalleryCache(normalizedNickname, apiKey)
+                            val invalidatedParents = repository.buildInMemoryGalleryCache(normalizedNickname, apiKey)
+                            if (currentFolderId != null && currentFolderId in invalidatedParents.orEmpty()) {
+                                loadFolderContents(currentFolderId!!, forceRefresh = true)
+                            }
                         }
                         
                         if (BuildConfig.DEBUG) {
@@ -806,7 +833,8 @@ class SmugViewModel @Inject constructor(
                         }
                         loadFolderContents(rootId)
                         startFolderTreeSync(rootId)
-                        
+                        loadSiteHeaderImage(rootId)
+
                         // Fetch active site details for the hub dashboard in parallel
                         loadActiveSiteDetails(normalizedNickname)
                         
@@ -834,6 +862,7 @@ class SmugViewModel @Inject constructor(
         _activeNickname.value = null
         repository.setActiveNickname(null)
         _activeUserProfile.value = null
+        _siteHeaderImageUrl.value = null
         siteHub.clearActiveSiteData()
         resetPerSiteState()
         currentFolderId = null
@@ -987,6 +1016,8 @@ class SmugViewModel @Inject constructor(
             currentFolderId = node.nodeId
             folderNavigationStack.add(node)
             loadFolderContents(node.nodeId)
+            // Folders (not just Albums) can carry their own "new" dot now — clear it on open.
+            markNodeAsViewed(node.nodeId)
         }
     }
 

@@ -51,6 +51,23 @@ object AppModule {
             chain.proceed(request)
         }
 
+        // Offline fallback: when there's no network, rewrite the request to accept a stale
+        // cached response instead of letting it fail outright. This lets both API calls
+        // (Retrofit) and thumbnail loads (Coil — see provideRetryingCallFactory) serve whatever
+        // was already fetched into the shared 50MB disk cache below, even well past the 5-minute
+        // freshness window the cacheInterceptor sets, rather than erroring on every screen that
+        // hasn't been visited in the last 5 minutes. Anything never previously fetched still has
+        // nothing to serve and correctly fails, which callers already handle (Room/UI fallbacks).
+        val offlineFallbackInterceptor = Interceptor { chain ->
+            var request = chain.request()
+            if (request.method == "GET" && !isNetworkAvailable(context)) {
+                request = request.newBuilder()
+                    .header("Cache-Control", "public, only-if-cached, max-stale=" + 60 * 60 * 24 * 7)
+                    .build()
+            }
+            chain.proceed(request)
+        }
+
         // Cache Interceptor: Force OkHttp to cache GET responses by replacing 'no-cache/no-store' with a 5-minute cache header.
         // IMPORTANT: Search endpoints are explicitly excluded — they must always hit the network for fresh results.
         val cacheInterceptor = Interceptor { chain ->
@@ -104,12 +121,26 @@ object AppModule {
         return OkHttpClient.Builder()
             .cache(cache)
             .cookieJar(cookieJar)
+            .addInterceptor(offlineFallbackInterceptor)
             .addInterceptor(headerInterceptor)
             .addNetworkInterceptor(cacheInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .build()
+    }
+
+    /** Best-effort connectivity check used only to decide whether to force stale cache reuse. */
+    private fun isNetworkAvailable(context: Context): Boolean {
+        return try {
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager
+            val network = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+            capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (e: Exception) {
+            true // Assume online if the check itself fails — don't force stale cache incorrectly.
+        }
     }
 
     /**

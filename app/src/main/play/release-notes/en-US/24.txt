@@ -1,0 +1,7 @@
+New:
+- Share a folder, gallery, or photo with a scannable QR code — tap Share to see it, plus a link to the native share sheet.
+
+Fixed:
+- "New" indicators now light up on folders containing recently added galleries, not just on the galleries themselves.
+- Previously viewed folders and photos stay browsable when you lose signal.
+- The home screen's header image now matches your site's actual configured header.

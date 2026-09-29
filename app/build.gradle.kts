@@ -24,8 +24,8 @@ android {
         applicationId = "com.smugview.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.7.5"
+        versionCode = 24
+        versionName = "0.7.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -174,6 +174,10 @@ dependencies {
 
     // Google Cast SDK Framework
     implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
+
+    // QR code generation for the "Share" dialogs (folder/gallery/photo link -> scannable code).
+    // Just the barcode-writing core — no camera/scanning UI is needed for this.
+    implementation("com.google.zxing:core:3.5.3")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
