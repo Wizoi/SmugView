@@ -11,7 +11,7 @@ plugins {
 
 android {
     namespace = "com.smugview.app"
-    compileSdk = 35
+    compileSdk = 36
 
     // Read local.properties
     val localProperties = Properties()
@@ -23,8 +23,8 @@ android {
     defaultConfig {
         applicationId = "com.smugview.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 24
+        targetSdk = 36
+        versionCode = 25
         versionName = "0.7.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
