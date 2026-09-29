@@ -1699,24 +1699,6 @@ class SmugMugRepository @Inject constructor(
             }
         }
 
-        // Since Folders (not just Albums) can now be flagged "new" on their own (see
-        // getNodesWithActiveUpdates), also walk up every ancestor folder and record its
-        // dateModified as-of-now-viewed — otherwise a folder's dot would never clear, since a
-        // folder's own dateModified bumps whenever anything inside it changes.
-        var parentId = node.parentNodeId
-        val visitedAncestors = mutableSetOf<String>()
-        while (parentId != null && parentId !in visitedAncestors &&
-            parentId != "root" && parentId != "search_result"
-        ) {
-            visitedAncestors.add(parentId)
-            val parent = dao.getNodeById(parentId) ?: break
-            val parentDate = parent.dateModified
-            if (!parentDate.isNullOrEmpty()) {
-                updates.add(ViewedGalleryUpdate(parent.nodeId, parentDate))
-            }
-            parentId = parent.parentNodeId
-        }
-
         if (updates.isNotEmpty()) {
             dao.insertViewedUpdates(updates)
         }

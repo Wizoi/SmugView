@@ -130,6 +130,30 @@ class SmugViewModelTest {
     }
 
     @Test
+    fun navigatingIntoFolder_doesNotMarkItsGalleriesViewed() = runTest {
+        // v0.7.6 regression: navigateToChildFolder called markNodeAsViewed(folder), which marks
+        // the folder AND EVERY GALLERY BENEATH IT as viewed — so merely browsing into "School"
+        // silently cleared the "new" dots of galleries the user never opened. Only opening a
+        // gallery (or the explicit long-press "Mark as Viewed") may clear a dot.
+        Mockito.`when`(
+            mockRepository.getNodeChildren(
+                Mockito.anyString(), Mockito.anyString(), Mockito.anyBoolean(),
+                Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)
+            )
+        ).thenReturn(flowOf(Result.success(emptyList())))
+        val school = CachedNode(
+            nodeId = "school", parentNodeId = "family", type = "Folder", title = "School",
+            description = null, access = "None", passwordHint = null,
+            uri = "/api/v2/node/school", childNodesUri = null, albumUri = null
+        )
+
+        viewModel.navigateToChildFolder(school)
+        advanceUntilIdle()
+
+        Mockito.verify(mockRepository, Mockito.never()).markNodeAsViewed(Mockito.anyString())
+    }
+
+    @Test
     fun testPerformSearchWithEmptyCache() = runTest {
         viewModel.setActiveNicknameForTest("testUser")
         

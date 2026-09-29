@@ -122,41 +122,46 @@ class CollectionDaoTest {
     }
 
     @Test
-    fun folderWithOwnRecentModification_clearsWhenFolderAndGalleryAreViewed() = runBlocking {
+    fun folderWithOwnRecentModification_clearsWhenItsOnlyGalleryIsViewed() = runBlocking {
         val modified = recent()
         // A folder whose own dateModified is recent (its contents changed) containing one album.
-        // Folders now carry their own "new" dot too (not just bubbled from an album), so a
-        // brand-new folder — or one whose only new content is more sub-folders — lights up on
-        // its own. See getNodesWithActiveUpdates.
         dao.insertNodes(
             listOf(
-                node("root", null, "Folder"),
+                node("root", null, "Folder", dateModified = recent()),
                 node("folderB", "root", "Folder", dateModified = modified),
                 node("albumX", "folderB", "Album", dateModified = modified)
             )
         )
         assertTrue(dao.getNodesWithActiveUpdates().first().contains("folderB"))
-        assertTrue(dao.getNodesWithActiveUpdates().first().contains("albumX"))
 
-        // Viewing only the gallery clears the gallery's own dot and the bubbled-up root dot, but
-        // NOT folderB's dot — a folder's own dateModified bumps whenever its contents change, so
-        // it needs its own viewed-entry too. That's what SmugMugRepository.markNodeAsViewed
-        // provides in production: it walks every ancestor folder, not just descendants, whenever
-        // an album or folder is opened.
+        // Viewing only the gallery must also clear the folder — the folder's own recent
+        // dateModified must NOT keep a dot on it forever.
         dao.insertViewedUpdates(listOf(ViewedGalleryUpdate("albumX", modified)))
-        val afterViewingGalleryOnly = dao.getNodesWithActiveUpdates().first().toSet()
-        assertFalse(afterViewingGalleryOnly.contains("albumX"))
-        assertTrue(
-            "folderB's own recent dateModified should still show until it's explicitly viewed",
-            afterViewingGalleryOnly.contains("folderB")
-        )
-
-        // Now also mark the folder itself as viewed (what markNodeAsViewed does for every
-        // ancestor) — only then does it clear.
-        dao.insertViewedUpdates(listOf(ViewedGalleryUpdate("folderB", modified)))
         val active = dao.getNodesWithActiveUpdates().first().toSet()
-        assertFalse("folder should clear once it and its gallery are both viewed", active.contains("folderB"))
+        assertFalse("folder should clear once its only updated gallery is viewed", active.contains("folderB"))
         assertFalse(active.contains("albumX"))
+        assertFalse(active.contains("root"))
+    }
+
+    @Test
+    fun folderBulkBump_withNoRecentGallery_isNotActive() = runBlocking {
+        // Real data (idzifamily, 2026-09-29): a site-wide SmugMug event stamped nearly every
+        // folder AND gallery with the same DateModified (2026-08-24T05:48:10). A folder's own
+        // DateModified is therefore not a reliable "something new inside" signal — if folders
+        // could light up on their own, one bulk bump would dot every folder on the site at once.
+        // Only a genuinely recent, unviewed gallery may light a folder (by bubbling up).
+        val bulk = recent()
+        dao.insertNodes(
+            listOf(
+                node("root", null, "Folder"),
+                node("folderA", "root", "Folder", dateModified = bulk),
+                node("folderB", "root", "Folder", dateModified = bulk),
+                node("oldAlbum", "folderA", "Album", dateModified = old())
+            )
+        )
+        val active = dao.getNodesWithActiveUpdates().first().toSet()
+        assertFalse("a bulk-bumped folder must not light up on its own", active.contains("folderA"))
+        assertFalse("an empty bulk-bumped folder must not light up either", active.contains("folderB"))
         assertFalse(active.contains("root"))
     }
 

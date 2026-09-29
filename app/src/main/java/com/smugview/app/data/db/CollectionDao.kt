@@ -213,17 +213,16 @@ interface CollectionDao {
 
     @Query("""
         WITH RECURSIVE active_nodes(nodeId, parentNodeId) AS (
-            -- Base case: both Albums (new/updated galleries) and Folders (new/changed folders,
-            -- including a brand-new empty folder or one whose only new content is more
-            -- sub-folders) are "updated" on their own when unviewed. A folder's own dateModified
-            -- also bumps when its contents change, but that's fine here: markNodeAsViewed marks
-            -- every ancestor folder in the chain (with its dateModified at the time of viewing)
-            -- whenever an album or folder inside is opened, so this doesn't keep a dot forever —
-            -- it only re-lights once something changes again after that visit.
+            -- Base case: only galleries (Albums) are "updated" on their own; folders light up
+            -- only by bubbling from a gallery inside them. A folder's own DateModified is NOT a
+            -- usable signal: it bumps on content changes AND on site-wide SmugMug events (real
+            -- data, 2026-08-24: nearly every node on the site got the same stamp at once), so
+            -- seeding from folders would dot every folder simultaneously. See
+            -- CollectionDaoTest.folderBulkBump_withNoRecentGallery_isNotActive.
             SELECT n.nodeId, n.parentNodeId
             FROM cached_nodes n
             LEFT JOIN viewed_gallery_updates v ON n.nodeId = v.nodeId
-            WHERE n.type IN ('Album', 'Folder')
+            WHERE n.type = 'Album'
               AND n.dateModified IS NOT NULL
               AND datetime(n.dateModified) >= datetime('now', '-30 days')
               AND (v.lastViewedDateModified IS NULL OR n.dateModified > v.lastViewedDateModified)

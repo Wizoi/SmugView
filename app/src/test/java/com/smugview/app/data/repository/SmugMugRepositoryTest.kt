@@ -36,6 +36,10 @@ class SmugMugRepositoryTest {
         val searchResults = mutableListOf<SearchResult>()
         
         override suspend fun insertNodes(nodes: List<CachedNode>) {
+            // Match the real DAO's OnConflictStrategy.REPLACE on the nodeId primary key, rather
+            // than appending a duplicate row for an existing nodeId.
+            val incomingIds = nodes.map { it.nodeId }.toSet()
+            this.nodes.removeAll { it.nodeId in incomingIds }
             this.nodes.addAll(nodes)
         }
 

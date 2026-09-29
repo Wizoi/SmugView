@@ -1016,8 +1016,9 @@ class SmugViewModel @Inject constructor(
             currentFolderId = node.nodeId
             folderNavigationStack.add(node)
             loadFolderContents(node.nodeId)
-            // Folders (not just Albums) can carry their own "new" dot now — clear it on open.
-            markNodeAsViewed(node.nodeId)
+            // Deliberately NOT markNodeAsViewed here: that marks every gallery beneath the folder
+            // as viewed, clearing dots the user never looked at. See
+            // SmugViewModelTest.navigatingIntoFolder_doesNotMarkItsGalleriesViewed.
         }
     }
 
