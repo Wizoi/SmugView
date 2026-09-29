@@ -1,6 +1,9 @@
 # Design: the "new gallery" dot
 
-Status: **approved** — §5 choices 1, 2, 3 accepted as recommended *(owner, 2026-09-29)*: "new" = ImagesLastUpdated with migration 15→16; crawl once per launch, at most every 15 min per site; saved password folders re-unlocked at launch.
+Status: **NEEDS REVISION before any code**. The whole-app review
+([§3](../review/2026-09-29-whole-app-review.md)) disproved two premises: `user!albums` has no
+`ParentNode` (R-05), and going back to deleting a folder's listing triggers self-parented rows
+(R-01, R-04). Previously: **approved** — §5 choices 1, 2, 3 accepted as recommended *(owner, 2026-09-29)*: "new" = ImagesLastUpdated with migration 15→16; crawl once per launch, at most every 15 min per site; saved password folders re-unlocked at launch.
 Findings: #1, #2, #3, #4, #5, #14, #15, #16, #17 in [findings.md](../findings.md).
 
 ## 1. Expected behaviour

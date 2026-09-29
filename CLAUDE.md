@@ -2,7 +2,9 @@
 
 Short on purpose. Every rule here has cost time on this project. The longer reasoning, environment
 notes and retros live in [.agents/AGENTS.md](.agents/AGENTS.md); open problems live in
-[docs/findings.md](docs/findings.md). Read findings.md before starting on a bug.
+[docs/findings.md](docs/findings.md), and the whole-app review is in
+[docs/review/2026-09-29-whole-app-review.md](docs/review/2026-09-29-whole-app-review.md). Read both
+before starting on a bug.
 
 ## Running things
 
@@ -59,6 +61,13 @@ notes and retros live in [.agents/AGENTS.md](.agents/AGENTS.md); open problems l
 - A folder's `DateModified` is not a "something new inside" signal. It doesn't bump when its
   galleries change (findings #17), yet it does bump on site-wide events (findings #2).
 - `RetryingCallFactory` retries every 5xx, including OkHttp's synthetic 504 from `only-if-cached`.
+- **`Uris.ParentNode` is the node's *own* `!parent` link** (`/node/{SELF}!parent`), not its
+  parent's ID. Never parse a parent out of it (review R-01). `user!albums` has no `ParentNode` at
+  all; an album's parent comes from `Uris.Folder` or `UrlPath` (R-05).
+- No GET honours a `Password=` parameter. Access comes only from the `!unlock` session cookie
+  (R-23). Password-gallery CDN image URLs work with no session at all (R-53).
+- A Gradle exit code of 0 has been seen on a failed build (a concurrent-build collision). Also
+  check for `BUILD SUCCESSFUL` (R-69).
 
 ## Before committing or shipping
 
