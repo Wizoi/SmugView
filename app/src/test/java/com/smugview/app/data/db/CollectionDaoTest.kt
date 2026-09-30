@@ -247,4 +247,36 @@ class CollectionDaoTest {
         assertEquals(setOf("a1"), dao.getAlbumIndex("site1").map { it.albumKey }.toSet())
         assertEquals(setOf("b1"), dao.getAlbumIndex("site2").map { it.albumKey }.toSet())
     }
+
+    // R-02: SmugMug's ParentNode is the node's own "!parent" link, so a parser that trusts it writes a
+    // self-parented row (and a mis-parented pair can form a 2-cycle). UNION ALL recursed forever on
+    // those; UNION de-duplicates and terminates.
+    @Test(timeout = 15_000)
+    fun selfParentRow_doesNotHangDescendantQueries() = runBlocking {
+        dao.insertNodes(
+            listOf(
+                node("top", null, "Folder"),
+                node("loop", "loop", "Folder"),
+                node("loopAlbum", "loop", "Album", dateModified = recent())
+            )
+        )
+        assertEquals(listOf("loopAlbum"), dao.getAllDescendants("loop").map { it.nodeId })
+        assertEquals(listOf("loopAlbum"), dao.getAlbumsInScope("loop").map { it.nodeId })
+        assertEquals(
+            listOf("loopAlbum"),
+            dao.searchNodesInScope("loop", "loopAlbum", "Album").map { it.nodeId }
+        )
+    }
+
+    @Test(timeout = 15_000)
+    fun twoNodeParentCycle_doesNotHangDescendantQueries() = runBlocking {
+        dao.insertNodes(
+            listOf(
+                node("a", "b", "Folder"),
+                node("b", "a", "Folder"),
+                node("leaf", "b", "Album", dateModified = recent())
+            )
+        )
+        assertEquals(setOf("a", "leaf"), dao.getAllDescendants("b").map { it.nodeId }.toSet())
+    }
 }

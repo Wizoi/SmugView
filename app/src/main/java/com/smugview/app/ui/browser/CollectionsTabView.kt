@@ -279,7 +279,7 @@ fun CollectionsTabView(
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
                         }
-                        items(folders, key = { it.itemKey }) { f ->
+                        items(folders, key = { com.smugview.app.ui.navigation.CollectionRowKeys.folder(it.itemKey) }) { f ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -334,7 +334,7 @@ fun CollectionsTabView(
                                 modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                             )
                         }
-                        items(albums, key = { it.itemKey }) { a ->
+                        items(albums, key = { com.smugview.app.ui.navigation.CollectionRowKeys.album(it.itemKey) }) { a ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -395,7 +395,7 @@ fun CollectionsTabView(
                             val groupTitle = albumImages.firstOrNull()?.albumTitle?.takeIf { it.isNotEmpty() } ?: "Gallery Group"
                             val isExpanded = expandedGalleries[albumKey] ?: false
 
-                            item(key = albumKey) {
+                            item(key = com.smugview.app.ui.navigation.CollectionRowKeys.photoGroup(albumKey)) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()

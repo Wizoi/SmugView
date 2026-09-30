@@ -102,7 +102,7 @@ fun SmugViewNavigation() {
                         navController.navigate("keyword_images")
                     },
                     onNavigateToCastController = { title ->
-                        navController.navigate("cast_controller/$title")
+                        navController.navigate(com.smugview.app.ui.navigation.Routes.castController(title))
                     }
                 )
             }
@@ -178,7 +178,7 @@ fun SmugViewNavigation() {
                         navController.popBackStack("browser", false)
                     },
                     onNavigateToCastController = { title ->
-                        navController.navigate("cast_controller/$title")
+                        navController.navigate(com.smugview.app.ui.navigation.Routes.castController(title))
                     }
                 )
             }
@@ -213,7 +213,7 @@ fun SmugViewNavigation() {
                         navController.navigate("keyword_images")
                     },
                     onNavigateToCastController = { title ->
-                        navController.navigate("cast_controller/$title")
+                        navController.navigate(com.smugview.app.ui.navigation.Routes.castController(title))
                     }
                 )
             }

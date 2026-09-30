@@ -50,7 +50,7 @@ interface CollectionDao {
     @Query("""
         WITH RECURSIVE descendants(nodeId) AS (
             SELECT :scopeNodeId
-            UNION ALL
+            UNION
             SELECT n.nodeId FROM cached_nodes n
             JOIN descendants d ON n.parentNodeId = d.nodeId
         )
@@ -65,7 +65,7 @@ interface CollectionDao {
     @Query("""
         WITH RECURSIVE descendants(nodeId) AS (
             SELECT :scopeNodeId
-            UNION ALL
+            UNION
             SELECT n.nodeId FROM cached_nodes n
             JOIN descendants d ON n.parentNodeId = d.nodeId
         )
@@ -86,7 +86,7 @@ interface CollectionDao {
     @Query("""
         WITH RECURSIVE descendants(nodeId) AS (
             SELECT :nodeId
-            UNION ALL
+            UNION
             SELECT n.nodeId FROM cached_nodes n
             JOIN descendants d ON n.parentNodeId = d.nodeId
         )

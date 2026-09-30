@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <!--
-      allowBackup=false: app data includes the cached Room DB of private gallery/photo metadata
+      allowBackup=false plus dataExtractionRules (Android 12+ device transfer ignores allowBackup): app data includes the cached Room DB of private gallery/photo metadata
       and the encrypted password store. Neither should be copied off-device by system/cloud backup.
 
       usesCleartextTraffic=true is required for local-network casting (the Web Companion server on
@@ -21,6 +21,7 @@
     <application
         android:name=".SmugViewApp"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

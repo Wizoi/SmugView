@@ -31,3 +31,16 @@ end to end, not reproduced) · `possible` (plausible, unverified).
 | 12 | **Process: v0.7.6's dot and offline fixes shipped without checking real data.** #2, #3, #5 and #6 were all introduced in that one release, each "obviously right" in the code. Five minutes against the live API would have caught #2 and #5. | This log. | confirmed | fixed: CLAUDE.md "Before changing behaviour" |
 
 **Owner decision (2026-09-29):** no Play publish until the open dot/offline findings are fixed.
+
+## Progress log (update after every committed step)
+
+Owner approved the phased plan in `docs/review/2026-09-29-whole-app-review.md` §4 on 2026-09-30 ("Let's start the work"). Model rule *(owner, 2026-09-30)*: planning/design by an Opus agent at high effort; implementing planned work with Sonnet 5.5 medium. Quota may run out, so this log is the handoff.
+
+- Parked the old uncommitted Stage 1 sync work on branch `wip/stage1-sync-unverified` (built on the disproven ParentNode premise; do not merge as is). `main` is clean.
+- **Phase 0**, in progress:
+  - R-54 done: `res/xml/data_extraction_rules.xml` excludes everything from cloud backup and device transfer; manifest points at it. (Guard test still to add.)
+  - R-43 done: `Routes.castController` URI-encodes the title; test `RoutesAndKeysTest` failed first.
+  - R-42 done: `CollectionRowKeys` prefixes folder/album/photo-group keys; test failed first.
+  - R-02 done: `UNION` replaces `UNION ALL` in the three descendant CTEs; `CollectionDaoTest` self-parent and 2-cycle tests hung on the old query (killed after 10 min), pass now.
+  - Still to do: R-03 (visited-set guard in `getUnlockedPassword` walk, SmugViewModel ~1354-1426), R-21 (keep saved passwords on transient errors; delete only on an explicit auth failure), R-37 (cache-less client for downloads, AppModule ~118-127), manifest guard test for R-54.
+- Gradle tip: a hung test has to be killed via its `Gradle Test Executor` java process; put `timeout 500` in front of `./gradlew.bat`.
