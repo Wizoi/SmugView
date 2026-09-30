@@ -116,4 +116,18 @@ class SmugMugErrorMapperTest {
             assertEquals("code $code should still Toast", true, SmugMugErrorMapper.shouldShowToast(code))
         }
     }
+
+    @Test
+    fun isPasswordRejection_onlyFor401And403() {
+        fun http(code: Int) = retrofit2.HttpException(
+            retrofit2.Response.error<Any>(code, okhttp3.ResponseBody.create(null, "{}"))
+        )
+        assertTrue(SmugMugErrorMapper.isPasswordRejection(http(401)))
+        assertTrue(SmugMugErrorMapper.isPasswordRejection(http(403)))
+        for (code in listOf(404, 429, 500, 503, 504)) {
+            assertEquals("HTTP $code is not a rejection", false, SmugMugErrorMapper.isPasswordRejection(http(code)))
+        }
+        assertEquals(false, SmugMugErrorMapper.isPasswordRejection(java.io.IOException("offline")))
+        assertEquals(false, SmugMugErrorMapper.isPasswordRejection(null))
+    }
 }

@@ -906,8 +906,8 @@ class SmugViewModel @Inject constructor(
                         if (BuildConfig.DEBUG) {
                             android.util.Log.e("SmugViewModel", "loadFolderContents failed for nodeId=$nodeId", error)
                         }
-                        if (!password.isNullOrEmpty()) {
-                            // If a saved password failed, it was probably changed or invalid
+                        if (!password.isNullOrEmpty() && com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)) {
+                            // SmugMug explicitly rejected the saved password (401/403): it was changed or invalid
                             passwordPrefs.edit().remove(nodeId).apply()
                             
                             // Revert navigation if we are inside the stack
@@ -1155,8 +1155,9 @@ class SmugViewModel @Inject constructor(
 
     fun handleAlbumLoadError(albumKey: String, error: Throwable? = null) {
         viewModelScope.launch {
+            val rejected = com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)
             val password = getUnlockedPassword(albumKey)
-            if (!password.isNullOrEmpty()) {
+            if (!password.isNullOrEmpty() && rejected) {
                 passwordPrefs.edit().remove(albumKey).apply()
             }
             // Also clear if nodeId is the albumKey
@@ -1164,7 +1165,7 @@ class SmugViewModel @Inject constructor(
                 val key = node.getAlbumKey()
                 key == albumKey
             }?.nodeId
-            if (nodeKey != null) {
+            if (nodeKey != null && rejected) {
                 passwordPrefs.edit().remove(nodeKey).apply()
             }
             if (error is retrofit2.HttpException && error.code() == 404) {
@@ -1350,8 +1351,10 @@ class SmugViewModel @Inject constructor(
             }
         }
         
-        // 3. Traverse parent nodes to check for inherited passwords
-        while (currentId != null) {
+        // 3. Traverse parent nodes to check for inherited passwords. The visited set stops a
+        // self-parented or cyclic row from spinning forever.
+        val visited = HashSet<String>()
+        while (currentId != null && visited.add(currentId)) {
             var parentNode = repository.getNodeById(currentId)
             
             // If parentNode is in the DB but has parentNodeId = "search_result", resolve its real parent from the API

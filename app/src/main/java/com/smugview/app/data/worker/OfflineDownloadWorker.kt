@@ -9,6 +9,7 @@ import com.smugview.app.data.db.CollectionPhoto
 import com.smugview.app.data.repository.SmugMugRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import com.smugview.app.data.api.forFileDownloads
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -40,6 +41,7 @@ class OfflineDownloadWorker @AssistedInject constructor(
         var hasFailure = false
         val isLastAttempt = runAttemptCount >= 3
 
+        val downloadClient = okHttpClient.forFileDownloads()
         for (photo in pendingPhotos) {
             val downloadUrl = photo.archivedUri ?: photo.thumbnailUrl
             if (downloadUrl.isNullOrEmpty()) {
@@ -47,7 +49,7 @@ class OfflineDownloadWorker @AssistedInject constructor(
             }
 
             try {
-                val file = downloadImageToFile(okHttpClient, downloadUrl, photo.imageKey)
+                val file = downloadImageToFile(downloadClient, downloadUrl, photo.imageKey)
                 if (file != null) {
                     repository.updateDownloadStatus(
                         imageKey = photo.imageKey,

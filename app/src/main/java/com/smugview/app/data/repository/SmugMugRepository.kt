@@ -1056,43 +1056,47 @@ class SmugMugRepository @Inject constructor(
         return unlockAlbum(albumKey, apiKey, password)
     }
 
-    suspend fun unlockNode(nodeId: String, apiKey: String, password: String): Boolean {
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "unlockNode called: nodeId=$nodeId")
-        }
+    /** Outcome of an unlock attempt. Only [Rejected] (HTTP 401/403) proves the password is wrong;
+     *  offline, 429, 5xx and OkHttp's synthetic 504 are [Transient] and must never delete a saved password. */
+    enum class UnlockResult { Success, Rejected, Transient }
+
+    private fun unlockResultOf(code: Int): UnlockResult = when {
+        code in 200..299 -> UnlockResult.Success
+        code == 401 || code == 403 -> UnlockResult.Rejected
+        else -> UnlockResult.Transient
+    }
+
+    suspend fun unlockNodeResult(nodeId: String, apiKey: String, password: String): UnlockResult {
         return try {
-            val response = api.unlockNode(nodeId, apiKey, password, "true")
-            val isSuccess = response.isSuccessful
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "unlockNode result: nodeId=$nodeId, isSuccessful=$isSuccess")
-            }
-            isSuccess
+            unlockResultOf(api.unlockNode(nodeId, apiKey, password, "true").code())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (com.smugview.app.BuildConfig.DEBUG) {
                 android.util.Log.e("SmugMugRepository", "unlockNode exception: nodeId=$nodeId", e)
             }
-            false
+            UnlockResult.Transient
         }
     }
 
-    suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String): Boolean {
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "unlockAlbum called: albumKey=$albumKey")
-        }
+    suspend fun unlockAlbumResult(albumKey: String, apiKey: String, password: String): UnlockResult {
         return try {
-            val response = api.unlockAlbum(albumKey, apiKey, password, "true")
-            val isSuccess = response.isSuccessful
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "unlockAlbum result: albumKey=$albumKey, isSuccessful=$isSuccess")
-            }
-            isSuccess
+            unlockResultOf(api.unlockAlbum(albumKey, apiKey, password, "true").code())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (com.smugview.app.BuildConfig.DEBUG) {
                 android.util.Log.e("SmugMugRepository", "unlockAlbum exception: albumKey=$albumKey", e)
             }
-            false
+            UnlockResult.Transient
         }
     }
+
+    suspend fun unlockNode(nodeId: String, apiKey: String, password: String): Boolean =
+        unlockNodeResult(nodeId, apiKey, password) == UnlockResult.Success
+
+    suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String): Boolean =
+        unlockAlbumResult(albumKey, apiKey, password) == UnlockResult.Success
 
     // Fetches EXIF details
     fun getImageExif(imageKey: String, apiKey: String, password: String?): Flow<Result<ExifData>> = flow {
@@ -1506,22 +1510,27 @@ class SmugMugRepository @Inject constructor(
             null
         }
         
+        val results = mutableListOf<UnlockResult>()
+        suspend fun attempt(r: UnlockResult): Boolean { results += r; return r == UnlockResult.Success }
         val success = if (rootNode != null) {
             if (rootNode.type == "Folder") {
-                unlockNode(rootNode.nodeId, apiKey, password)
+                attempt(unlockNodeResult(rootNode.nodeId, apiKey, password))
             } else {
                 val albumKey = rootNode.getAlbumKey()
                 if (albumKey.isNotEmpty()) {
-                    unlockAlbum(albumKey, apiKey, password)
+                    attempt(unlockAlbumResult(albumKey, apiKey, password))
                 } else {
-                    unlockNode(rootNode.nodeId, apiKey, password)
+                    attempt(unlockNodeResult(rootNode.nodeId, apiKey, password))
                 }
             }
         } else {
-            unlockNode(idOrKey, apiKey, password) || unlockAlbum(idOrKey, apiKey, password)
+            attempt(unlockNodeResult(idOrKey, apiKey, password)) || attempt(unlockAlbumResult(idOrKey, apiKey, password))
         }
 
-        if (!success && password.isNotEmpty()) {
+        // Delete the saved password only when SmugMug explicitly rejected it and nothing was inconclusive.
+        val definitelyWrong = results.isNotEmpty() &&
+            UnlockResult.Transient !in results && UnlockResult.Rejected in results
+        if (!success && password.isNotEmpty() && definitelyWrong) {
             passwordStore.remove(idOrKey)
             if (rootNode != null) {
                 passwordStore.remove(rootNode.nodeId)

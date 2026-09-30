@@ -1181,5 +1181,58 @@ class SmugMugRepositoryTest {
         assertNotNull(cached)
         assertEquals("Password", cached?.access)
     }
-}
 
+    // R-21: a saved password was deleted on ANY failed unlock (offline, 429, 5xx, the synthetic 504),
+    // and the user was told it was "no longer valid". Only an explicit 401 means the password is wrong
+    // (verified live 2026-09-30: wrong password -> HTTP 401 "Invalid password.").
+    private fun unlockRootWith(unlockBehaviour: (okhttp3.Request) -> Response): Pair<Boolean, FakePasswordStore> = runBlocking {
+        val store = FakePasswordStore(mapOf("2sDN5x" to "secret"))
+        val folder = NodeData(
+            uri = "/api/v2/node/2sDN5x", nodeId = "2sDN5x", type = "Folder", name = "Family",
+            description = null, securityType = "Password", privacy = "Public", passwordHint = null,
+            webUri = "https://x.smugmug.com/Family",
+            uris = NodeUris(parentNode = "/api/v2/node/2sDN5x!parent"), dateModified = null
+        )
+        val interceptor = Interceptor { chain ->
+            val req = chain.request()
+            if (req.method == "POST") {
+                unlockBehaviour(req)
+            } else {
+                Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                    .body(com.google.gson.Gson().toJson(SingleNodeResponse(SingleNodePayload(folder)))
+                        .toResponseBody("application/json".toMediaTypeOrNull()))
+                    .build()
+            }
+        }
+        val repository = SmugMugRepository(createMockApi(interceptor), FakeCollectionDao(), store, mockContext())
+        val ok = repository.unlockInheritedPasswordRoot("2sDN5x", "dummy_key", "secret")
+        ok to store
+    }
+
+    private fun codeResponse(req: okhttp3.Request, code: Int) =
+        Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(code).message("x")
+            .body("{}".toResponseBody("application/json".toMediaTypeOrNull())).build()
+
+    @Test
+    fun failedUnlock_onNetworkError_keepsSavedPassword() {
+        val (ok, store) = unlockRootWith { throw java.io.IOException("offline") }
+        assertFalse(ok)
+        assertEquals("secret", store.getPassword("2sDN5x"))
+    }
+
+    @Test
+    fun failedUnlock_on429And5xxAnd504_keepsSavedPassword() {
+        for (code in listOf(429, 500, 503, 504)) {
+            val (ok, store) = unlockRootWith { codeResponse(it, code) }
+            assertFalse(ok)
+            assertEquals("password deleted on HTTP $code", "secret", store.getPassword("2sDN5x"))
+        }
+    }
+
+    @Test
+    fun failedUnlock_on401_removesSavedPassword() {
+        val (ok, store) = unlockRootWith { codeResponse(it, 401) }
+        assertFalse(ok)
+        assertNull(store.getPassword("2sDN5x"))
+    }
+}

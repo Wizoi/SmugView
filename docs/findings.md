@@ -37,10 +37,14 @@ end to end, not reproduced) · `possible` (plausible, unverified).
 Owner approved the phased plan in `docs/review/2026-09-29-whole-app-review.md` §4 on 2026-09-30 ("Let's start the work"). Model rule *(owner, 2026-09-30)*: planning/design by an Opus agent at high effort; implementing planned work with Sonnet 5.5 medium. Quota may run out, so this log is the handoff.
 
 - Parked the old uncommitted Stage 1 sync work on branch `wip/stage1-sync-unverified` (built on the disproven ParentNode premise; do not merge as is). `main` is clean.
-- **Phase 0**, in progress:
-  - R-54 done: `res/xml/data_extraction_rules.xml` excludes everything from cloud backup and device transfer; manifest points at it. (Guard test still to add.)
-  - R-43 done: `Routes.castController` URI-encodes the title; test `RoutesAndKeysTest` failed first.
-  - R-42 done: `CollectionRowKeys` prefixes folder/album/photo-group keys; test failed first.
-  - R-02 done: `UNION` replaces `UNION ALL` in the three descendant CTEs; `CollectionDaoTest` self-parent and 2-cycle tests hung on the old query (killed after 10 min), pass now.
-  - Still to do: R-03 (visited-set guard in `getUnlockedPassword` walk, SmugViewModel ~1354-1426), R-21 (keep saved passwords on transient errors; delete only on an explicit auth failure), R-37 (cache-less client for downloads, AppModule ~118-127), manifest guard test for R-54.
+- **Phase 0 — done (2026-09-30), 105 unit tests, 0 failing.** Each fix had a test that failed on the old behaviour first:
+  - R-54: `res/xml/data_extraction_rules.xml` excludes everything from cloud backup and device transfer; `ManifestGuardTest` guards it.
+  - R-43: `Routes.castController` URI-encodes the title (`RoutesAndKeysTest`).
+  - R-42: `CollectionRowKeys` prefixes folder/album/photo-group row keys (`RoutesAndKeysTest`).
+  - R-02: `UNION` replaces `UNION ALL` in the three descendant CTEs (`CollectionDaoTest` self-parent and 2-cycle; both hung on the old query).
+  - R-03: visited-set guard in `SmugViewModel.getUnlockedPassword` (`SmugViewModelTest`, timed out on old code). The same walk in `resolvePasswordRootNodeId` only breaks on a self-parent; its real fix is T1 in Phase 2.
+  - R-21: `UnlockResult` {Success, Rejected, Transient}; a saved password is deleted only on 401/403 (verified live: wrong password = HTTP 401 "Invalid password."). `SmugMugErrorMapper.isPasswordRejection` guards the two ViewModel sites. Tests: `SmugMugRepositoryTest.failedUnlock_*`, `SmugMugErrorMapperTest`.
+  - R-37: `OkHttpClient.forFileDownloads()` (no cache) used by `OfflineDownloadWorker`; `HttpClientsTest` uses a real loopback server plus a control test showing the shared client does cache such a response. Note: `CollectionsController` already used cache-less clients.
+  - Known leftovers in this area, deliberately not touched in Phase 0: `handleAlbumLoadError` still removes the global bookmark on any 404 (Phase 6), and a few unlock callers (`TagSearchController`, password dialogs) still use the Boolean `unlockNode`/`unlockAlbum` (they never deleted passwords themselves).
+- **Next: Phase 1** (release-safe diagnostics, cache doctor, real-Room test DAO, migration-test harness). Per the model rule, have an Opus (high effort) agent write the Phase 1 design first, get owner sign-off on it, then implement with Sonnet 5.5 medium.
 - Gradle tip: a hung test has to be killed via its `Gradle Test Executor` java process; put `timeout 500` in front of `./gradlew.bat`.

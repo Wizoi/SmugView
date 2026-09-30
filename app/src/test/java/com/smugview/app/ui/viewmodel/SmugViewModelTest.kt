@@ -153,6 +153,20 @@ class SmugViewModelTest {
         Mockito.verify(mockRepository, Mockito.never()).markNodeAsViewed(Mockito.anyString())
     }
 
+    // R-03: a self-parented cached row (SmugMug's ParentNode is the node's own !parent link) made the
+    // inherited-password walk spin forever, which froze opening any gallery under that row.
+    @Test(timeout = 15_000)
+    fun getUnlockedPassword_withSelfParentedRow_terminatesWithNull() = runTest {
+        val loop = CachedNode(
+            nodeId = "loop", parentNodeId = "loop", type = "Folder", title = "Loop",
+            description = null, access = "None", passwordHint = null,
+            uri = "/api/v2/node/loop", childNodesUri = null, albumUri = null
+        )
+        Mockito.`when`(mockRepository.getNodeById("loop")).thenReturn(loop)
+
+        assertNull(viewModel.getUnlockedPassword("loop"))
+    }
+
     @Test
     fun testPerformSearchWithEmptyCache() = runTest {
         viewModel.setActiveNicknameForTest("testUser")
