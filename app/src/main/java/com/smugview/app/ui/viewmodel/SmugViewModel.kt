@@ -216,6 +216,7 @@ class SmugViewModel @Inject constructor(
      * site's profile is fetched, so a late answer from the old site cannot land on the new one (Q1).
      */
     private fun beginSite(nickname: String) {
+        if (pendingRestore?.nickname != nickname) pendingRestore = null
         session.close()
         session = SiteSession(nickname, viewModelScope.coroutineContext[kotlinx.coroutines.Job])
         navigator = BrowserNavigator(session.scope, browserHost)
@@ -235,6 +236,7 @@ class SmugViewModel @Inject constructor(
         albums.reset()
         siteHub.clearActiveSiteData()
         resetPerSiteState()
+        saveNavState()
     }
 
     // Casting Integration — delegated to CastController (facade decomposition).
@@ -298,6 +300,7 @@ class SmugViewModel @Inject constructor(
     fun setActiveTab(tab: BrowserTab, updateScopeFromBrowsing: Boolean = true) {
         val previousTab = _activeTab.value
         _activeTab.value = tab
+        saveNavState()
         if (tab != BrowserTab.Search && previousTab == BrowserTab.Search) {
             cancelSearchJob()
         }
@@ -372,6 +375,8 @@ class SmugViewModel @Inject constructor(
     private val browserHost = object : BrowserHost {
         override fun rootId(): String? = _splashState.value.let { if (it is SplashUiState.Success) it.rootNodeId else null }
 
+        override suspend fun cachedNode(nodeId: String): CachedNode? = repository.getNodeById(nodeId)
+
         override suspend fun savedPassword(nodeId: String): String? = getUnlockedPassword(nodeId)
 
         override suspend fun needsPassword(node: CachedNode): Boolean = this@SmugViewModel.needsPassword(node)
@@ -442,8 +447,49 @@ class SmugViewModel @Inject constructor(
             currentFolderId = state.currentId
             savedFolderStateBeforeSearch = state.returnToSearch?.let { Pair(it.lastOrNull()?.nodeId ?: state.rootId, it) }
             _browserState.value = state.listing
+            saveNavState(state)
         }
     }
+
+    /**
+     * What survives process death (R-17, design 3.2, Q4): the folder stack as NodeIDs, the back-to-search
+     * marker, the active tab and the search query text. Not results, photos, tag selection or passwords.
+     * Written on every render, tab change and search. Skipped while a restore is pending: the empty
+     * state a site begin renders would otherwise overwrite what the restore is about to read.
+     */
+    private fun saveNavState(state: BrowserState = navigator.state.value) {
+        if (pendingRestore != null) return
+        val nickname = session.nickname.takeIf { it.isNotEmpty() } ?: return
+        savedStateHandle[NAV_NICKNAME] = nickname
+        savedStateHandle[NAV_STACK] = ArrayList(state.stack.map { it.nodeId })
+        val back = state.returnToSearch
+        if (back != null) savedStateHandle[NAV_RETURN_TO_SEARCH] = ArrayList(back.map { it.nodeId })
+        else savedStateHandle.remove<ArrayList<String>>(NAV_RETURN_TO_SEARCH)
+        savedStateHandle[NAV_TAB] = _activeTab.value.name
+        savedStateHandle[SEARCH_QUERY] = search.searchQuery
+    }
+
+    private class SavedNav(
+        val nickname: String,
+        val stack: List<String>,
+        val returnToSearch: List<String>?,
+        val tab: BrowserTab?,
+        val query: String
+    )
+
+    private fun readSavedNav(): SavedNav? {
+        val nickname = savedStateHandle.get<String>(NAV_NICKNAME) ?: return null
+        return SavedNav(
+            nickname = nickname,
+            stack = savedStateHandle.get<ArrayList<String>>(NAV_STACK).orEmpty(),
+            returnToSearch = savedStateHandle.get<ArrayList<String>>(NAV_RETURN_TO_SEARCH),
+            tab = savedStateHandle.get<String>(NAV_TAB)?.let { name -> BrowserTab.values().firstOrNull { it.name == name } },
+            query = savedStateHandle.get<String>(SEARCH_QUERY).orEmpty()
+        )
+    }
+
+    /** The saved navigation of a process that died, until the profile resolves and the Folders tab is rebuilt from it. */
+    private var pendingRestore: SavedNav? = null
 
     /** One per [SiteSession]; replaced, empty, by [beginSite]. */
     private var navigator = BrowserNavigator(session.scope, browserHost)
@@ -596,7 +642,10 @@ class SmugViewModel @Inject constructor(
     private var unlockEpochJob: kotlinx.coroutines.Job? = null
     private var unlockSubtreeIndexJob: kotlinx.coroutines.Job? = null
 
-    fun performSearch(query: String, forceRefresh: Boolean = false) = search.performSearch(query, forceRefresh)
+    fun performSearch(query: String, forceRefresh: Boolean = false) {
+        search.performSearch(query, forceRefresh)
+        saveNavState()
+    }
 
     // Tag list and active selection state
     val availableTags: StateFlow<Set<String>> get() = albums.tags
@@ -762,8 +811,12 @@ class SmugViewModel @Inject constructor(
         if (!active.isNullOrEmpty()) {
             _activeNickname.value = active
             repository.setActiveNickname(active)
+            // R-17: what a killed process saved is used only for the site that is still active.
+            val restored = readSavedNav()?.takeIf { it.nickname == active }
+            pendingRestore = restored
             loadUserProfile(active)
-            _activeTab.value = BrowserTab.Folders
+            _activeTab.value = restored?.tab ?: BrowserTab.Folders
+            if (restored != null && restored.query.isNotEmpty()) search.restoreQuery(restored.query)
         } else {
             _splashState.value = SplashUiState.Idle
             _activeTab.value = BrowserTab.Hub
@@ -796,7 +849,14 @@ class SmugViewModel @Inject constructor(
 
                         // Unlock, gallery crawl and tree walk run as one job (startSiteSync, below).
 
-                        navigator.navigate(NavIntent.Root)
+                        val restore = pendingRestore
+                        pendingRestore = null
+                        if (restore != null) {
+                            // Cache-first, so the owner is back where they were even offline (R-17).
+                            navigator.navigate(NavIntent.Restore(restore.stack, restore.returnToSearch))
+                        } else {
+                            navigator.navigate(NavIntent.Root)
+                        }
                         startSiteSync(nickname, rootId)
                         loadSiteHeaderImage(nickname, rootId)
 
@@ -2114,6 +2174,14 @@ class SmugViewModel @Inject constructor(
                 navigator.navigate(NavIntent.Refresh(force = true, background = true))
             }
         }
+    }
+
+    private companion object {
+        const val NAV_NICKNAME = "nav.nickname"
+        const val NAV_STACK = "nav.stack"
+        const val NAV_RETURN_TO_SEARCH = "nav.returnToSearch"
+        const val NAV_TAB = "nav.tab"
+        const val SEARCH_QUERY = "search.query"
     }
 }
 

@@ -49,10 +49,17 @@ class ScenarioRig(retrying: Boolean = false) {
     init {
         Dispatchers.setMain(mainThread)
         app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE).edit().clear().commit()
-        repository = SmugMugRepository(server.api(retrying), dao, passwords, app, reporter, syncState).also {
+        repository = newRepository(retrying)
+        viewModel = newViewModel(repository, savedState)
+    }
+
+    private fun newRepository(retrying: Boolean) =
+        SmugMugRepository(server.api(retrying), dao, passwords, app, reporter, syncState).also {
             it.treeSyncDelayMs = 0
             it.unlockDelayMs = 0
         }
+
+    private fun newViewModel(repo: SmugMugRepository, handle: SavedStateHandle): SmugViewModel {
         val cast = Mockito.mock(CastManager::class.java)
         Mockito.`when`(cast.discoveredDevices).thenReturn(MutableStateFlow(emptyList()))
         Mockito.`when`(cast.activeDevice).thenReturn(MutableStateFlow(null))
@@ -60,15 +67,35 @@ class ScenarioRig(retrying: Boolean = false) {
         Mockito.`when`(cast.currentImageUri).thenReturn(MutableStateFlow(null))
         Mockito.`when`(cast.slideshowInterval).thenReturn(MutableStateFlow(5))
         Mockito.`when`(cast.isSlideshowPlaying).thenReturn(MutableStateFlow(false))
-        viewModel = SmugViewModel(
-            app, repository, Mockito.mock(WorkManager::class.java), cast, passwords,
-            Dispatchers.Default, reporter, savedState
+        return SmugViewModel(
+            app, repo, Mockito.mock(WorkManager::class.java), cast, passwords,
+            Dispatchers.Default, reporter, handle
         )
+    }
+
+    private val restarted = java.util.concurrent.CopyOnWriteArrayList<SmugViewModel>()
+
+    /** The repository of the latest [restartProcess] (null before one). */
+    @Volatile var restartedRepository: SmugMugRepository? = null
+        private set
+
+    /**
+     * Process death: the running view model's work stops, and a NEW repository and view model start
+     * over the same database, preferences, saved passwords and fake server, with [handle] as their
+     * saved state (what the system hands back from the bundle). Nothing in memory survives.
+     */
+    fun restartProcess(handle: SavedStateHandle): SmugViewModel {
+        viewModel.viewModelScope.cancel()
+        restarted.forEach { it.viewModelScope.cancel() }
+        val repo = newRepository(false)
+        restartedRepository = repo
+        return newViewModel(repo, handle).also { restarted += it }
     }
 
     fun close() {
         server.releaseAllGates()
         viewModel.viewModelScope.cancel()
+        restarted.forEach { it.viewModelScope.cancel() }
         Dispatchers.resetMain()
         mainThread.close()
         db.close()

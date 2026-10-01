@@ -124,6 +124,12 @@ fun SmugViewNavigation() {
             ) { backStackEntry ->
                 val imageKey = backStackEntry.arguments?.getString("imageKey") ?: ""
                 val index = backStackEntry.arguments?.getInt("index") ?: 0
+                // R-17: after process death the route is restored but the tag selection is not (the photos
+                // are derived from it). A viewer with nothing to show goes back to its list.
+                val selectedKeywordTags by viewModel.selectedTags.collectAsState()
+                LaunchedEffect(selectedKeywordTags.isEmpty()) {
+                    if (selectedKeywordTags.isEmpty()) navController.navigateUp()
+                }
                 KeywordPhotoDetailScreen(
                     targetImageKey = imageKey,
                     initialIndex = index,
@@ -226,6 +232,15 @@ fun SmugViewNavigation() {
             ) { backStackEntry ->
                 val imageKey = backStackEntry.arguments?.getString("imageKey") ?: ""
                 val index = backStackEntry.arguments?.getInt("index") ?: 0
+                // R-17: search results are not saved. A restored viewer in a process that has run no search
+                // (Idle, or an Error) has nothing to show and goes back to its list.
+                val searchStateNow by viewModel.searchState.collectAsState()
+                LaunchedEffect(searchStateNow) {
+                    val s = searchStateNow
+                    if (s is com.smugview.app.ui.viewmodel.SearchUiState.Idle || s is com.smugview.app.ui.viewmodel.SearchUiState.Error) {
+                        navController.navigateUp()
+                    }
+                }
                 SearchPhotoDetailScreen(
                     targetImageKey = imageKey,
                     initialIndex = index,

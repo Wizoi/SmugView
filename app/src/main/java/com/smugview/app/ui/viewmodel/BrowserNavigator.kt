@@ -48,6 +48,12 @@ sealed interface NavIntent {
     data class Reveal(val galleryKey: String) : NavIntent
     /** A folder opened by id (a Collections bookmark): the breadcrumb is built from its lineage. */
     data class Shortcut(val nodeId: String) : NavIntent
+    /**
+     * Process death (R-17): rebuild the Folders tab from the saved NodeIDs. The stack is read from the
+     * cached rows, root-most first, and stops at the first missing one; an unresolvable [returnToSearchIds]
+     * is dropped whole. The listing is cache-first, so it works offline.
+     */
+    data class Restore(val stackIds: List<String>, val returnToSearchIds: List<String>?) : NavIntent
 }
 
 /** What the host wants done when a folder's listing failed (the 401 handling stays in the host). */
@@ -63,6 +69,8 @@ interface BrowserHost {
     suspend fun needsPassword(node: CachedNode): Boolean
     /** Ask the owner for the password that protects [node]. */
     fun requestPassword(node: CachedNode)
+    /** The cached row for [nodeId], or null (restore after process death reads rows, never the network). */
+    suspend fun cachedNode(nodeId: String): CachedNode?
     /** Cache-first listing of a folder. */
     fun children(nodeId: String, force: Boolean, password: String?): Flow<Result<List<CachedNode>>>
     /** Ancestors of a gallery, root-most first, without the gallery and without the site root. */
@@ -170,7 +178,20 @@ class BrowserNavigator(
             }
             is NavIntent.Reveal -> reveal(intent.galleryKey)
             is NavIntent.Shortcut -> shortcut(intent.nodeId)
+            is NavIntent.Restore -> restore(intent)
         }
+    }
+
+    private suspend fun restore(intent: NavIntent.Restore) {
+        val root = host.rootId() ?: return
+        val stack = ArrayList<CachedNode>()
+        for (id in intent.stackIds) stack += (host.cachedNode(id) ?: break)
+        val returnTo = intent.returnToSearchIds?.let { ids ->
+            val rows = ids.map { host.cachedNode(it) ?: return@let null }
+            rows
+        }
+        set(_state.value.copy(stack = stack, returnToSearch = returnTo, rootId = root))
+        load(_state.value.currentId ?: root, force = false)
     }
 
     private suspend fun child(node: CachedNode) {

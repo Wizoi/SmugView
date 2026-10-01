@@ -163,6 +163,11 @@ class SearchController(
         _isGalleriesFoldersLoading.value = false
     }
 
+    /** Process death (R-17): the query text comes back into the box; the search is not run again. */
+    fun restoreQuery(query: String) {
+        searchQuery = query
+    }
+
     fun cancelSearchJob() {
         searchJob?.cancel()
         searchJob = null
