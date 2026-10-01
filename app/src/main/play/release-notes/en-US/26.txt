@@ -1,0 +1,13 @@
+New:
+- The "new" dot now covers galleries inside password-protected folders, after a one-time scan of your whole site.
+- The system Back button now works the way you expect on every tab: it steps back through folders, returns to Search, or closes an open collection.
+- Where you were (folder, tab and last search) is restored if Android closes the app in the background.
+- Folders you have not unlocked show a lock icon.
+
+Fixed:
+- Switching sites no longer mixes in folders or galleries from the previous site.
+- Double-tapping a folder or gallery opens it once.
+- A saved gallery password is no longer forgotten after a network error; it is only removed when you enter a wrong one.
+- Unlocking a folder from Search or Home now opens the gallery you chose.
+- Offline with nothing saved now shows a clear message instead of an endless spinner.
+- Fixed several crashes and a hang when folders linked back to each other.
