@@ -8,6 +8,14 @@
 # If you add a new package whose classes are populated by Gson reflection, add a -keep for it here.
 
 ########################################
+# Readable release stack traces (R-51)
+########################################
+# Keep line numbers so crashes in the diagnostics log can be retraced with the archived mapping
+# (release-mappings/<versionCode>/mapping.txt). The source file name is hidden behind "SourceFile".
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+########################################
 # Attributes required by Gson/Retrofit reflection
 ########################################
 # Signature is required for Gson to resolve generic types (e.g. List<AlbumImageData>).

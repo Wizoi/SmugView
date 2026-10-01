@@ -224,6 +224,21 @@ tasks.matching { it.name.startsWith("kapt") && it.name.endsWith("TestKotlin") }.
     enabled = false
 }
 
+// R-51: keep each release's R8 mapping so a crash line from the diagnostics log can be
+// deobfuscated later (retrace). release-mappings/ is git-ignored; the AAB also carries the mapping.
+val archiveReleaseMapping by tasks.registering(Copy::class) {
+    val mappingDir = rootProject.layout.projectDirectory.dir("release-mappings/${android.defaultConfig.versionCode}")
+    val archived = mappingDir.file("mapping.txt").asFile
+    from(layout.buildDirectory.file("outputs/mapping/release/mapping.txt"))
+    into(mappingDir)
+    doLast {
+        if (!archived.isFile) throw GradleException("R8 mapping was not archived to $archived")
+    }
+}
+tasks.matching { it.name == "minifyReleaseWithR8" }.configureEach {
+    finalizedBy(archiveReleaseMapping)
+}
+
 play {
     serviceAccountCredentials.set(rootProject.file("play-service-account.json"))
     defaultToAppBundles.set(true)

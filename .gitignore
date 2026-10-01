@@ -38,3 +38,6 @@ build-shots/
 
 # Recorded API snapshots contain the (leaked) API key - keep local until redacted
 app/src/test/resources/snapshots/
+
+# Archived R8 mappings (needed to deobfuscate release crashes; keep locally, never commit)
+release-mappings/
