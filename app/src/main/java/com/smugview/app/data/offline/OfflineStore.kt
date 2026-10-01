@@ -48,6 +48,7 @@ class OfflineStore(
     private val dao get() = db.offlineDao()
     private val offlineDir = File(filesDir, DIR)
     private val tmpDir = File(offlineDir, ".tmp")
+    private val legacyDir = File(filesDir, LEGACY_DIR)
 
     /** Serializes everything that touches the files, so a collector never races a commit. */
     private val fileLock = Mutex()
@@ -365,11 +366,135 @@ class OfflineStore(
         if (canon.parentFile == base) canon.delete()
     }
 
+    // ---- legacy files of the pre-17 code (5-8, design 6.2, Q6) ------------------------------------------------
+
+    /** What [repairLegacy] did, for the log line and the tests. */
+    data class LegacyRepair(
+        val adopted: Int, val redownload: Int, val galleriesKept: Int, val galleriesDropped: Int, val filesDeleted: Int
+    )
+
+    /** Test seam: called after each settled row, so a test can "kill the process" between two rows. */
+    @Volatile internal var afterLegacyStep: (() -> Unit)? = null
+
+    /**
+     * Settles what the old code left, once (the caller keeps the `offlineLegacyRepaired` flag) and silently (Q6 a):
+     *  - a photo row with a verified `offline_photos/{key}.jpg` takes that file (moved under `offline/`, DONE, no
+     *    request); every other one stays PENDING and downloads again under its own rule;
+     *  - a `LEGACY` gallery whose old "finished" flag is in [finishedAlbums] becomes LIST_PENDING (its files are adopted
+     *    by key when it is listed), any other one is dropped (the bookmark stays, as a shortcut);
+     *  - then the legacy files nothing can adopt, and the directory, are deleted ([cleanLegacyFiles]).
+     * Idempotent, and safe to die in the middle: each row is settled in its own transaction, a half-done run is
+     * finished by the next one. The old DB flags are not read: R-40 made them wrong, the file on disk decides.
+     */
+    suspend fun repairLegacy(finishedAlbums: Set<String>): LegacyRepair = withContext(io) {
+        var adopted = 0
+        var redownload = 0
+        for (row in dao.legacyFiles()) {
+            if (!isValidKey(row.imageKey)) {
+                // The migration copies keys unchecked; one that could not be a file name is a permanent failure.
+                dao.markFailed(row.fileKey, FailureReason.NO_SOURCE.name, false, row.attempts, null, null, clock())
+            } else if (adoptLegacyFile(row.fileKey)) {
+                adopted++
+            } else {
+                redownload++
+            }
+            dao.clearLegacyPath(row.fileKey)
+            afterLegacyStep?.invoke()
+        }
+        var kept = 0
+        var dropped = 0
+        for (g in dao.legacyGalleries()) {
+            if (g.albumKey in finishedAlbums) {
+                if (dao.promoteLegacyGallery(g.collectionId, g.albumKey) > 0) kept++
+            } else if (dao.dropLegacyGallery(g.collectionId, g.albumKey) > 0) {
+                dropped++
+            }
+            afterLegacyStep?.invoke()
+        }
+        LegacyRepair(adopted, redownload, kept, dropped, cleanLegacyFiles())
+    }
+
+    /**
+     * Makes `offline_photos/{key}.jpg` the file of this PENDING or FAILED row when it is verifiably the photo: its size
+     * equals the listed size when one is known, else it is non-empty, a whole JPEG, and the row has a source (a row
+     * with none was downloaded from its thumbnail by the old code). Moved with the row update in one transaction;
+     * false (nothing changed) when there is no such file, it fails the check, or the row is not adoptable.
+     */
+    suspend fun adoptLegacyFile(fileKey: String): Boolean = withContext(io) {
+        fileLock.withLock {
+            val row = dao.getFile(fileKey) ?: return@withLock false
+            if (row.state != PENDING && row.state != FAILED) return@withLock false
+            if (!isValidKey(row.imageKey)) return@withLock false
+            val legacy = File(legacyDir, "${row.imageKey}.jpg")
+            if (!legacy.isFile) return@withLock false
+            val size = legacy.length()
+            val known = row.expectedBytes
+            val whole = if (known != null) size == known else size > 0 && row.sourceUrl != null && looksLikeWholeJpeg(legacy)
+            if (!whole) return@withLock false
+            val rel = relPathOf(row.imageKey, "jpg")
+            try {
+                offlineDir.mkdirs()
+                db.withTransaction {
+                    if (dao.adoptLegacy(fileKey, rel, size, clock()) == 0) return@withTransaction false
+                    // If the move throws the transaction rolls back and the row is unchanged.
+                    java.nio.file.Files.move(
+                        legacy.toPath(), File(filesDir, rel).toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                    )
+                    true
+                }
+            } catch (e: IOException) {
+                false
+            }
+        }
+    }
+
+    /** A gallery was just listed: any of its photos the old code downloaded is adopted by key (size known now). */
+    suspend fun adoptLegacyFiles(imageKeys: Collection<String>): Int {
+        if (!legacyDir.isDirectory) return 0
+        var n = 0
+        for (key in imageKeys) if (isValidKey(key) && adoptLegacyFile(fileKeyOf(key))) n++
+        return n
+    }
+
+    /**
+     * Deletes `offline_photos/` once nothing can adopt from it: no gallery is still waiting to be listed. Everything
+     * left in it is then unreferenced (adopted files were moved out). Returns the number of files deleted.
+     */
+    suspend fun cleanLegacyFiles(): Int = withContext(io) {
+        fileLock.withLock {
+            if (!legacyDir.exists() || dao.countUnsettledGalleries() > 0) return@withLock 0
+            var n = 0
+            legacyDir.listFiles()?.forEach { if (it.isFile && it.delete()) n++ }
+            legacyDir.delete()
+            n
+        }
+    }
+
+    /** A JPEG that starts with SOI and has EOI near its end: a download the old code was killed in fails this. */
+    private fun looksLikeWholeJpeg(file: File): Boolean = try {
+        RandomAccessFile(file, "r").use { raf ->
+            if (raf.length() < 4) return@use false
+            val head = ByteArray(2).also { raf.readFully(it) }
+            if (head[0] != 0xFF.toByte() || head[1] != 0xD8.toByte()) return@use false
+            val tailLen = minOf(raf.length(), 1024L).toInt()
+            val tail = ByteArray(tailLen)
+            raf.seek(raf.length() - tailLen)
+            raf.readFully(tail)
+            (0 until tailLen - 1).any { tail[it] == 0xFF.toByte() && tail[it + 1] == 0xD9.toByte() }
+        }
+    } catch (e: IOException) {
+        false
+    }
+
     /** A path under `filesDir` for a stored `relPath` (readers and tests). */
     fun resolve(relPath: String): File = File(filesDir, relPath)
 
     companion object {
         const val DIR = "offline"
+
+        /** Where the pre-17 code kept `{key}.jpg`; read by [repairLegacy] only, then deleted. */
+        const val LEGACY_DIR = "offline_photos"
         const val PENDING = "PENDING"
         const val DOWNLOADING = "DOWNLOADING"
         const val DONE = "DONE"

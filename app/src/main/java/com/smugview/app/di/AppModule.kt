@@ -313,6 +313,21 @@ object AppModule {
     ): com.smugview.app.data.offline.OfflineScheduler =
         com.smugview.app.data.offline.OfflineScheduler(workManager = { WorkManager.getInstance(context) }, store = store)
 
+    /** The one-time repair of an install that upgraded from the pre-17 offline code (5-8). */
+    @Provides
+    @Singleton
+    fun provideOfflineStartup(
+        @ApplicationContext context: Context,
+        store: com.smugview.app.data.offline.OfflineStore,
+        syncState: com.smugview.app.data.repository.SyncStateStore,
+        scheduler: com.smugview.app.data.offline.OfflineScheduler
+    ): com.smugview.app.data.offline.OfflineStartup = com.smugview.app.data.offline.OfflineStartup(
+        com.smugview.app.data.offline.OfflineLegacyRepair(
+            store, syncState, context.getSharedPreferences("smugview_prefs", Context.MODE_PRIVATE)
+        ),
+        scheduler
+    )
+
     /** The writers of everything a collection refers to, and the offline consequence of each (phase 5, 5-6). */
     @Provides
     @Singleton

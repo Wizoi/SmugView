@@ -287,4 +287,40 @@ interface OfflineDao {
             "WHERE fileKey = :fileKey AND state = 'DONE' AND md5 IS NOT NULL AND md5 != :md5"
     )
     suspend fun resetChanged(fileKey: String, sourceUrl: String?, bytes: Long?, md5: String, now: Long): Int
+
+    // ---- legacy repair (5-8, design 6.2, Q6) -----------------------------------------------------------------
+
+    /** Rows the 5-2 backfill created from the old code (`legacyPath` set) and the repair has not settled yet. */
+    @Query("SELECT * FROM offline_files WHERE legacyPath IS NOT NULL ORDER BY fileKey")
+    suspend fun legacyFiles(): List<OfflineFile>
+
+    /**
+     * A verified legacy file became this row's file: DONE, with the path under `offline/` and no pending legacy
+     * path. Only a row nobody is writing (PENDING or FAILED); returns 0 otherwise.
+     */
+    @Query(
+        "UPDATE offline_files SET state = 'DONE', failure = NULL, retryable = 0, nextAttemptAt = NULL, httpCode = NULL, " +
+            "claim = NULL, relPath = :relPath, bytes = :bytes, legacyPath = NULL, updatedAt = :now " +
+            "WHERE fileKey = :fileKey AND state IN ('PENDING', 'FAILED')"
+    )
+    suspend fun adoptLegacy(fileKey: String, relPath: String, bytes: Long, now: Long): Int
+
+    @Query("UPDATE offline_files SET legacyPath = NULL WHERE fileKey = :fileKey")
+    suspend fun clearLegacyPath(fileKey: String): Int
+
+    @Query("SELECT * FROM offline_galleries WHERE state = 'LEGACY' ORDER BY collectionId, albumKey")
+    suspend fun legacyGalleries(): List<OfflineGallery>
+
+    @Query(
+        "UPDATE offline_galleries SET state = 'LIST_PENDING', failure = NULL, retryable = 0 " +
+            "WHERE collectionId = :collectionId AND albumKey = :albumKey AND state = 'LEGACY'"
+    )
+    suspend fun promoteLegacyGallery(collectionId: Long, albumKey: String): Int
+
+    @Query("DELETE FROM offline_galleries WHERE collectionId = :collectionId AND albumKey = :albumKey AND state = 'LEGACY'")
+    suspend fun dropLegacyGallery(collectionId: Long, albumKey: String): Int
+
+    /** Galleries still to be listed: until they are, a legacy file may be the one a listing adopts. */
+    @Query("SELECT COUNT(*) FROM offline_galleries WHERE state IN ('LEGACY', 'LIST_PENDING') OR (state = 'FAILED' AND retryable = 1)")
+    suspend fun countUnsettledGalleries(): Int
 }

@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.smugview.app.data.offline.OfflineScheduler
+import com.smugview.app.data.offline.OfflineStartup
 import com.smugview.app.data.offline.OfflineStore
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.diag.DiagnosticsInitializer
@@ -38,6 +39,9 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
     lateinit var offlineScheduler: OfflineScheduler
 
     @Inject
+    lateinit var offlineStartup: OfflineStartup
+
+    @Inject
     lateinit var offlineStore: OfflineStore
 
     @Inject
@@ -48,9 +52,9 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         diagnostics.start()
-        // Files still wanted from before the process died (or from a failed retry): queue a pass. A no-op when
-        // everything is DONE. Never blocks start-up, and a database error here must not crash the app.
-        appScope.launch { runCatching { offlineScheduler.kickIfWanted() } }
+        // Settle what the pre-17 offline code left (once), THEN queue a pass for the files still wanted (from before
+        // the process died, or a failed retry). The order is the point: see OfflineStartup. Never blocks start-up.
+        appScope.launch { offlineStartup.run() }
         // A password root came into session: a kept gallery that was permanently locked is worth listing again.
         appScope.launch {
             repository.unlocks.sessionEpoch.drop(1).collect {

@@ -98,6 +98,8 @@ class OfflineDownloader(
         var consecutiveOffline = 0
         var stoppedFor: FailureReason? = null
         var more = listGalleries(unmetered, started, budgetMs)
+        // Once no gallery is waiting to be listed, the old offline_photos/ directory has nothing left to give (5-8).
+        runCatching { store.cleanLegacyFiles() }
         while (true) {
             val next = nextRow(unmetered, tried)
             if (next == null) break
@@ -154,7 +156,7 @@ class OfflineDownloader(
             // listed anyway. A password is never deleted by this (R-21).
             if (repo.unlocks.ensureSession(key, apiKey()) == SmugMugRepository.UnlockResult.Transient) sessionTransient = true
             val images = repo.getAllAlbumImages(key, apiKey(), password = null, cacheControl = "no-cache")
-            store.applyListing(
+            val applied = store.applyListing(
                 gallery,
                 images.map {
                     OfflineStore.ListedImage(
@@ -170,6 +172,9 @@ class OfflineDownloader(
                 },
                 ilu
             )
+            // Photos the pre-17 code downloaded are adopted by key now that their size is known (5-8). The listing is
+            // already recorded, so nothing here may fail it.
+            if (applied) try { store.adoptLegacyFiles(images.map { it.imageKey }) } catch (e: CancellationException) { throw e } catch (e: Exception) { }
             return ListOutcome.LISTED
         } catch (e: CancellationException) {
             throw e
