@@ -286,6 +286,12 @@ object AppModule {
         return WorkManager.getInstance(context)
     }
 
+    /** The only owner of offline files (phase 5). One per process: its run id is the claim of its downloads. */
+    @Provides
+    @Singleton
+    fun provideOfflineStore(database: AppDatabase, @ApplicationContext context: Context): com.smugview.app.data.offline.OfflineStore =
+        com.smugview.app.data.offline.OfflineStore(database, context.filesDir)
+
     @Provides
     @Singleton
     fun provideCastManager(impl: com.smugview.app.data.cast.DefaultCastManager): com.smugview.app.data.cast.CastManager {
