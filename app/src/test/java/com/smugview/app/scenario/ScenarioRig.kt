@@ -105,12 +105,20 @@ class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
         server.releaseAllGates()
         viewModel.viewModelScope.cancel()
         restarted.forEach { it.viewModelScope.cancel() }
-        Dispatchers.resetMain()
+        resetMainWhenIdle()
         mainThread.close()
         db.close()
         loopback?.close()
         cacheDir?.deleteRecursively()
     }
+}
+
+/** A released request's callback can read Dispatchers.Main while we reset it; resetMain then throws, so retry. */
+private fun resetMainWhenIdle() {
+    repeat(50) {
+        try { Dispatchers.resetMain(); return } catch (e: IllegalStateException) { Thread.sleep(20) }
+    }
+    Dispatchers.resetMain()
 }
 
 /** Polls [condition] on the calling thread until it holds or [timeoutMs] passes; fails with [message]. */
