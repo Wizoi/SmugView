@@ -101,6 +101,7 @@ import com.smugview.app.ui.theme.SoftRed
 import com.smugview.app.ui.theme.SurfaceDark
 import com.smugview.app.ui.theme.GlowGreen
 import androidx.compose.foundation.BorderStroke
+import com.smugview.app.ui.viewmodel.BackPolicy
 import com.smugview.app.ui.viewmodel.BrowserUiState
 import com.smugview.app.ui.viewmodel.BrowserTab
 import com.smugview.app.ui.viewmodel.SearchUiState
@@ -132,9 +133,11 @@ fun BrowserScreen(
     val activeTab by viewModel.activeTab.collectAsState()
     var selectedImageForDetail by remember { mutableStateOf<AlbumImageData?>(null) }
 
-    // Handle system back click to navigate folders
+    // System back (R-14, owner Q2): on the Folders tab it pops the folder stack or returns to Search;
+    // on every other tab the Android default applies. An open collection is closed by
+    // CollectionsTabView's own handler, which owns that state, so it passes false here.
     val cameFromSearch = viewModel.savedFolderStateBeforeSearch != null
-    BackHandler(enabled = navStack.isNotEmpty() || cameFromSearch) {
+    BackHandler(enabled = BackPolicy.enabled(activeTab, navStack.size, cameFromSearch, openCollection = false)) {
         viewModel.navigateBack()
     }
 

@@ -249,6 +249,7 @@ class TagSearchController(
         scopeLoadingSuppressed = false
         loadedAlbumImages.clear()
         scopeAlbums = emptyList()
+        lastScanScope = null
     }
 
     init {
@@ -453,18 +454,31 @@ class TagSearchController(
 
     private var tagScanJob: Job? = null
 
+    /** The scope the last scan ran for; null before the first scan and after [reset] (R-19). */
+    private var lastScanScope: SearchScope? = null
+
     fun triggerTagScopeScan(scope: SearchScope, clearSelected: Boolean = true) {
         tagScanJob?.cancel()
+        // R-19: coming back to the tab with the same scope and the selection kept must not empty the
+        // results the chips still describe. A changed scope, or an explicit rescan (selection cleared),
+        // starts empty as before.
+        val keepPhotos = !clearSelected && scope == lastScanScope
+        lastScanScope = scope
         tagScanJob = siteScope().launch {
             _isScanningTags.value = true
             _scanProgress.value = "Starting scan..."
-            _allScopePhotos.value = emptyList()
+            if (!keepPhotos) _allScopePhotos.value = emptyList()
             _allScopeTags.value = emptyMap()
             if (clearSelected) {
                 _selectedTags.value = emptyMap()
             }
             loadedAlbumImages.clear()
             scopeAlbums = emptyList()
+            // Leaving the tab cancelled the page loader. If it had not finished, resume it for the
+            // kept results; a finished load (no next page) needs nothing.
+            if (keepPhotos && (nextUrlToLoad != null || nextStartToLoad == 1)) {
+                _scopeReloadTrigger.value = _scopeReloadTrigger.value + 1
+            }
 
             try {
                 if (activeNickname.value == null) return@launch

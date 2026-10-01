@@ -100,6 +100,7 @@ import com.smugview.app.ui.theme.SoftRed
 import com.smugview.app.ui.theme.SurfaceDark
 import com.smugview.app.ui.theme.GlowGreen
 import androidx.compose.foundation.BorderStroke
+import com.smugview.app.ui.viewmodel.BackPolicy
 import com.smugview.app.ui.viewmodel.BrowserUiState
 import com.smugview.app.ui.viewmodel.BrowserTab
 import com.smugview.app.ui.viewmodel.SearchUiState
@@ -135,6 +136,11 @@ fun CollectionsTabView(
     var pendingCastCollectionId by remember { mutableStateOf<Long?>(null) }
     var pendingCastCollectionName by remember { mutableStateOf("") }
     
+    // System back closes an open collection (R-14, owner Q2); with none open it falls through.
+    BackHandler(enabled = BackPolicy.enabled(BrowserTab.Collections, 0, false, selectedCollectionForShortcuts != null)) {
+        selectedCollectionForShortcuts = null
+    }
+
     val neonColors = listOf(
         Color(0xFF00E5FF),
         Color(0xFF00E676),
