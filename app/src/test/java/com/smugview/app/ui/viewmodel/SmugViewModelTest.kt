@@ -623,6 +623,31 @@ class SmugViewModelTest {
     }
 
     @Test
+    fun uncachedFolderOffline_showsTheOfflineMessage_notHttp504() = runTest {
+        viewModel.setActiveNicknameForTest("testUser")
+        val childNode = createTestNode(nodeId = "folder1", parentNodeId = "root", type = "Folder", title = "Subfolder 1")
+        // What Retrofit throws for OkHttp's synthetic 504: no network response, no cache response.
+        val req = okhttp3.Request.Builder().url("https://api.smugmug.com/api/v2/node/folder1!children").build()
+        val raw = okhttp3.Response.Builder().request(req).protocol(okhttp3.Protocol.HTTP_1_1)
+            .code(504).message("Unsatisfiable Request (only-if-cached)").build()
+        val synthetic = retrofit2.HttpException(
+            retrofit2.Response.error<Any>(okhttp3.ResponseBody.create(null, ""), raw)
+        )
+        Mockito.`when`(mockRepository.getNodeChildren("folder1", BuildConfig.SMUGMUG_API_KEY, false, null))
+            .thenReturn(flowOf(Result.failure(synthetic)))
+
+        viewModel.navigateToChildFolder(childNode)
+        advanceUntilIdle()
+
+        val state = viewModel.browserState.value
+        assertTrue(state.toString(), state is BrowserUiState.Error)
+        assertEquals(
+            "You're offline, and this hasn't been opened on this device yet.",
+            (state as BrowserUiState.Error).message
+        )
+    }
+
+    @Test
     fun testSearchScreenDataMapping() = runTest {
         viewModel.setActiveNicknameForTest("testUser")
         

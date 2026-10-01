@@ -58,7 +58,7 @@ class RetryingCallFactory(
     override fun newCall(request: Request): Call = RetryingCall(request)
 
     private fun shouldRetry(response: Response, attempt: Int): Boolean =
-        !response.isSuccessful && (response.code == 429 || response.code in 500..599) && attempt < maxAttempts
+        !response.isSuccessful && !response.isSyntheticCacheMiss() && (response.code == 429 || response.code in 500..599) && attempt < maxAttempts
 
     private fun retryDelayMs(response: Response, backoffMs: Long): Long {
         if (response.code == 429) {

@@ -27,6 +27,21 @@ object SmugMugErrorMapper {
      */
     fun shouldShowToast(code: Int): Boolean = code != 404
 
+    /** Same rule, given the whole response: an offline cache miss is never a toast. */
+    fun shouldShowToast(response: okhttp3.Response): Boolean =
+        !response.isSyntheticCacheMiss() && shouldShowToast(response.code)
+
+    const val OFFLINE_NOT_CACHED_MESSAGE = "You're offline, and this hasn't been opened on this device yet."
+
+    /** What a screen shows for [error]: the offline message for a synthetic cache-miss 504,
+     *  otherwise the exception's own message, otherwise [fallback]. */
+    fun userMessage(error: Throwable?, fallback: String): String =
+        if (error is retrofit2.HttpException && error.response()?.raw()?.isSyntheticCacheMiss() == true) {
+            OFFLINE_NOT_CACHED_MESSAGE
+        } else {
+            error?.localizedMessage ?: fallback
+        }
+
     /** True only when SmugMug explicitly refused the credentials (401/403). Offline, 429, 5xx and
      *  OkHttp's synthetic 504 say nothing about whether a saved password is still correct. */
     fun isPasswordRejection(error: Throwable?): Boolean =

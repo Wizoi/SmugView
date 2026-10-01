@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * "retryInterceptor blocks the dispatcher" tracker item in AGENTS.md for why this class exists).
  */
 class RetryingCallFactoryTest {
+    @get:org.junit.Rule val tmp = org.junit.rules.TemporaryFolder()
 
     private fun jsonResponse(request: Request, code: Int, message: String, body: String = "", extraHeader: Pair<String, String>? = null): Response {
         val builder = Response.Builder()
@@ -337,6 +338,88 @@ class RetryingCallFactoryTest {
 
         assertEquals(listOf<String?>("t#1", null), outcomes.map { it.actionId })
     }
+
+    // ---- findings #6: OkHttp's synthetic 504 for an uncached only-if-cached request ----
+
+    /** A real OkHttp client with a real Cache; every host resolves to loopback. */
+    private fun realClient(): OkHttpClient = OkHttpClient.Builder()
+        .cache(Cache(tmp.newFolder(), 10L * 1024 * 1024))
+        .dns(object : Dns {
+            override fun lookup(hostname: String) = listOf(java.net.InetAddress.getLoopbackAddress())
+        })
+        .build()
+
+    private fun serve(vararg responses: String): Pair<java.net.ServerSocket, Int> {
+        val server = java.net.ServerSocket(0)
+        kotlin.concurrent.thread(isDaemon = true) {
+            for (raw in responses) {
+                runCatching {
+                    server.accept().use { sock ->
+                        val r = sock.getInputStream().bufferedReader()
+                        while (r.readLine().orEmpty().isNotEmpty()) { /* skip request headers */ }
+                        sock.getOutputStream().apply { write(raw.toByteArray()); flush() }
+                    }
+                }
+            }
+        }
+        return server to server.localPort
+    }
+
+    @Test
+    fun uncachedOnlyIfCached_isNotRetried_reportsOnce_andIsNotAToast() {
+        val (server, port) = serve() // never contacted
+        val outcomes = java.util.Collections.synchronizedList(mutableListOf<CallOutcome>())
+        val finals = java.util.Collections.synchronizedList(mutableListOf<Response>())
+        val toasts = java.util.Collections.synchronizedList(mutableListOf<Boolean>())
+        val factory = RetryingCallFactory(
+            delegate = realClient(), initialDelayMs = 5,
+            onFinalResponse = { _, r ->
+                finals.add(r)
+                toasts.add(SmugMugErrorMapper.shouldShowToast(r))
+            },
+            onComplete = { outcomes.add(it) }
+        )
+        val req = Request.Builder()
+            .url("http://api.smugmug.com:$port/api/v2/node/zz9!children")
+            .cacheControl(CacheControl.Builder().onlyIfCached().build())
+            .build()
+
+        val (response, failure) = enqueueAndAwait(factory.newCall(req))
+        server.close()
+
+        assertNull(failure)
+        assertEquals(504, response?.code)
+        assertEquals(listOf(504), outcomes.single().codes)          // red today: [504, 504, 504, 504, 504, 504]
+        assertEquals(1, outcomes.single().attempts)
+        assertEquals(1, finals.size)                                  // onFinalResponse still sees it
+        assertEquals(listOf(false), toasts)                           // but it is not a toast
+        assertTrue(response!!.isSyntheticCacheMiss())
+    }
+
+    @Test
+    fun realServerGatewayTimeout_isStillRetriedAndStillAToast() {
+        val crlf = "\r\n"
+        val gw = listOf("HTTP/1.1 504 Gateway Timeout", "Content-Length: 0", "Connection: close", "", "").joinToString(crlf)
+        val okRaw = listOf("HTTP/1.1 200 OK", "Content-Length: 2", "Connection: close", "", "hi").joinToString(crlf)
+        val (server, port) = serve(gw, gw, okRaw)
+        val outcomes = java.util.Collections.synchronizedList(mutableListOf<CallOutcome>())
+        val factory = RetryingCallFactory(delegate = realClient(), initialDelayMs = 5, onComplete = { outcomes.add(it) })
+        val req = Request.Builder().url("http://api.smugmug.com:$port/api/v2/node/a!children").build()
+
+        val (response, _) = enqueueAndAwait(factory.newCall(req))
+        server.close()
+
+        assertEquals(200, response?.code)
+        assertFalse(response!!.isSyntheticCacheMiss())
+        assertEquals(listOf(504, 504, 200), outcomes.single().codes)
+        assertTrue(SmugMugErrorMapper.shouldShowToast(gwResponse(504)))
+    }
+
+    private fun gwResponse(code: Int): Response =
+        Response.Builder().request(request()).protocol(Protocol.HTTP_1_1).code(code).message("x")
+            .networkResponse(
+                Response.Builder().request(request()).protocol(Protocol.HTTP_1_1).code(code).message("x").build()
+            ).build()
 
     /** Never answers by itself; like OkHttp, reports a failure to its callback when cancelled. */
     private class PendingCall(private val req: Request) : Call {

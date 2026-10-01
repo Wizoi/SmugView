@@ -941,7 +941,7 @@ class SmugViewModel @Inject constructor(
                                 passwordPromptNode = node
                                 passwordError = "Saved password is no longer valid. Please re-enter."
                             } else {
-                                _browserState.value = BrowserUiState.Error(error.localizedMessage ?: "Failed to load hierarchy")
+                                _browserState.value = BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy"))
                             }
                         } else {
                             val isAccessDenied = error is retrofit2.HttpException && (error.code() == 401 || error.code() == 404)
@@ -960,10 +960,10 @@ class SmugViewModel @Inject constructor(
                                             repository.removeBookmarkGlobally(nodeId)
                                         }
                                     }
-                                    _browserState.value = BrowserUiState.Error(error.localizedMessage ?: "Access Denied / Not Found")
+                                    _browserState.value = BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Access Denied / Not Found"))
                                 }
                             } else {
-                                _browserState.value = BrowserUiState.Error(error.localizedMessage ?: "Failed to load hierarchy")
+                                _browserState.value = BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy"))
                             }
                         }
                     }
@@ -1860,7 +1860,7 @@ class SmugViewModel @Inject constructor(
                 _isBackgroundLoading.value = false
                 _backgroundLoadingStatus.value = null
                 _rawPhotos.value = emptyList() // Clear raw photos on failure
-                _albumLoadError.value = e.localizedMessage ?: "Failed to load album images"
+                _albumLoadError.value = com.smugview.app.data.api.SmugMugErrorMapper.userMessage(e, "Failed to load album images")
                 handleAlbumLoadError(albumKey, e)
             }
         }

@@ -192,7 +192,8 @@ object AppModule {
             onComplete = telemetry::record,
             onFinalResponse = { request, response ->
                 val isApiRequest = request.url.host == "api.smugmug.com" && request.url.encodedPath.contains("/api/v2/")
-                if (isApiRequest && request.header("X-Ignore-Errors") != "true") {
+                if (isApiRequest && request.header("X-Ignore-Errors") != "true" &&
+                    com.smugview.app.data.api.SmugMugErrorMapper.shouldShowToast(response)) {
                     val responseBodyContent = try {
                         response.peekBody(1024 * 1024L).string() // Peek up to 1MB
                     } catch (e: Exception) {

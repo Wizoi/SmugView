@@ -2,6 +2,7 @@ package com.smugview.app.data.api
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Test
 
 /**
@@ -129,5 +130,35 @@ class SmugMugErrorMapperTest {
         }
         assertEquals(false, SmugMugErrorMapper.isPasswordRejection(java.io.IOException("offline")))
         assertEquals(false, SmugMugErrorMapper.isPasswordRejection(null))
+    }
+
+    // --- findings #6: the offline message ---
+
+    private fun httpException(code: Int, withNetworkResponse: Boolean): retrofit2.HttpException {
+        val req = okhttp3.Request.Builder().url("https://api.smugmug.com/api/v2/node/zz9!children").build()
+        fun raw(c: Int) = okhttp3.Response.Builder().request(req).protocol(okhttp3.Protocol.HTTP_1_1)
+            .code(c).message("m")
+        val rawResponse = if (withNetworkResponse) raw(code).networkResponse(raw(code).build()).build() else raw(code).build()
+        val body = "".toResponseBody(null)
+        return retrofit2.HttpException(retrofit2.Response.error<Any>(body, rawResponse))
+    }
+
+    @Test
+    fun syntheticCacheMiss_getsTheOfflineMessage() {
+        val msg = SmugMugErrorMapper.userMessage(httpException(504, withNetworkResponse = false), "fallback")
+        assertEquals("You're offline, and this hasn't been opened on this device yet.", msg)
+    }
+
+    @Test
+    fun realGatewayTimeout_keepsItsOwnMessage() {
+        val e = httpException(504, withNetworkResponse = true)
+        assertEquals(e.localizedMessage, SmugMugErrorMapper.userMessage(e, "fallback"))
+    }
+
+    @Test
+    fun otherErrors_useTheirMessageThenTheFallback() {
+        assertEquals("boom", SmugMugErrorMapper.userMessage(java.io.IOException("boom"), "fallback"))
+        assertEquals("fallback", SmugMugErrorMapper.userMessage(RuntimeException(null as String?), "fallback"))
+        assertEquals("fallback", SmugMugErrorMapper.userMessage(null, "fallback"))
     }
 }

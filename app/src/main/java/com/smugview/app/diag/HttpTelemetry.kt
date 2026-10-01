@@ -1,6 +1,7 @@
 package com.smugview.app.diag
 
 import com.smugview.app.data.api.CallOutcome
+import com.smugview.app.data.api.isSyntheticCacheMiss
 import okhttp3.HttpUrl
 import okhttp3.Response
 
@@ -39,7 +40,7 @@ fun classify(response: Response): CacheSource {
         network == null && cached != null -> CacheSource.CACHE
         network != null && cached != null -> CacheSource.CONDITIONAL
         network != null -> CacheSource.NETWORK
-        response.code == 504 -> CacheSource.SYNTHETIC_504
+        response.isSyntheticCacheMiss() -> CacheSource.SYNTHETIC_504
         else -> CacheSource.NONE
     }
 }

@@ -239,7 +239,9 @@ fun PhotoGridScreen(
                     }
                 }
                 bgError != null || lazyPhotos.loadState.refresh is LoadState.Error -> {
-                    val errorMessage = bgError ?: (lazyPhotos.loadState.refresh as? LoadState.Error)?.error?.localizedMessage ?: "Failed to load album images"
+                    val errorMessage = bgError ?: com.smugview.app.data.api.SmugMugErrorMapper.userMessage(
+                        (lazyPhotos.loadState.refresh as? LoadState.Error)?.error, "Failed to load album images"
+                    )
                     
                     Column(
                         modifier = Modifier

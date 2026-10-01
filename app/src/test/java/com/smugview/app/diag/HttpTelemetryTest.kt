@@ -125,7 +125,7 @@ class HttpTelemetryTest {
         assertTrue(lines[1], lines[1].contains("-> 200 CONDITIONAL "))
     }
 
-    @Test fun onlyIfCachedMiss_isSynthetic504_offline_andRetriesAreVisible() {
+    @Test fun onlyIfCachedMiss_isSynthetic504_offline_andIsNotRetried() {
         val (server, port) = serve() // never contacted
         val f = factory(maxAttempts = 2)
 
@@ -138,7 +138,7 @@ class HttpTelemetryTest {
         assertEquals(504, code)
         val line = httpLines().single()
         assertTrue(line, line.contains(" W http [-] GET /node/zz9!children -> 504 SYNTHETIC_504 "))
-        assertTrue(line, line.endsWith(" tries=3 codes=504,504,504 offline=1"))
+        assertTrue(line, line.endsWith(" tries=1 offline=1"))
     }
 
     @Test fun ioFailure_isLoggedAsErrWithTheClassName() {
