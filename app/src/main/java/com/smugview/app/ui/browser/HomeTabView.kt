@@ -67,8 +67,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.History
-import com.smugview.app.ui.explorer.ProfilePreviewCard
-import com.smugview.app.ui.explorer.ProfileAvatar
+import com.smugview.app.ui.component.ProfilePreviewCard
+import com.smugview.app.ui.component.ProfileAvatar
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import androidx.compose.material3.*
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -596,7 +596,7 @@ fun HomeTabView(
                                                         ProfileAvatar(
                                                             nickname = userData.nickName,
                                                             name = userData.name,
-                                                            bioImageKey = userData.bioImageKey,
+                                                            bioImageThumbnailUrl = userData.bioImageThumbnailUrl,
                                                             modifier = Modifier.size(56.dp),
                                                             textColor = Color.White,
                                                             fontSize = 20.sp
@@ -735,7 +735,7 @@ fun HomeTabView(
                         ProfileAvatar(
                             nickname = nickname!!,
                             name = nickname!!,
-                            bioImageKey = activeUserProfile?.bioImageKey,
+                            bioImageThumbnailUrl = activeUserProfile?.bioImageThumbnailUrl,
                             modifier = Modifier.size(54.dp),
                             textColor = Color.White,
                             fontSize = 22.sp

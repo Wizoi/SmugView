@@ -32,7 +32,9 @@ data class UserData(
     @SerializedName("Name") val name: String,
     @SerializedName("Uris") val uris: UserUris,
     @SerializedName("WebUri") val webUri: String? = null,
-    val bioImageKey: String? = null
+    val bioImageKey: String? = null,
+    /** The BioImage's path-bearing `ThumbnailUrl` from the `_expand=BioImage` the profile call already makes (null if none). */
+    val bioImageThumbnailUrl: String? = null
 )
 data class UserUris(
     @SerializedName("Node") val node: String
@@ -273,7 +275,8 @@ data class BioImagePayload(
     @SerializedName("BioImage") val bioImage: BioImageData
 )
 data class BioImageData(
-    @SerializedName("ImageKey") val imageKey: String
+    @SerializedName("ImageKey") val imageKey: String,
+    @SerializedName("ThumbnailUrl") val thumbnailUrl: String? = null
 )
 
 // Image Search Response

@@ -66,8 +66,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.History
-import com.smugview.app.ui.explorer.ProfilePreviewCard
-import com.smugview.app.ui.explorer.ProfileAvatar
+import com.smugview.app.ui.component.ProfilePreviewCard
+import com.smugview.app.ui.component.ProfileAvatar
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import androidx.compose.material3.*
 import androidx.paging.compose.collectAsLazyPagingItems

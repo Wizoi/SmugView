@@ -137,8 +137,11 @@ class SmugMugRepository @Inject constructor(
         }
         try {
             val userResponse = api.getUserProfile(nickname, apiKey, ignoreErrors = ignoreErrors)
-            val bioImageKey = userResponse.expansions?.values?.firstOrNull { it.bioImage != null }?.bioImage?.imageKey
-            val enrichedUser = userResponse.response.user.copy(bioImageKey = bioImageKey)
+            val bioImage = userResponse.expansions?.values?.firstOrNull { it.bioImage != null }?.bioImage
+            val enrichedUser = userResponse.response.user.copy(
+                bioImageKey = bioImage?.imageKey,
+                bioImageThumbnailUrl = bioImage?.thumbnailUrl
+            )
             if (com.smugview.app.BuildConfig.DEBUG) {
                 android.util.Log.d("SmugMugRepository", "getUserProfile success: nickname=$nickname")
             }

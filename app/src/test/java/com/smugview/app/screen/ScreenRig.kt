@@ -12,6 +12,7 @@ import coil.decode.DataSource
 import coil.intercept.Interceptor
 import coil.request.ImageResult
 import coil.request.SuccessResult
+import kotlinx.coroutines.test.resetMain
 import com.smugview.app.scenario.ScenarioRig
 import com.smugview.app.ui.theme.SmugViewTheme
 import org.robolectric.Shadows.shadowOf
@@ -45,6 +46,11 @@ class ScreenRig(val compose: ComposeContentTestRule, retrying: Boolean = false) 
     }
 
     init {
+        // ScenarioRig points Dispatchers.Main at a plain thread. Coil's AsyncImagePainter reads Compose snapshot state
+        // from Dispatchers.Main and crashes on a thread that is not the Compose one, so a screen test puts Main back
+        // on the (Robolectric) main looper, the real app's arrangement. The view model's work follows it there.
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        kotlinx.coroutines.Dispatchers.resetMain()
         // manifest = Config.NONE: register the activity the compose rule launches.
         shadowOf(rig.app.packageManager).addActivityIfNotPresent(
             ComponentName(rig.app.packageName, ComponentActivity::class.java.name)
@@ -55,8 +61,21 @@ class ScreenRig(val compose: ComposeContentTestRule, retrying: Boolean = false) 
     /** Renders [content] under the app theme. */
     fun setContent(content: @Composable () -> Unit) = compose.setContent { SmugViewTheme { content() } }
 
-    /** Polls the Compose tree, advancing the clock, until [condition] holds (the rig's state arrives on other threads). */
-    fun waitUntil(timeoutMs: Long = 5_000, condition: () -> Boolean) = compose.waitUntil(timeoutMs, condition)
+    /**
+     * Polls until [condition] holds. The rig's state arrives on OkHttp and IO threads and is handed back to the
+     * Robolectric main looper (paused: the test thread is the main thread), so each turn idles that looper and
+     * advances the Compose clock before looking. [message] names what was awaited when it times out.
+     */
+    fun waitUntil(timeoutMs: Long = 5_000, message: String = "condition", condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            shadowOf(android.os.Looper.getMainLooper()).idle()
+            compose.mainClock.advanceTimeByFrame()
+            if (condition()) return
+            if (System.currentTimeMillis() > deadline) throw AssertionError("timed out after ${timeoutMs}ms waiting for: $message")
+            Thread.sleep(20)
+        }
+    }
 
     fun close() {
         rig.close()
