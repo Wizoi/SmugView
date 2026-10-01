@@ -162,8 +162,8 @@ class SmugViewModelTest {
 
         assertTrue("no LaunchUnlock run from the ViewModel", reporter.runs.isEmpty())
         runBlocking {
-            Mockito.verify(mockRepository, Mockito.never()).unlockNode(Mockito.anyString(), Mockito.anyString(), Mockito.anyString())
-            Mockito.verify(mockRepository, Mockito.never()).unlockAlbum(Mockito.anyString(), Mockito.anyString(), Mockito.anyString())
+            Mockito.verify(mockRepository, Mockito.never()).unlockNodeResult(Mockito.anyString(), Mockito.anyString(), Mockito.anyString())
+            Mockito.verify(mockRepository, Mockito.never()).unlockAlbumResult(Mockito.anyString(), Mockito.anyString(), Mockito.anyString())
         }
     }
 
@@ -850,8 +850,8 @@ class SmugViewModelTest {
         fakePasswordStore.savePassword("some_other_album", "gallery")
 
         // If the code were to (incorrectly) replay it, this stub would unlock the album.
-        Mockito.`when`(mockRepository.unlockAlbum(testAlbumKey, BuildConfig.SMUGMUG_API_KEY, "gallery"))
-            .thenReturn(true)
+        Mockito.`when`(mockRepository.unlockAlbumResult(testAlbumKey, BuildConfig.SMUGMUG_API_KEY, "gallery"))
+            .thenReturn(com.smugview.app.data.repository.SmugMugRepository.UnlockResult.Success)
 
         val anonymousImg = AlbumImageData(
             imageKey = testImageKey,
@@ -867,7 +867,7 @@ class SmugViewModelTest {
 
         // The unrelated credential must never have been tried against this album.
         Mockito.verify(mockRepository, Mockito.never())
-            .unlockAlbum(testAlbumKey, BuildConfig.SMUGMUG_API_KEY, "gallery")
+            .unlockAlbumResult(testAlbumKey, BuildConfig.SMUGMUG_API_KEY, "gallery")
     }
 
     @Test

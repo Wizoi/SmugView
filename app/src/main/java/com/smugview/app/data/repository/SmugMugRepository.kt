@@ -76,22 +76,6 @@ class SmugMugRepository @Inject constructor(
     // on every search / tag-scan that resolves an "Entire Site" scope. Cleared by clearEntireCache().
     private val rootNodeIdCache = ConcurrentHashMap<String, String>()
 
-    /**
-     * Nickname of the SmugMug site currently being browsed. Cached nodes are stamped with this on
-     * insert so [CollectionDao.searchNodesGlobal] can scope results per-site.
-     *
-     * Previously nothing ever wrote [CachedNode.nickname], so every row stayed "" and the
-     * `nickname = :nickname OR nickname = ''` filter matched everything — i.e. search results bled
-     * across sites. Set via [setActiveNickname] when a site is selected.
-     */
-    @Volatile
-    var activeNickname: String = ""
-        private set
-
-    fun setActiveNickname(nickname: String?) {
-        activeNickname = nickname.orEmpty()
-    }
-
     /** Stamps [nickname], the site of the work that issued the write, onto nodes before persisting them (R-10). */
     private suspend fun insertNodesScoped(nickname: String, nodes: List<CachedNode>) {
         val scoped = if (nickname.isEmpty()) {
@@ -613,7 +597,7 @@ class SmugMugRepository @Inject constructor(
                 res
             } catch (e: Exception) {
                 if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                    val unlocked = unlockAlbum(albumKey, apiKey, password)
+                    val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                     if (unlocked) {
                         val retryRes = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
                         if (retryRes.response.images == null) {
@@ -1518,12 +1502,6 @@ class SmugMugRepository @Inject constructor(
         return result
     }
 
-    suspend fun unlockNode(nodeId: String, apiKey: String, password: String): Boolean =
-        unlockNodeResult(nodeId, apiKey, password) == UnlockResult.Success
-
-    suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String): Boolean =
-        unlockAlbumResult(albumKey, apiKey, password) == UnlockResult.Success
-
     // Fetches EXIF details
     fun getImageExif(imageKey: String, apiKey: String, password: String?): Flow<Result<ExifData>> = flow {
         try {
@@ -1923,73 +1901,6 @@ class SmugMugRepository @Inject constructor(
         throw e
     } catch (e: Exception) {
         null
-    }
-
-    suspend fun unlockInheritedPasswordRoot(idOrKey: String, apiKey: String, password: String): Boolean {
-        val node = dao.getNodeByIdOrKey(idOrKey)
-        val nodeId = node?.nodeId ?: idOrKey
-        val rootNodeId = when (val r = resolvePasswordRootNodeId(nodeId, apiKey)) {
-            is RootResolution.Resolved -> r.nodeId
-            RootResolution.NotProtected -> nodeId
-            RootResolution.Unknown -> return false
-        }
-        
-        val rootNode = dao.getNodeById(rootNodeId) ?: try {
-            val apiNode = getNode(rootNodeId, apiKey, ignoreErrors = "true")
-            val cn = CachedNode(
-                nodeId = apiNode.nodeId,
-                // In memory only: nothing here knows the real parent (R-01), and only a listing may place a row.
-                parentNodeId = null,
-                type = apiNode.type,
-                title = apiNode.name ?: "Folder",
-                description = apiNode.description,
-                access = apiNode.securityType ?: apiNode.privacy ?: "Public",
-                passwordHint = apiNode.passwordHint,
-                uri = apiNode.uri,
-                childNodesUri = apiNode.uris.childNodes,
-                albumUri = apiNode.uris.album,
-                highlightImageUrl = null,
-                childCount = null,
-                sortIndex = 0,
-                webUri = apiNode.webUri,
-                dateModified = apiNode.dateModified
-            )
-            cn
-        } catch (e: Exception) {
-            null
-        }
-        
-        val results = mutableListOf<UnlockResult>()
-        suspend fun attempt(r: UnlockResult): Boolean { results += r; return r == UnlockResult.Success }
-        val success = if (rootNode != null) {
-            if (rootNode.type == "Folder") {
-                attempt(unlockNodeResult(rootNode.nodeId, apiKey, password))
-            } else {
-                val albumKey = rootNode.getAlbumKey()
-                if (albumKey.isNotEmpty()) {
-                    attempt(unlockAlbumResult(albumKey, apiKey, password))
-                } else {
-                    attempt(unlockNodeResult(rootNode.nodeId, apiKey, password))
-                }
-            }
-        } else {
-            attempt(unlockNodeResult(idOrKey, apiKey, password)) || attempt(unlockAlbumResult(idOrKey, apiKey, password))
-        }
-
-        // Delete the saved password only when SmugMug explicitly rejected it and nothing was inconclusive.
-        val definitelyWrong = results.isNotEmpty() &&
-            UnlockResult.Transient !in results && UnlockResult.Rejected in results
-        if (!success && password.isNotEmpty() && definitelyWrong) {
-            passwordStore.remove(idOrKey)
-            if (rootNode != null) {
-                passwordStore.remove(rootNode.nodeId)
-                val albumKey = rootNode.getAlbumKey()
-                if (albumKey.isNotEmpty()) {
-                    passwordStore.remove(albumKey)
-                }
-            }
-        }
-        return success
     }
 
     suspend fun getAllDescendants(nodeId: String): List<CachedNode> {

@@ -31,18 +31,20 @@ class ScopingRepoTest {
         }
 
     @Test
-    fun aLateWriteOfSiteA_afterTheActiveSiteChangedToB_isStampedWithSiteA() = runBlocking {
-        rig.repository.setActiveNickname("idzifamily")
+    fun aLateWriteOfSiteA_whileSiteBSyncsMeanwhile_isStampedWithSiteA() = runBlocking {
         val gate = rig.server.hold("node/P4BKB!children")
 
-        val sync = async(Dispatchers.Default) { rig.repository.syncFolderTree("idzifamily", "4zqWw", "k") }
+        val syncA = async(Dispatchers.Default) { rig.repository.syncFolderTree("idzifamily", "4zqWw", "k") }
         assertTrue("School's listing reached the server", gate.awaitArrived())
-        rig.repository.setActiveNickname("siteb")
+        // Site B's whole sync runs and lands while A's last listing is still in flight; nothing is
+        // "the current site" any more, so neither can re-stamp the other.
+        rig.repository.syncFolderTree("siteb", "Rb7Tq2", "k")
         gate.release()
-        sync.await()
+        syncA.await()
 
-        assertEquals("Family was written before the switch", "idzifamily", nicknameOf("cached_nodes", "2sDN5x"))
-        assertEquals("cached_nodes row of the gallery", "idzifamily", nicknameOf("cached_nodes", "LCdk7F"))
-        assertEquals("cached_albums row of the gallery", "idzifamily", nicknameOf("cached_albums", "LCdk7F"))
+        assertEquals("Family was written before B ran", "idzifamily", nicknameOf("cached_nodes", "2sDN5x"))
+        assertEquals("cached_nodes row of A's gallery", "idzifamily", nicknameOf("cached_nodes", "LCdk7F"))
+        assertEquals("cached_albums row of A's gallery", "idzifamily", nicknameOf("cached_albums", "LCdk7F"))
+        assertEquals("cached_nodes row of B's folder", "siteb", nicknameOf("cached_nodes", "Hq2Lm9"))
     }
 }

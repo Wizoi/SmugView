@@ -494,9 +494,6 @@ class SmugViewModel @Inject constructor(
     /** One per [SiteSession]; replaced, empty, by [beginSite]. */
     private var navigator = BrowserNavigator(session.scope, browserHost)
 
-    // Unlocked nodes passwords map (cached in-memory for security)
-    private val _unlockedPasswords = mutableMapOf<String, String>()
-
     // Password Prompt Dialog state
     var passwordPromptNode by mutableStateOf<CachedNode?>(null)
         private set
@@ -810,7 +807,6 @@ class SmugViewModel @Inject constructor(
         val active = sharedPrefs.getString("active_nickname", null)
         if (!active.isNullOrEmpty()) {
             _activeNickname.value = active
-            repository.setActiveNickname(active)
             // R-17: what a killed process saved is used only for the site that is still active.
             val restored = readSavedNav()?.takeIf { it.nickname == active }
             pendingRestore = restored
@@ -902,7 +898,6 @@ class SmugViewModel @Inject constructor(
                         // Save as active site
                         sharedPrefs.edit().putString("active_nickname", normalizedNickname).apply()
                         _activeNickname.value = normalizedNickname
-                        repository.setActiveNickname(normalizedNickname)
 
                         // Save to history
                         val currentList = _recentSites.value.toMutableList()
@@ -948,7 +943,6 @@ class SmugViewModel @Inject constructor(
         beginSite("")
         sharedPrefs.edit().remove("active_nickname").apply()
         _activeNickname.value = null
-        repository.setActiveNickname(null)
         _activeUserProfile.value = null
         _siteHeaderImageUrl.value = null
         siteHub.clearActiveSiteData()

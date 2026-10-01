@@ -921,7 +921,7 @@ class SmugMugRepositoryTest {
         val api = createMockApi(mockInterceptor)
         val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
         
-        val ok = repository.unlockInheritedPasswordRoot("testNodeId", "dummy_key", "password")
+        val ok = repository.unlocks.ensureSession("testNodeId", "dummy_key", "password") == SmugMugRepository.UnlockResult.Success
 
         assertTrue(ok)
         assertEquals(listOf("POST node/testNodeId!unlock"), seen.filter { it.startsWith("POST") })
@@ -932,7 +932,7 @@ class SmugMugRepositoryTest {
     // R-21: a saved password was deleted on ANY failed unlock (offline, 429, 5xx, the synthetic 504),
     // and the user was told it was "no longer valid". Only an explicit 401 means the password is wrong
     // (verified live 2026-09-30: wrong password -> HTTP 401 "Invalid password.").
-    private fun unlockRootWith(unlockBehaviour: (okhttp3.Request) -> Response): Pair<Boolean, FakePasswordStore> = runBlocking {
+    private fun unlockRootWith(prompt: Boolean = false, unlockBehaviour: (okhttp3.Request) -> Response): Pair<Boolean, FakePasswordStore> = runBlocking {
         val store = FakePasswordStore(mapOf("2sDN5x" to "secret"))
         val folder = NodeData(
             uri = "/api/v2/node/2sDN5x", nodeId = "2sDN5x", type = "Folder", name = "Family",
@@ -955,8 +955,14 @@ class SmugMugRepositoryTest {
                     .build()
             }
         }
+        val familyRow = CachedNode(
+            nodeId = "2sDN5x", parentNodeId = null, type = "Folder", title = "Family", description = null, access = "Password",
+            passwordHint = null, uri = "/api/v2/node/2sDN5x", childNodesUri = null, albumUri = null
+        )
         val repository = SmugMugRepository(createMockApi(interceptor), dao, store, mockContext())
-        val ok = repository.unlockInheritedPasswordRoot("2sDN5x", "dummy_key", "secret")
+        // Step 3-11: the background path is ensureSession (never deletes); the prompt path is submit.
+        val ok = if (prompt) repository.unlocks.submit(familyRow, "secret", "dummy_key") is UnlockManager.Submit.Opened
+        else repository.unlocks.ensureSession("2sDN5x", "dummy_key", "secret") == SmugMugRepository.UnlockResult.Success
         ok to store
     }
 
@@ -985,9 +991,17 @@ class SmugMugRepositoryTest {
     }
 
     @Test
-    fun failedUnlock_on401_removesSavedPassword() {
-        val (ok, store) = unlockRootWith { codeResponse(it, 401) }
+    fun failedUnlock_on401_atThePrompt_removesSavedPassword() {
+        val (ok, store) = unlockRootWith(prompt = true) { codeResponse(it, 401) }
         assertFalse(ok)
         assertNull(store.getPassword("2sDN5x"))
+    }
+
+    @Test
+    fun failedUnlock_on401_inTheBackground_keepsSavedPassword() {
+        // Behaviour change owned by step 3-6: a background 401 marks the root Invalid; only the prompt deletes.
+        val (ok, store) = unlockRootWith { codeResponse(it, 401) }
+        assertFalse(ok)
+        assertEquals("secret", store.getPassword("2sDN5x"))
     }
 }

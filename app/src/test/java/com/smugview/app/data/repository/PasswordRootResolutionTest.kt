@@ -2,6 +2,7 @@ package com.smugview.app.data.repository
 
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.CachedAlbum
+import com.smugview.app.data.db.CachedNode
 import com.smugview.app.data.db.CollectionDao
 import com.smugview.app.data.db.TestDb
 import com.smugview.app.data.security.FakePasswordStore
@@ -104,28 +105,44 @@ class PasswordRootResolutionTest {
         assertEquals(RootResolution.Unknown, resolve("P4BKB"))
     }
 
+    // Step 3-11: the Boolean unlockInheritedPasswordRoot is gone; its job is UnlockManager.ensureSession
+    // (background paths) and UnlockManager.submit (the prompt, the only place a saved password is deleted).
+    private fun school() = CachedNode(
+        nodeId = "P4BKB", parentNodeId = "2sDN5x", type = "Folder", title = "School", description = null,
+        access = "None", passwordHint = null, uri = "/api/v2/node/P4BKB", childNodesUri = null, albumUri = null
+    )
+
     @Test fun unlock_goesToTheRealRoot_andOnlyThere() {
-        val ok = runBlocking { repo().unlockInheritedPasswordRoot("P4BKB", "k", "secret") }
-        assertTrue(ok)
-        // Red today: "POST node/P4BKB!unlock" (School), not Family.
+        val result = runBlocking { repo().unlocks.ensureSession("P4BKB", "k", "secret") }
+        assertEquals(SmugMugRepository.UnlockResult.Success, result)
         assertEquals(listOf("POST node/2sDN5x!unlock"), server.requests.filter { it.startsWith("POST") })
     }
 
     @Test fun unlock_whenLineageUnknown_makesNoUnlockCall_andKeepsEveryPassword() {
         server.parentsOverride = failing(503)
-        val ok = runBlocking { repo().unlockInheritedPasswordRoot("P4BKB", "k", "secret") }
-        assertFalse(ok)
+        val result = runBlocking { repo().unlocks.ensureSession("P4BKB", "k", "secret") }
+        assertEquals(SmugMugRepository.UnlockResult.Transient, result)
         assertEquals(emptyList<String>(), server.requests.filter { it.startsWith("POST") })
         assertEquals("secret", store.getPassword("2sDN5x"))
         assertEquals("secret", store.getPassword("LCdk7F"))
         assertEquals(setOf("2sDN5x", "LCdk7F"), store.all().keys)
     }
 
-    @Test fun unlock_whenRootRejects401_removesThePasswordsForThatRoot() {
-        // The existing R-21 rule is unchanged: only an explicit 401 deletes.
+    @Test fun unlock_whenRootRejects401_atThePrompt_removesThePasswordsForThatRoot() {
+        // The R-21 rule, now owned by the prompt path: only an explicit 401 to the user's attempt deletes.
         server.unlockCode = 401
-        val ok = runBlocking { repo().unlockInheritedPasswordRoot("P4BKB", "k", "secret") }
-        assertFalse(ok)
+        val result = runBlocking { repo().unlocks.submit(school(), "secret", "k") }
+        assertEquals(UnlockManager.Submit.Rejected, result)
         assertEquals(null, store.getPassword("2sDN5x"))
+    }
+
+    @Test fun unlock_whenRootRejects401_inTheBackground_keepsTheSavedPassword() {
+        // The old unlockInheritedPasswordRoot deleted here too; UnlockManager marks the root Invalid
+        // and leaves the deleting to the prompt (step 3-6), so a transient mistake cannot cost a password.
+        server.unlockCode = 401
+        val repo = repo()
+        val result = runBlocking { repo.unlocks.ensureSession("P4BKB", "k", "secret") }
+        assertEquals(SmugMugRepository.UnlockResult.Rejected, result)
+        assertEquals("secret", store.getPassword("2sDN5x"))
     }
 }
