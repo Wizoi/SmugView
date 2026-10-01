@@ -98,6 +98,10 @@ android {
     // Room migration tests read the exported schema JSONs from this directory.
     sourceSets {
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
+        // Phase 1c: Robolectric unit tests read assets from the *debug variant's* merged assets
+        // (test_config.properties android_merged_assets = mergeDebugAssets), not from the "test"
+        // source set, so the schemas go in the debug source set (~40 KB, debug APKs only).
+        getByName("debug").assets.srcDir("$projectDir/schemas")
     }
     bundle {
         language { enableSplit = true }
