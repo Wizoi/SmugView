@@ -77,6 +77,17 @@ class DiagnosticsFileWriterTest {
     }
 
     @Test
+    fun report_countsJobsNobodyCaught() {
+        val before = Diag.uncaughtSiteErrors.get()
+        Diag.uncaughtSiteErrors.incrementAndGet()
+        Diag.uncaughtSiteErrors.incrementAndGet()
+
+        writer().write()
+
+        assertTrue(report(), report().contains("uncaught_site_errors=${before + 2}"))
+    }
+
+    @Test
     fun plantedSecrets_areRedactedFromTheReport() {
         log.i("t", "calling with APIKey=$apiKey and again $apiKey, saved $password")
         val result = writer().write()

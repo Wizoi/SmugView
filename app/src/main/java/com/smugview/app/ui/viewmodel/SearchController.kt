@@ -149,6 +149,15 @@ class SearchController(
     }
 
     private var searchJob: Job? = null
+
+    /** Why the photo search failed, kept here so every later state publish of the same search carries it (N1). */
+    private var photosProblem: com.smugview.app.ui.text.Problem? = null
+
+    private fun publishPhotosProblem(problem: com.smugview.app.ui.text.Problem?) {
+        photosProblem = problem
+        val current = _searchState.value
+        if (current is SearchUiState.Success) _searchState.value = current.copy(photosProblem = problem)
+    }
     private var backgroundSearchJob: Job? = null
 
     /** Clear all search results/state. Called when the active site changes so one site's
@@ -160,6 +169,7 @@ class SearchController(
         _searchPhotosPagingFlow.value = kotlinx.coroutines.flow.emptyFlow()
         _searchState.value = SearchUiState.Idle
         _isSearchPhotosLoading.value = false
+        photosProblem = null
         _isGalleriesFoldersLoading.value = false
     }
 
@@ -188,6 +198,7 @@ class SearchController(
             return
         }
         _searchState.value = SearchUiState.Loading
+        photosProblem = null
         searchJob?.cancel()
         backgroundSearchJob?.cancel()
         scope.launch {
@@ -197,7 +208,7 @@ class SearchController(
             try {
                 val nickname = activeNickname.value
                 if (nickname.isNullOrEmpty()) {
-                    _searchState.value = SearchUiState.Error("No active site profile loaded")
+                    _searchState.value = SearchUiState.Error(com.smugview.app.ui.text.Problem.Unexpected(com.smugview.app.ui.text.Subject.Search, "no site"))
                     _isGalleriesFoldersLoading.value = false
                     return@launch
                 }
@@ -246,7 +257,7 @@ class SearchController(
                     photos = emptyList(), // Replaced by Pager
                     galleries = emptyList(),
                     folders = emptyList(),
-                    photosError = null
+                    photosProblem = photosProblem
                 )
                 _isGalleriesFoldersLoading.value = true
 
@@ -262,6 +273,13 @@ class SearchController(
                         try {
                             repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey)
                             searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            // N1: this used to escape into a scope with no handler and close the app. The search is
+                            // not marked "fully searched" (no timestamp), so the next search asks again.
+                            com.smugview.app.util.SmugLog.w("search", "photo search failed: ${e.javaClass.simpleName}", e)
+                            publishPhotosProblem(com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Search))
                         } finally {
                             _isSearchPhotosLoading.value = false
                         }
@@ -312,7 +330,7 @@ class SearchController(
                     photos = emptyList(),
                     galleries = sortedGalleries,
                     folders = cachedFolders,
-                    photosError = null
+                    photosProblem = photosProblem
                 )
                 _isGalleriesFoldersLoading.value = false
 
@@ -340,7 +358,7 @@ class SearchController(
                     photos = emptyList(),
                     galleries = sortedGalleries, // using the memory cache galleries again
                     folders = updatedFolders,
-                    photosError = null
+                    photosProblem = photosProblem
                 )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -348,7 +366,7 @@ class SearchController(
                 e.printStackTrace()
                 _isSearchPhotosLoading.value = false
                 _isGalleriesFoldersLoading.value = false
-                _searchState.value = SearchUiState.Error(e.localizedMessage ?: "Error during search job")
+                _searchState.value = SearchUiState.Error(com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Search))
             }
         }
     }

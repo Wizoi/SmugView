@@ -92,6 +92,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.smugview.app.data.db.CachedNode
+import com.smugview.app.ui.text.UserMessages
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.ui.theme.DeepDarkBackground
 import com.smugview.app.ui.theme.GlowBorder
@@ -130,6 +131,11 @@ fun SearchTabView(
     val activeScope by viewModel.searchScope.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
     val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
+    val activeUserProfile by viewModel.activeUserProfile.collectAsState()
+    val activeNickname by viewModel.activeNickname.collectAsState()
+    val siteName = activeUserProfile?.name?.takeIf { it.isNotBlank() }
+        ?: activeNickname?.replaceFirstChar { it.uppercase() }
+        ?: "this site"
     var searchInput by remember { mutableStateOf(viewModel.searchQuery) }
     val selectedResultTab = viewModel.searchResultTab
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -299,16 +305,15 @@ fun SearchTabView(
                     CircularProgressIndicator(color = NeonBlue)
                 }
                 is SearchUiState.Error -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        Text(text = state.message, color = MaterialTheme.colorScheme.error)
-                    }
+                    SearchProblemView(state.problem) { viewModel.performSearch(viewModel.searchQuery) }
                 }
                 is SearchUiState.Success -> {
                     val totalResults = searchPhotosPagingItems.itemCount + state.galleries.size + state.folders.size
-                    if (totalResults == 0) {
+                    val photosProblem = state.photosProblem
+                    if (totalResults == 0 && photosProblem != null && !isSearchPhotosLoading && !isGalleriesFoldersLoading) {
+                        // Nothing from the index and the photo search failed: say why, with the way out.
+                        SearchProblemView(photosProblem) { viewModel.performSearch(viewModel.searchQuery) }
+                    } else if (totalResults == 0) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
@@ -319,10 +324,12 @@ fun SearchTabView(
                                     isSearchPhotosLoading && isGalleriesFoldersLoading -> "Loading results..."
                                     isSearchPhotosLoading -> "Loading photos..."
                                     isGalleriesFoldersLoading -> "Loading galleries and folders..."
-                                    else -> "Enter a word or phrase to search"
+                                    else -> UserMessages.searchNoMatch(siteName, viewModel.searchQuery)
                                 },
                                 color = Color.White.copy(alpha = 0.4f),
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(16.dp)
                             )
                         }
                     } else {
@@ -334,11 +341,15 @@ fun SearchTabView(
                             // results" rather than "still loading" (verified: this looked exactly
                             // like a broken/empty search for as long as background indexing ran).
                             val tabs = listOf(
-                                "Photos (${searchPhotosPagingItems.itemCount})",
+                                if (isSearchPhotosLoading) "Photos (…)" else "Photos (${searchPhotosPagingItems.itemCount})",
                                 if (isGalleriesFoldersLoading) "Galleries (…)" else "Galleries (${state.galleries.size})",
                                 if (isGalleriesFoldersLoading) "Folders (…)" else "Folders (${state.folders.size})"
                             )
-                            
+                            // The photo search failed (N1): the galleries and folders below are the index on this phone.
+                            if (photosProblem != null && !isSearchPhotosLoading) {
+                                SearchProblemBanner(photosProblem) { viewModel.performSearch(viewModel.searchQuery) }
+                            }
+
                             TabRow(
                                 selectedTabIndex = selectedResultTab,
                                 containerColor = Color.Transparent,
@@ -367,9 +378,10 @@ fun SearchTabView(
                                     0 -> { // Photos tab
                                         if (searchPhotosPagingItems.itemCount == 0) {
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                Text(
-                                                    text = if (isSearchPhotosLoading) "Loading photos..." else (state.photosError ?: "Enter a word or phrase to search"),
-                                                    color = if (state.photosError != null) MaterialTheme.colorScheme.error else Color.White.copy(alpha = 0.4f),
+                                                // A failure is said by the banner above; an empty list with nothing loading is blank.
+                                                if (isSearchPhotosLoading) Text(
+                                                    text = "Loading photos...",
+                                                    color = Color.White.copy(alpha = 0.4f),
                                                     textAlign = TextAlign.Center,
                                                     modifier = Modifier.padding(16.dp)
                                                 )
@@ -685,3 +697,40 @@ fun SearchTabView(
             }
         }
     }
+
+/** `SEARCH_PHOTOS_FAILED` above the results, with the way out. */
+@Composable
+private fun SearchProblemBanner(problem: com.smugview.app.ui.text.Problem, onTryAgain: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .background(SurfaceDark.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+            .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = UserMessages.searchPhotosFailed(problem),
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 13.sp,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = onTryAgain) { Text(UserMessages.BUTTON_TRY_AGAIN, color = NeonBlue) }
+    }
+}
+
+/** Nothing to show and the search itself failed (or no photos and no index hits): heading, sentence, Try again. */
+@Composable
+private fun SearchProblemView(problem: com.smugview.app.ui.text.Problem, onTryAgain: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.fillMaxSize().padding(24.dp)
+    ) {
+        Text(UserMessages.heading(problem), color = Color.White, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(UserMessages.body(problem), color = Color.White.copy(alpha = 0.7f), textAlign = TextAlign.Center)
+        Spacer(modifier = Modifier.height(12.dp))
+        TextButton(onClick = onTryAgain) { Text(UserMessages.BUTTON_TRY_AGAIN, color = NeonBlue) }
+    }
+}

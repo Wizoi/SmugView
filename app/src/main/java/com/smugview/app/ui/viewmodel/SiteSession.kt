@@ -1,6 +1,9 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.app.diag.Diag
 import com.smugview.app.diag.DiagContext
+import com.smugview.app.util.SmugLog
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,8 +24,18 @@ import kotlinx.coroutines.cancel
 class SiteSession(val nickname: String, parent: Job?) {
     @Volatile var rootNodeId: String? = null
 
+    /**
+     * N1 (6-6): the net under every job of this site. A job that throws without catching is logged and counted
+     * (`uncaught_site_errors` in `report.txt`) and never reaches the thread's uncaught handler, which closes the
+     * app. Each screen has its own failure state; this only catches what none of them did.
+     */
+    private val handler = CoroutineExceptionHandler { _, e ->
+        Diag.uncaughtSiteErrors.incrementAndGet()
+        SmugLog.e("site", "uncaught error in a site job: ${e.javaClass.simpleName}", e)
+    }
+
     val scope: CoroutineScope = CoroutineScope(
-        SupervisorJob(parent) + Dispatchers.Main.immediate + DiagContext.element(DiagContext.newActionId("site"))
+        SupervisorJob(parent) + Dispatchers.Main.immediate + DiagContext.element(DiagContext.newActionId("site")) + handler
     )
 
     fun close() = scope.cancel()

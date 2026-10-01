@@ -130,6 +130,8 @@ class DiagnosticsFileWriter(
             head.append("api: ").append(s.api).append('\n')
             head.append("img: ").append(s.img).append('\n')
         }
+        // 6-6 (N1): jobs that threw with nobody to catch them; each also has an E line in the log tail.
+        head.append("\n== errors ==\nuncaught_site_errors=").append(Diag.uncaughtSiteErrors.get()).append('\n')
         head.append("\n== log tail (oldest first, redacted) ==\n")
 
         val headBytes = utf8Len(head)

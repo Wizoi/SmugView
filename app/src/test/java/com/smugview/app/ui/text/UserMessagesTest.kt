@@ -190,4 +190,19 @@ class UserMessagesTest {
         )
         assertTrue(UserMessages.body(gone).startsWith("This site may have been deleted"))
     }
+
+    @Test fun searchAndTagAndPasswordCheckTexts_areExactlyDesignSection5() {
+        assertEquals("Nothing on idzifamily matches “zzqx”.", UserMessages.searchNoMatch("idzifamily", "zzqx"))
+        assertEquals(
+            "Couldn't search photos. You went offline. Galleries and folders below come from this phone.",
+            UserMessages.searchPhotosFailed(Problem.OfflineNothingSaved(Subject.Search))
+        )
+        assertEquals(
+            "Couldn't search photos. SmugMug is having trouble. Galleries and folders below come from this phone.",
+            UserMessages.searchPhotosFailed(Problem.SmugMugTrouble(Subject.Search, 503))
+        )
+        assertEquals("Couldn't load the tags. SmugMug asked the app to slow down.", UserMessages.tagsFailed(Problem.RateLimited(Subject.Tags)))
+        assertEquals("Couldn't check the password. SmugMug didn't answer.", UserMessages.passwordCheckFailed(Problem.Slow(Subject.Gallery)))
+        assertEquals("Couldn't check the password. Error 418.", UserMessages.passwordCheckFailed(Problem.Unexpected(Subject.Gallery, "418")))
+    }
 }

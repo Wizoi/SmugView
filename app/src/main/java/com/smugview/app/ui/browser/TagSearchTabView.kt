@@ -321,6 +321,35 @@ fun TagSearchTabView(
             }
         }
 
+        // 6-6: a failed scan used to put its text in scanProgress, which nothing shows once scanning has stopped.
+        val scanProblem by viewModel.scanProblem.collectAsState()
+        val problem = scanProblem
+        if (!isScanning && problem != null) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = SoftRed.copy(alpha = 0.15f),
+                border = BorderStroke(1.dp, SoftRed.copy(alpha = 0.4f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp)
+                ) {
+                    Text(
+                        text = com.smugview.app.ui.text.UserMessages.tagsFailed(problem),
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { viewModel.triggerTagScopeScan(activeScope) }) {
+                        Text(com.smugview.app.ui.text.UserMessages.BUTTON_TRY_AGAIN, color = NeonBlue, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
         // Scanning State / Loader
         if (isScanning) {
             Column(

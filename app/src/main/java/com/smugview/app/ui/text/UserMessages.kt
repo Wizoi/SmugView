@@ -175,4 +175,17 @@ object UserMessages {
         isOfflineKind(problem) -> HOME_OFFLINE
         else -> homeFailed(problem)
     }
+
+    /** `SEARCH_NO_MATCH`: the search finished everywhere and found nothing. */
+    fun searchNoMatch(siteName: String, query: String): String = "Nothing on $siteName matches “$query”."
+
+    /** `SEARCH_PHOTOS_FAILED`: the photo search failed; the galleries and folders come from the index on this phone. */
+    fun searchPhotosFailed(cause: Problem): String =
+        "Couldn't search photos. ${shortCause(cause)} Galleries and folders below come from this phone."
+
+    /** `TAGS_FAILED`: the tag list or the tag scan failed. */
+    fun tagsFailed(cause: Problem): String = "Couldn't load the tags. ${shortCause(cause)}"
+
+    /** `PASSWORD_CHECK_FAILED`: the password could not be checked (not "wrong password"). */
+    fun passwordCheckFailed(cause: Problem): String = "Couldn't check the password. ${shortCause(cause)}"
 }

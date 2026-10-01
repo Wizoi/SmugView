@@ -64,6 +64,10 @@ class TagSearchController(
     private val _scanProgress = MutableStateFlow("")
     val scanProgress: StateFlow<String> = _scanProgress.asStateFlow()
 
+    /** Why the last tag scan failed (6-6): said by the Tags tab with Try again; null when it did not. */
+    private val _scanProblem = MutableStateFlow<com.smugview.app.ui.text.Problem?>(null)
+    val scanProblem: StateFlow<com.smugview.app.ui.text.Problem?> = _scanProblem.asStateFlow()
+
     private val _allScopeTags = MutableStateFlow<Map<String, Int>>(emptyMap())
     val allScopeTags: StateFlow<Map<String, Int>> = _allScopeTags.asStateFlow()
 
@@ -227,6 +231,7 @@ class TagSearchController(
 
     fun clearScanProgress() {
         _scanProgress.value = ""
+        _scanProblem.value = null
     }
 
     /** Clear all keyword-search state. Called when the active site changes so one site's
@@ -243,6 +248,7 @@ class TagSearchController(
         _isScanningTags.value = false
         _isLoadingPhotos.value = false
         _scanProgress.value = ""
+        _scanProblem.value = null
         tagSearchQuery = ""
         lastLoadedKeywords = ""
         lastLoadedScope = ""
@@ -439,6 +445,7 @@ class TagSearchController(
         tagScanJob = siteScope().launch {
             _isScanningTags.value = true
             _scanProgress.value = "Starting scan..."
+            _scanProblem.value = null
             if (!keepPhotos) _allScopePhotos.value = emptyList()
             _allScopeTags.value = emptyMap()
             if (clearSelected) {
@@ -487,14 +494,21 @@ class TagSearchController(
                     }
                     _allScopeTags.value = tagCounts
                     _scanProgress.value = "Scan complete. Found ${tagCounts.size} unique tags."
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    _scanProgress.value = "Failed to fetch top keywords: ${e.localizedMessage}"
+                    com.smugview.app.util.SmugLog.w("tags", "top keywords failed: ${e.javaClass.simpleName}", e)
+                    _scanProblem.value = com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Tags)
+                    _scanProgress.value = ""
                 }
                 _isScanningTags.value = false
                 return@launch
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                android.util.Log.e("SmugViewModel", "Tag scope scan failed", e)
-                _scanProgress.value = "Scan failed: ${e.localizedMessage}"
+                com.smugview.app.util.SmugLog.w("tags", "tag scan failed: ${e.javaClass.simpleName}", e)
+                _scanProblem.value = com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Tags)
+                _scanProgress.value = ""
                 _isScanningTags.value = false
             }
         }

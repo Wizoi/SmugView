@@ -77,4 +77,7 @@ class DiagLog(
 /** Static holder so `SmugLog` and the crash handler can reach the log without injection. */
 object Diag {
     @Volatile var log: DiagLog = DiagLog.NOOP
+
+    /** Exceptions that reached a site session's handler (6-6): a job nobody caught. Counted in `report.txt`, never shown. */
+    val uncaughtSiteErrors = java.util.concurrent.atomic.AtomicInteger()
 }

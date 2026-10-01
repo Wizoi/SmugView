@@ -10,7 +10,7 @@ import java.io.File
  * text (`localizedMessage`, `.message`) never reaches the screen. A screen asks [UserMessages].
  *
  * The allow-list is today's sites in `ui/`, by file and count. It only shrinks: each Phase 6 step that
- * converts a site lowers its count here (6-3 added this guard; 6-7 empties it). A new site fails the test,
+ * converts a site lowers its count here ((6-3 added this guard; 6-6 removed the search, tag and password sites; 6-7 empties it)). A new site fails the test,
  * and so does a removed one that is still listed, so the list cannot go stale.
  */
 class NoRawExceptionTextGuardTest {
@@ -19,12 +19,8 @@ class NoRawExceptionTextGuardTest {
     /** File name to the number of lines that still read an exception's text or a state's `.message`. */
     private val allowed: Map<String, Int> = mapOf(
         "CollectionsTabView.kt" to 1,   // Toast "Download failed: ..." (6-15)
-        "SearchTabView.kt" to 1,        // SearchUiState.Error.message (6-6)
         "PhotoDetailScreen.kt" to 1,    // Toast "Error: ..." (6-7)
-        "CastController.kt" to 1,       // onMessage(e.message) (6-8)
-        "SearchController.kt" to 1,     // SearchUiState.Error (6-6)
-        "SmugViewModel.kt" to 1,        // password check (6-6)
-        "TagSearchController.kt" to 2   // scan progress x2 (6-6)
+        "CastController.kt" to 1        // onMessage(e.message) (6-8)
     )
 
     private fun isComment(line: String) = line.trim().let { it.startsWith("//") || it.startsWith("*") || it.startsWith("/*") }

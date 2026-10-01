@@ -102,9 +102,10 @@ sealed interface SearchUiState {
         val photos: List<AlbumImageData>,
         val galleries: List<CachedNode>,
         val folders: List<CachedNode>,
-        val photosError: String? = null
+        /** The photo search failed (N1, R-47): said above the results; galleries and folders still come from the index. */
+        val photosProblem: com.smugview.app.ui.text.Problem? = null
     ) : SearchUiState
-    data class Error(val message: String) : SearchUiState
+    data class Error(val problem: com.smugview.app.ui.text.Problem) : SearchUiState
 }
 
 enum class BrowserTab {
@@ -363,6 +364,7 @@ class SmugViewModel @Inject constructor(
     fun cancelTagSearchJob() = tag.cancelTagSearchJob()
 
     fun clearScanProgress() = tag.clearScanProgress()
+    val scanProblem: StateFlow<com.smugview.app.ui.text.Problem?> get() = tag.scanProblem
 
     // Splash State
     private val _splashState = MutableStateFlow<SplashUiState>(SplashUiState.Idle)
@@ -1299,7 +1301,9 @@ class SmugViewModel @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                passwordError = "Validation failed: ${e.localizedMessage}"
+                passwordError = com.smugview.app.ui.text.UserMessages.passwordCheckFailed(
+                    com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Gallery)
+                )
             }
         }
     }

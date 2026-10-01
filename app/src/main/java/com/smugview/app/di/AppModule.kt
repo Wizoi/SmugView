@@ -166,13 +166,9 @@ object AppModule {
 
     /**
      * Wraps [provideOkHttpClient] with non-blocking 429/5xx retry (see [RetryingCallFactory] for
-     * why this has to be a [okhttp3.Call.Factory] decorator rather than an `Interceptor`) plus the
-     * user-facing error Toast that used to live in an `errorInterceptor`. That reporting logic
-     * moved here — instead of a chain-positioned `Interceptor` — specifically so it fires exactly
-     * once per *logical* request (after retries settle), not once per retry attempt: a decorator
-     * wrapping the whole client re-runs the full interceptor chain on every retry, so a plain
-     * `Interceptor` in that chain would Toast on every intermediate 429/500, not just the final
-     * outcome.
+     * why this has to be a [okhttp3.Call.Factory] decorator rather than an `Interceptor`) plus one telemetry
+     * record per *logical* request (after retries settle). It used to also post a user-facing error Toast; that is
+     * gone (Phase 6 Q2): the screen that asked shows the failure.
      *
      * Retrofit ([provideSmugMugApi]) is wired to this instead of the raw [OkHttpClient] bean. Coil has its own,
      * cache-less factory ([provideImageCallFactory], R-37) so images never share the API's HTTP cache.
@@ -181,7 +177,6 @@ object AppModule {
     @Singleton
     fun provideRetryingCallFactory(
         okHttpClient: OkHttpClient,
-        @ApplicationContext context: Context,
         telemetry: com.smugview.app.diag.HttpTelemetry
     ): okhttp3.Call.Factory {
         return RetryingCallFactory(
@@ -189,28 +184,9 @@ object AppModule {
             // One diagnostics line per logical request (replaces the old SmugMugApiError log): it
             // also covers IO failures, which no hook recorded before (R-50).
             actionIdProvider = com.smugview.app.diag.DiagContext::currentActionId,
-            onComplete = telemetry::record,
-            onFinalResponse = { request, response ->
-                val isApiRequest = request.url.host == "api.smugmug.com" && request.url.encodedPath.contains("/api/v2/")
-                if (isApiRequest && request.header("X-Ignore-Errors") != "true" &&
-                    com.smugview.app.data.api.SmugMugErrorMapper.shouldShowToast(response)) {
-                    val responseBodyContent = try {
-                        response.peekBody(1024 * 1024L).string() // Peek up to 1MB
-                    } catch (e: Exception) {
-                        null
-                    }
-                    val friendlyMessage = com.smugview.app.data.api.SmugMugErrorMapper.getFriendlyMessage(
-                        response.code, response.message, responseBodyContent
-                    )
-
-                    if (com.smugview.app.data.api.SmugMugErrorMapper.shouldShowToast(response.code)) {
-                        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-                        mainHandler.post {
-                            android.widget.Toast.makeText(context, friendlyMessage, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }
-            }
+            onComplete = telemetry::record
+            // No app-wide error toast (Phase 6, owner decision Q2): every screen says its own failure, and a
+            // background failure goes to report.txt and the diagnostics log through [telemetry] only.
         )
     }
 
