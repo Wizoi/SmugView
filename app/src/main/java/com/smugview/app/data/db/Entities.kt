@@ -68,7 +68,10 @@ data class CachedAlbum(
     /** Containing folder's nodeId, when known. Drives targeted [CachedNode] invalidation when a
      *  gallery is new or its LastUpdated changes, so the parent folder's cached child list is
      *  refetched instead of staying stale until a manual refresh. */
-    val parentNodeId: String? = null
+    val parentNodeId: String? = null,
+    /** SmugMug `ImagesLastUpdated`: when the photos in the gallery last changed. Phase 2: the one
+     *  "is it new?" date (design Q3). NULL until a sync fills it. */
+    val imagesLastUpdated: String? = null
 ) {
     /** Maps to the flat [CachedNode] shape the rest of the app consumes via albumsCache. */
     fun toCachedNode(): CachedNode = CachedNode(

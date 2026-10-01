@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ViewedGalleryUpdate::class,
         CachedAlbum::class
     ],
-    version = 15,
+    version = 16,
     // Schemas are exported to app/schemas (see the KSP room.schemaLocation arg in
     // build.gradle.kts) so migrations can be validated with MigrationTestHelper.
     exportSchema = true
@@ -114,6 +114,21 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_14_15 = object : Migration(14, 15) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE cached_albums ADD COLUMN parentNodeId TEXT")
+            }
+        }
+
+        /**
+         * v15 -> v16 (Phase 2, design section 4): adds the gallery index's `imagesLastUpdated`, deletes the
+         * `cached_nodes` rows the old ParentNode parsers wrote wrongly (a row that is its own parent, or
+         * whose parent is an `X!parent` link; R-01, R-04), and clears the index rows' guessed
+         * `parentNodeId` (`user!albums` has no parent, R-05). User data (collections, bookmarks, viewed
+         * rows, search history, saved passwords) is untouched. Good rows stay; listings repair the rest.
+         */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cached_albums ADD COLUMN imagesLastUpdated TEXT")
+                db.execSQL("DELETE FROM cached_nodes WHERE parentNodeId = nodeId OR instr(parentNodeId, '!') > 0")
+                db.execSQL("UPDATE cached_albums SET parentNodeId = NULL")
             }
         }
     }

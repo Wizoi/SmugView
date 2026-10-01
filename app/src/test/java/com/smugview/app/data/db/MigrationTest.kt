@@ -109,7 +109,7 @@ class MigrationTest {
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
-            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15)
+            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16)
             .allowMainThreadQueries()
             .build()
         try {
@@ -119,6 +119,129 @@ class MigrationTest {
                 assertEquals("someuser", node?.nickname)
                 assertEquals("Folder", node?.type)
                 assertEquals(0, dao.getAlbumIndexCount("someuser"))
+            }
+        } finally {
+            room.close()
+        }
+    }
+
+    /** Fixture "F" at v15, with the two rows the old ParentNode parsers wrote wrongly (R-01, R-04). */
+    private fun SupportSQLiteDatabase.insertV15TreeAndUserData() {
+        val now = Instant.now()
+        val modified = now.minus(2, ChronoUnit.DAYS).toString()
+        execSQL(
+            "INSERT INTO cached_nodes (nodeId, parentNodeId, type, title, access, uri, albumUri, " +
+                "sortIndex, dateModified, nickname) VALUES " +
+                "('4zqWw', NULL, 'Folder', 'Home', 'None', '/api/v2/node/4zqWw', NULL, 0, '$modified', 'someuser'), " +
+                "('2sDN5x', '4zqWw', 'Folder', 'Family', 'Password', '/api/v2/node/2sDN5x', NULL, 0, '$modified', 'someuser'), " +
+                "('P4BKB', '2sDN5x', 'Folder', 'School', 'None', '/api/v2/node/P4BKB', NULL, 0, '$modified', 'someuser'), " +
+                "('LCdk7F', 'P4BKB', 'Album', 'Class photos', 'None', '/api/v2/node/LCdk7F', '/api/v2/album/FfHCms', 1, '$modified', 'someuser'), " +
+                "('kZ9xQp', 'kZ9xQp', 'Album', 'Self parent', 'None', '/api/v2/node/kZ9xQp', '/api/v2/album/Rt5vBn', 0, '$modified', 'someuser'), " +
+                "('Wd3Rt2', 'P4BKB!parent', 'Album', 'Bang parent', 'None', '/api/v2/node/Wd3Rt2', '/api/v2/album/Hj8mLs', 0, '$modified', 'someuser')"
+        )
+        // Index row: AlbumKey FfHCms != NodeID LCdk7F; its parent was guessed from a `!parent` link.
+        execSQL(
+            "INSERT INTO cached_albums (albumKey, nodeId, name, uri, dateModified, sortIndex, nickname, parentNodeId) " +
+                "VALUES ('FfHCms', 'LCdk7F', 'Class photos', '/api/v2/album/FfHCms', '$modified', 3, 'someuser', 'P4BKB!parent')"
+        )
+        insertUserTables(now, modified)
+    }
+
+    private val userTables = listOf(
+        "offline_collections", "collection_photos", "collection_bookmarks", "viewed_gallery_updates", "search_history"
+    )
+
+    /** Every row of the five user tables as text, so "byte-equal" is a string comparison. */
+    private fun SupportSQLiteDatabase.dumpUserTables(): List<String> = userTables.map { t ->
+        query("SELECT * FROM $t ORDER BY 1, 2").use { c ->
+            buildString {
+                append(t).append(':')
+                while (c.moveToNext()) {
+                    for (i in 0 until c.columnCount) append(c.getString(i)).append('|')
+                    append('\n')
+                }
+            }
+        }
+    }
+
+    private fun SupportSQLiteDatabase.nodeIds(): List<String> =
+        query("SELECT nodeId FROM cached_nodes ORDER BY nodeId").use { c ->
+            buildList { while (c.moveToNext()) add(c.getString(0)) }
+        }
+
+    @Test
+    fun migrate15To16_addsIlu_repairsTree_keepsUserData() {
+        val before = helper.createDatabase(TEST_DB, 15).run {
+            insertV15TreeAndUserData()
+            dumpUserTables().also { close() }
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 16, true, AppDatabase.MIGRATION_15_16)
+
+        // The 4 good nodes stay; the self-parent row and the `X!parent` row are gone.
+        assertEquals(listOf("2sDN5x", "4zqWw", "LCdk7F", "P4BKB"), db.nodeIds())
+        db.query("SELECT parentNodeId FROM cached_nodes WHERE nodeId = 'LCdk7F'").use { c ->
+            c.moveToFirst()
+            assertEquals("P4BKB", c.getString(0))
+        }
+        // The index row survives; its guessed parent is cleared and the new column is NULL.
+        db.query("SELECT albumKey, nodeId, name, nickname, parentNodeId, imagesLastUpdated FROM cached_albums").use { c ->
+            assertEquals(1, c.count)
+            c.moveToFirst()
+            assertEquals("FfHCms", c.getString(0))
+            assertEquals("LCdk7F", c.getString(1))
+            assertEquals("Class photos", c.getString(2))
+            assertEquals("someuser", c.getString(3))
+            assertNull(c.getString(4))
+            assertNull(c.getString(5))
+        }
+        assertEquals(before, db.dumpUserTables())
+    }
+
+    @Test
+    fun migrate13To16_keepsUserData() {
+        val before = helper.createDatabase(TEST_DB, 13).run {
+            insertV13UserData()
+            dumpUserTables().also { close() }
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            TEST_DB, 16, true,
+            AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16
+        )
+
+        assertV13UserDataSurvived(db)
+        assertEquals(before, db.dumpUserTables())
+        // The v13 tree rows are good ones (no self parent, no `!`), so all three survive.
+        assertEquals(listOf("2sDN5x", "LCdk7F", "P4BKB"), db.nodeIds())
+    }
+
+    /** A real Room open at v16 over a repaired v15 file: the DAO reads the surviving rows and writes the new column. */
+    @Test
+    fun migratedV15Database_opensWithRoomAtV16_andDaoWorks() {
+        helper.createDatabase(TEST_DB, 15).apply {
+            insertV15TreeAndUserData()
+            close()
+        }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
+            .addMigrations(
+                AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14,
+                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16
+            )
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val dao = room.collectionDao()
+            runBlocking {
+                assertEquals("P4BKB", dao.getNodeById("LCdk7F")?.parentNodeId)
+                assertNull(dao.getNodeById("kZ9xQp"))
+                assertNull(dao.getNodeById("Wd3Rt2"))
+                val idx = dao.getAlbumIndex("someuser").single()
+                assertNull(idx.parentNodeId)
+                assertNull(idx.imagesLastUpdated)
+                dao.upsertAlbums(listOf(idx.copy(imagesLastUpdated = "2026-09-28T12:00:00+00:00")))
+                assertEquals("2026-09-28T12:00:00+00:00", dao.getAlbumIndex("someuser").single().imagesLastUpdated)
             }
         } finally {
             room.close()
@@ -137,6 +260,11 @@ class MigrationTest {
                 "('LCdk7F', 'P4BKB', 'Album', 'Class photos', 'Inherited', '/api/v2/node/LCdk7F', " +
                 "'/api/v2/album/FfHCms', 1, '$modified', 'someuser')"
         )
+        insertUserTables(now, modified)
+    }
+
+    /** Rows in all five user tables (never touched by any migration). */
+    private fun SupportSQLiteDatabase.insertUserTables(now: Instant, modified: String) {
         execSQL(
             "INSERT INTO offline_collections (id, name, siteNickname, createdAt) " +
                 "VALUES (7, 'Trip', 'someuser', ${now.toEpochMilli()})"
