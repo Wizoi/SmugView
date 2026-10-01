@@ -86,6 +86,14 @@ class FakeSmugMugServer {
 
     val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
 
+    /**
+     * The device is offline for the requests this picks: returns the IOException to throw for a "path?query" (an
+     * `UnknownHostException`), or null to let it through. Evaluated on every request, so a test can switch the network
+     * back on by setting it to null.
+     */
+    @Volatile var failWith: ((target: String) -> java.io.IOException?)? = null
+
+
     /** Replaces the answer to any `!parents` request (may throw an IOException). */
     var parentsOverride: ((Request) -> Response)? = null
 
@@ -529,6 +537,7 @@ class FakeSmugMugServer {
 
     @Throws(IOException::class)
     private fun routeRaw(req: Request, path: String, target: String): Response {
+        failWith?.invoke(target)?.let { throw it }
         throttles.firstOrNull { target.contains(it.pathContains) && it.remaining.get() > 0 }?.let {
             if (it.remaining.getAndDecrement() > 0) {
                 if (it.code != 429) return json(req, it.code, """{"Code":${it.code},"Message":"Injected"}""")
@@ -672,9 +681,11 @@ class FakeSmugMugServer {
             val name = known?.name ?: "g"
             val webUri = known?.let { ""","WebUri":"${hostOf(if (it in albumsB) SITE_B else "")}${it.urlPath}"""" } ?: ""
             val level = if (gateImages && isLocked(req, key)) "Password" else "Public"
+            // 6-4: the album's own ImageCount, answered only for a gallery whose size a test set (the app's "N of M photos").
+            val count = imageCounts[key]?.let { ""","ImageCount":$it""" } ?: ""
             return json(
                 req, 200,
-                """{"Response":{"Album":{"Uri":"/api/v2/album/$key","AlbumKey":"$key","NodeID":"$nodeId","Name":"$name"$webUri$dates,"ResponseLevel":"$level"}},"Code":200}"""
+                """{"Response":{"Album":{"Uri":"/api/v2/album/$key","AlbumKey":"$key","NodeID":"$nodeId","Name":"$name"$webUri$dates$count,"ResponseLevel":"$level"}},"Code":200}"""
             )
         }
         if (path == "node!search") {

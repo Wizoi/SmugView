@@ -23,7 +23,6 @@ class NoRawExceptionTextGuardTest {
         "HomeTabView.kt" to 1,          // GlobalSearchUiState.Error.message (6-5)
         "SearchTabView.kt" to 1,        // SearchUiState.Error.message (6-6)
         "PhotoDetailScreen.kt" to 1,    // Toast "Error: ..." (6-7)
-        "AlbumLoader.kt" to 1,          // catch in select (6-4)
         "CastController.kt" to 1,       // onMessage(e.message) (6-8)
         "SearchController.kt" to 1,     // SearchUiState.Error (6-6)
         "SiteHubController.kt" to 1,    // GlobalSearchUiState.Error (6-5)

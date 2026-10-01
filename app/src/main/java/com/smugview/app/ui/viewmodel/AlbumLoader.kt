@@ -1,6 +1,9 @@
 package com.smugview.app.ui.viewmodel
 
 import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.ui.text.Problem
+import com.smugview.app.ui.text.Subject
+import com.smugview.app.ui.text.UserMessages
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -28,6 +31,10 @@ data class AlbumState(
     /** A line that stays while the photos are shown (5-9: "You're offline. Showing the N photos saved on this phone."). */
     val notice: String? = null,
     val error: String? = null,
+    /** What [error] means (design 6-4): the kind, so the grid says the real cause and offers the way out. Set with [error]. */
+    val problem: Problem? = null,
+    /** The album's own `ImageCount` from `getAlbum`, or null while unknown: "Showing 100 of 150 photos". */
+    val expected: Int? = null,
     /** Every page arrived (or the page cap was reached). Only complete states are kept for later. */
     val complete: Boolean = false
 )
@@ -188,7 +195,8 @@ class AlbumLoader(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                run.update { it.copy(error = e.message ?: "Failed to load album images") }
+                val problem = Problem.from(e, Subject.Gallery)
+                run.update { it.copy(error = UserMessages.line(problem), problem = problem) }
             } finally {
                 run.update { if (it.loading || it.status != null) it.copy(loading = false, status = null) else it }
             }

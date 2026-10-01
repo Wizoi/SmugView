@@ -60,6 +60,8 @@ import com.smugview.app.ui.theme.GlowBorder
 import com.smugview.app.ui.theme.NeonBlue
 import com.smugview.app.ui.theme.SoftRed
 import com.smugview.app.ui.theme.SurfaceDark
+import com.smugview.app.ui.text.ProblemAction
+import com.smugview.app.ui.text.UserMessages
 import com.smugview.app.ui.viewmodel.SmugViewModel
 import com.smugview.app.ui.browser.BreadcrumbBar
 
@@ -85,10 +87,23 @@ fun PhotoGridScreen(
     var showAlbumShareDialog by remember { mutableStateOf(false) }
     val currentAlbumStyle = viewModel.currentAlbumStyle
     val sortBy by viewModel.sortBy.collectAsState()
-    val isBgLoading by viewModel.isBackgroundLoading.collectAsState()
-    val bgStatus by viewModel.backgroundLoadingStatus.collectAsState()
-    val bgError by viewModel.albumLoadError.collectAsState()
+    val album by viewModel.albumState.collectAsState()
     val filterType by viewModel.filterType.collectAsState()
+    val includedTags by viewModel.includedTags.collectAsState()
+    val excludedTags by viewModel.excludedTags.collectAsState()
+    val notice by viewModel.albumNotice.collectAsState()
+    // Design 6-4: one pure function decides what the screen shows (loading, failed, empty, filtered out, photos + banner).
+    val gridView = GridView.of(
+        rawCount = album?.photos?.size ?: 0,
+        shownCount = lazyPhotos.itemCount,
+        loading = album?.loading ?: true,
+        problem = album?.problem,
+        complete = album?.complete ?: false,
+        notice = notice,
+        expected = album?.expected,
+        filtersActive = filterType != com.smugview.app.ui.viewmodel.GalleryFilterType.ALL ||
+            includedTags.isNotEmpty() || excludedTags.isNotEmpty()
+    )
 
     val staggeredGridState = rememberLazyStaggeredGridState()
     val gridState = rememberLazyGridState()
@@ -229,8 +244,8 @@ fun PhotoGridScreen(
                     .fillMaxSize()
             ) {
                 // Main Grid or Loading/Empty States
-                when {
-                lazyPhotos.itemCount == 0 && bgError == null && (isBgLoading || lazyPhotos.loadState.refresh is LoadState.Loading) -> {
+                when (val view = gridView) {
+                GridView.Loading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                         CircularProgressIndicator(
                             color = NeonBlue,
@@ -238,11 +253,9 @@ fun PhotoGridScreen(
                         )
                     }
                 }
-                bgError != null || lazyPhotos.loadState.refresh is LoadState.Error -> {
-                    val errorMessage = bgError ?: com.smugview.app.data.api.SmugMugErrorMapper.userMessage(
-                        (lazyPhotos.loadState.refresh as? LoadState.Error)?.error, "Failed to load album images"
-                    )
-                    
+                is GridView.Failed -> {
+                    val problem = view.problem
+                    val primary = UserMessages.primaryAction(problem)
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -251,38 +264,43 @@ fun PhotoGridScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Access Error / Failed to Load",
-                            color = MaterialTheme.colorScheme.error,
+                            text = UserMessages.heading(problem),
+                            color = Color.White,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = errorMessage,
+                            text = UserMessages.body(problem),
                             color = Color.White.copy(alpha = 0.6f),
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                         Row {
-                            Button(
-                                onClick = onBackClick,
-                                colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark)
-                            ) {
-                                Text("Go Back", color = Color.White)
+                            if (primary != ProblemAction.GoBack) {
+                                Button(
+                                    onClick = onBackClick,
+                                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark)
+                                ) {
+                                    Text(UserMessages.BUTTON_GO_BACK, color = Color.White)
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
                             }
-                            Spacer(modifier = Modifier.width(16.dp))
                             Button(
-                                onClick = { viewModel.selectAlbum(albumKey, force = true) },
+                                // Try again and Enter password both reload; a locked gallery asks for its password again.
+                                onClick = {
+                                    if (primary == ProblemAction.GoBack) onBackClick()
+                                    else viewModel.selectAlbum(albumKey, force = true)
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = NeonBlue)
                             ) {
-                                Text("Retry")
+                                Text(primary.label)
                             }
                         }
                     }
                 }
-                lazyPhotos.itemCount == 0 && lazyPhotos.loadState.refresh is LoadState.NotLoading -> {
-                    // Empty state illustrating zero results due to active tag combinations
+                GridView.EmptyGallery, GridView.FilterEmpty -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -291,31 +309,27 @@ fun PhotoGridScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "No Photos Found",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            text = if (view == GridView.EmptyGallery) UserMessages.EMPTY_GALLERY else UserMessages.FILTER_EMPTY,
+                            fontSize = 16.sp,
+                            color = Color.White.copy(alpha = 0.7f),
                             textAlign = TextAlign.Center
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "No photos match your current search or type filter.",
-                            fontSize = 14.sp,
-                            color = Color.White.copy(alpha = 0.5f),
-                            textAlign = TextAlign.Center
-                        )
-                        if (filterType != com.smugview.app.ui.viewmodel.GalleryFilterType.ALL) {
+                        if (view == GridView.FilterEmpty) {
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(
-                                onClick = { viewModel.updateFilterType(com.smugview.app.ui.viewmodel.GalleryFilterType.ALL) },
+                                onClick = {
+                                    viewModel.updateFilterType(com.smugview.app.ui.viewmodel.GalleryFilterType.ALL)
+                                    viewModel.clearAllTags()
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = NeonBlue)
                             ) {
-                                Text("Reset Type Filter")
+                                Text(UserMessages.BUTTON_SHOW_ALL)
                             }
                         }
                     }
                 }
-                else -> {
+                GridView.Blank -> Box(modifier = Modifier.fillMaxSize())
+                is GridView.Photos -> {
                     if (isStaggered) {
                         LazyVerticalStaggeredGrid(
                             state = staggeredGridState,
@@ -528,21 +542,32 @@ fun PhotoGridScreen(
                 }
             )
 
-            // 2b. 5-9 (Q2): the gallery opened from the photos saved on this phone (offline): say so, and say what is shown.
-            val notice by viewModel.albumNotice.collectAsState()
-            notice?.let { line ->
-                Text(
-                    text = line,
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
+            // 2b. The line at the bottom: the 5-9 offline notice (what is shown and why), or, when a later page failed,
+            // PARTIAL with "Load the rest" (design 6-4). They share the slot; the notice wins because it says it all.
+            (gridView as? GridView.Photos)?.banner?.let { banner ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(Color.Black.copy(alpha = 0.7f))
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
-                )
+                ) {
+                    Text(
+                        text = banner.text,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (banner is GridView.Banner.Partial) {
+                        TextButton(onClick = { viewModel.selectAlbum(albumKey, force = true) }) {
+                            Text(UserMessages.BUTTON_LOAD_THE_REST, color = NeonBlue, fontSize = 13.sp)
+                        }
+                    }
+                }
             }
 
             // 3. Static Sticky Buttons Top Bar (always visible!)

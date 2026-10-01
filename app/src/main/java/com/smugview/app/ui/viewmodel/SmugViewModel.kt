@@ -1577,7 +1577,8 @@ class SmugViewModel @Inject constructor(
                 it.copy(
                     title = details?.name ?: "",
                     style = details?.galleryStyle ?: "Collage",
-                    webUri = details?.webUri ?: ""
+                    webUri = details?.webUri ?: "",
+                    expected = details?.imageCount
                 )
             }
             val nodeIdToMark = details?.nodeId
@@ -1724,8 +1725,9 @@ class SmugViewModel @Inject constructor(
         val failed = failure
         if (failed != null) {
             // R-46: keep the pages that arrived, say the album is incomplete (it restarts if selected again).
-            val message = com.smugview.app.data.api.SmugMugErrorMapper.userMessage(failed, "Failed to load all photos")
-            run.update { it.copy(error = message) }
+            // The grid says "Showing N of M photos. {cause}" with "Load the rest" (design 6-4).
+            val problem = com.smugview.app.ui.text.Problem.from(failed, com.smugview.app.ui.text.Subject.Gallery)
+            run.update { it.copy(error = com.smugview.app.ui.text.UserMessages.line(problem), problem = problem) }
         } else {
             run.update { it.copy(complete = true) }
         }
@@ -1763,7 +1765,16 @@ class SmugViewModel @Inject constructor(
      * nothing is saved does the error show.
      */
     private suspend fun failFirstPage(run: AlbumRun, e: Exception) {
-        val message = com.smugview.app.data.api.SmugMugErrorMapper.userMessage(e, "Failed to load album images")
+        // A 404/401 is "locked" only when the gallery sits under a locked root; otherwise 404 is "gone" (design 3.1).
+        val underLockedRoot = e is retrofit2.HttpException && (e.code() == 404 || e.code() == 401) && try {
+            repository.getNodeByIdOrKey(run.albumKey)?.let { lockOf(it) == com.smugview.app.data.repository.UnlockManager.RowLock.Locked } == true
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c
+        } catch (_: Exception) {
+            false
+        }
+        val problem = com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Gallery, underLockedRoot)
+        val message = com.smugview.app.ui.text.UserMessages.line(problem)
         var shownOffline = false
         val applied = if (com.smugview.app.data.api.SmugMugErrorMapper.isOffline(e)) {
             val keptPhotos = try {
@@ -1776,19 +1787,19 @@ class SmugViewModel @Inject constructor(
             run.update { s ->
                 val saved = keptPhotos.ifEmpty { s.photos.filter { it.localUri != null } }
                 if (saved.isEmpty()) {
-                    s.copy(photos = emptyList(), tags = emptySet(), loading = false, status = null, error = message)
+                    s.copy(photos = emptyList(), tags = emptySet(), loading = false, status = null, error = message, problem = problem)
                 } else {
                     shownOffline = true
                     // Not complete: coming back to this gallery once online must load it for real.
                     s.copy(
-                        photos = saved, tags = emptySet(), loading = false, status = null, error = null,
+                        photos = saved, tags = emptySet(), loading = false, status = null, error = null, problem = null,
                         notice = com.smugview.app.data.offline.OfflineMessages.offlineGallery(saved.size), complete = false
                     )
                 }
             }
         } else {
             run.update {
-                it.copy(photos = emptyList(), tags = emptySet(), loading = false, status = null, error = message)
+                it.copy(photos = emptyList(), tags = emptySet(), loading = false, status = null, error = message, problem = problem)
             }
         }
         // A stale run (the user moved on) must not touch the password state of the album on screen (R-11).
