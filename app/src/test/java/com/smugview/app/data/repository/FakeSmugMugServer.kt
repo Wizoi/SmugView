@@ -698,6 +698,12 @@ class FakeSmugMugServer {
         val suffix = if (rest.contains('!')) "!" + rest.substringAfter('!') else ""
         val known = Regex("^s\\d{5}$").matches(key) || albumKeyToNodeId.keys.any { key.startsWith(it + "i") }
         if (!known) return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
+        // Live (E1, 5-11): a photo in a password gallery is a 404 on `image/{key}-0` without the session,
+        // not a 401/403, and 200 with `ArchivedUri/Size/MD5` once the session exists.
+        if (gateImages && rest.substringBefore('!').endsWith("-0")) {
+            val inLocked = albumKeyToNodeId.keys.firstOrNull { key.startsWith(it + "i") }?.let { isLocked(req, it) } == true
+            if (inLocked) return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
+        }
         if (!rest.substringBefore('!').endsWith("-0")) {
             val query = req.url.query?.let { "?$it" }.orEmpty()
             return json(req, 301, "").newBuilder().header("Location", "/api/v2/image/$key-0$suffix$query").build()

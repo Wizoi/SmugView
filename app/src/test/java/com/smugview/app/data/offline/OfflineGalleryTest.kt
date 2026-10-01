@@ -398,6 +398,30 @@ class OfflineGalleryTest {
         assertAllDone(keys)
     }
 
+    // ---- E1 (5-11, live): `image/{key}-0` in a password gallery is a 404 until the session exists ----
+
+    private fun wantImageWithNoSource(key: String) = runBlocking {
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO collection_bookmarks (collectionId, type, itemKey, title, albumKey, albumTitle, thumbnailUrl) " +
+                "VALUES ($trip, 'Image', '$key', 'IMG_$key', '$album', 'New School Year', NULL)"
+        )
+        store.request(key, albumKey = album, sourceUrl = null, expectedBytes = null, md5 = null, wifiOnly = false)
+    }
+
+    @Test fun aPasswordGalleryPhotoWithNoSourceUrlIsResolvedAfterTheSavedPasswordUnlocksIt() {
+        passwords.savePassword("2sDN5x", "test-pw-1")
+        fake.gateImages = true
+        fake.cookieGate = true
+        cacheFamilyTree()
+        wantImageWithNoSource(keys[0])
+
+        passAny()
+
+        assertAllDone(listOf(keys[0]))
+        assertEquals("the saved password was used once", 1, fake.requests.count { it.contains("!unlock") })
+        assertEquals("the password is still saved", "test-pw-1", passwords.getPassword("2sDN5x"))
+    }
+
     // ---- failing half-way ----
 
     @Test fun offlineBeforeTheListingLeavesTheGalleryRetryableAndNothingDone() {

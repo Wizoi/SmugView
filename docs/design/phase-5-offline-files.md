@@ -1,6 +1,6 @@
 # Design: Phase 5: Offline files (T6)
 
-Status: **SIGNED OFF 2026-10-01 (§8.1; Q3 has an override).** Was: DRAFT, needs owner sign-off (§8). Steps **5-0** (harness and evidence) and **5-1** (a pure
+Status: **DONE 2026-10-01 (step 5-11 exit check passed; phone checks of §7.3 and the items in findings.md "still unverified" remain for the last phase).** Was: SIGNED OFF 2026-10-01 (§8.1; Q3 has an override), before that DRAFT, needs owner sign-off (§8). Steps **5-0** (harness and evidence) and **5-1** (a pure
 failure classifier) change no behaviour and no stored format, so they can start before sign-off.
 Every later step depends on at least one answer in §8: 5-2 needs Q5 and Q6, 5-6 needs Q3 and Q7,
 5-7 needs Q1, 5-8 needs Q6, and 5-9 needs Q2 and Q8.
@@ -540,7 +540,7 @@ text):
 | P1-P9 | verified live (anonymous) or on the emulator, 2026-10-01 (§1.1) |
 | No screen reads a downloaded file; `local_col_` unreachable | verified by grep of `app/src/main` at `97a18f5` (*confirmed (code)*); not observed on a device |
 | R-38/R-39/R-40/R-41 mechanisms | traced in code (*likely*); the 5-0 characterization runs make them *confirmed* on the old worker |
-| `ArchivedUri`/`ArchivedMD5` present for a password gallery with a session | **unverified**: E1 (5-0, emulator) |
+| `ArchivedUri`/`ArchivedMD5` present for a password gallery with a session | **verified live, 5-11 (E1)**: with the `!unlock` session cookie every item of a password gallery returns `ArchivedUri`, `ArchivedSize`, `ArchivedMD5`; the CDN URL downloads with no session (200, size = `ArchivedSize`, ETag and body MD5 = `ArchivedMD5`, R-53). Anonymously, `image/{key}-0` of such a photo is a **404** (not 401/403), and `album/{key}!images` is 200 with 0 images. |
 | CDN 408/429/5xx shape, `Retry-After`, 401/403/410, URL expiry | **unverifiable** here (P10); the classifier handles each, and E3 is mitigated by the re-resolve |
 | WorkManager stops a worker after 10 minutes and reschedules it | from the WorkManager docs (*assumed*); the pass is safe to stop at any point either way |
 | `File.renameTo` is atomic within `filesDir` on Android's ext4/f2fs | platform behaviour (*assumed*); recovery covers the crash windows on both sides |
@@ -635,3 +635,4 @@ design, and why.)*
 | 5-10 | The design's `offline_by_state` is four checks (`offline_by_state_pending`, `_downloading`, `_done`, `_failed`), because a check returns one number. `offline_done_bytes` needed `CheckResult.total: Long` (a byte total passes Int range at 2 GiB); `count` stays the Int the report and tests use. | One number per line keeps the existing report format and tests. |
 | 5-10 | The report prints the offline checks in their own section, "== offline files (counts only) ==", apart from the invariants. | Design 9 asked for a section. |
 | 5-10 | `PRIVACY_POLICY.md` is unchanged: "photos you choose to save for offline viewing, are stored locally on your device" still describes kept galleries. `AGENTS.md` unchanged (no rule changed). | Checked, as the step asks. |
+| 5-11 | `OfflineDownloader.resolve` also treats a 404 on `image/{key}-0` as "maybe locked" when the row has an `albumKey` and no unlock was tried yet: it calls `UnlockManager.ensureSession` once and retries (Rejected falls through to GONE). `FakeSmugMugServer.imageRoute` now answers 404 for a locked album's photo. | E1 (live): a password-gallery photo is a 404, not 401/403, on `image/{key}-0` without the session. The 401/403-only branch left such a photo FAILED (test `aPasswordGalleryPhotoWithNoSourceUrlIsResolvedAfterTheSavedPasswordUnlocksIt` failed on the old code: `FfHCmsi001 should be DONE expected:<[DONE]> but was:<[FAILED]>`). |

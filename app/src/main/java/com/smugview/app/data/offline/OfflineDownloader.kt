@@ -311,6 +311,17 @@ class OfflineDownloader(
                         SmugMugRepository.UnlockResult.Transient -> return Resolved.Fail(DownloadFailure.locked(transient = true))
                     }
                 }
+                // E1 (live, 5-11): a photo in a password gallery is a 404, not a 401/403, on `image/{key}-0`
+                // without the session. A 404 is "removed" only once the saved password (if any) was tried:
+                // with no password to try (Rejected) it stays GONE, as the design says.
+                if (code == 404 && !unlocked && row.albumKey != null) {
+                    unlocked = true
+                    when (repo.unlocks.ensureSession(row.albumKey, apiKey())) {
+                        SmugMugRepository.UnlockResult.Success -> continue
+                        SmugMugRepository.UnlockResult.Transient -> return Resolved.Fail(DownloadFailure.locked(transient = true))
+                        SmugMugRepository.UnlockResult.Rejected -> Unit
+                    }
+                }
                 val raw = e.response()?.raw()
                 return Resolved.Fail(
                     DownloadFailure.classify(
