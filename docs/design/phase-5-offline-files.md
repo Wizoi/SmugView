@@ -1,6 +1,6 @@
 # Design: Phase 5: Offline files (T6)
 
-Status: **DRAFT, needs owner sign-off (§8).** Steps **5-0** (harness and evidence) and **5-1** (a pure
+Status: **SIGNED OFF 2026-10-01 (§8.1; Q3 has an override).** Was: DRAFT, needs owner sign-off (§8). Steps **5-0** (harness and evidence) and **5-1** (a pure
 failure classifier) change no behaviour and no stored format, so they can start before sign-off.
 Every later step depends on at least one answer in §8: 5-2 needs Q5 and Q6, 5-6 needs Q3 and Q7,
 5-7 needs Q1, 5-8 needs Q6, and 5-9 needs Q2 and Q8.
@@ -509,6 +509,29 @@ claims):
 - The worker never deletes a saved password and uses `UnlockManager.ensureSession` (R-21 rule).
 - No Range resume in Phase 5. Photos are at most about 5 MB (P7); resuming only pays for videos, and
   Q7 (a) saves none.
+
+### 8.1 Owner sign-off (2026-10-01)
+
+All eight questions answered; Q1, Q2, Q4, Q5, Q6, Q7 and Q8 are **as recommended**. **Q3 is (a) with an
+override:** the owner wants a way to override the Wi-Fi rule, so a kept gallery can be saved over any
+network if the user chooses. Consequences for the steps (the implementer follows these over any earlier
+text):
+
+- The `offline_galleries.wifiOnly` column already planned in 2.2 is the user's setting, not a constant.
+  A new kept gallery starts `wifiOnly = 1` (Wi-Fi only). The Keep-offline row has a second control, **"Use
+  mobile data too"**, which sets `wifiOnly = 0` for that gallery; the scheduler (2.5) then runs that
+  gallery's pass on any connected network. No global settings screen (that stays Phase 6).
+- A gallery that is waiting for Wi-Fi shows "Waiting for Wi-Fi" with the size and a **"Use mobile data"**
+  action beside it. Turning the switch back off restores `wifiOnly = 1`.
+- Single photos keep "any network" (no override needed).
+- New strings (to be listed in section 4 and flagged to the owner when they ship): the control label
+  "Use mobile data too", the action "Use mobile data", and the waiting state "Waiting for Wi-Fi". They
+  must say the size so the user knows what mobile data will be used (for example "Use mobile data
+  (103 MB)").
+- Needed in: 5-2 (the column and its default in the migration backfill: backfilled galleries are
+  `wifiOnly = 1`), 5-5 (scheduler honours a per-gallery flag), 5-9 (the control and the state text).
+  Add a worker test: a gallery with `wifiOnly = 0` downloads on a metered network; one with
+  `wifiOnly = 1` waits.
 
 ## 9. Verified vs assumed
 
