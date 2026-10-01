@@ -75,13 +75,49 @@ class SiteHubController(
 
     private var globalSearchJob: Job? = null
 
+    // Home's totals come from the gallery index (design 3.6, Q3): every gallery the app can show, updated
+    // after each crawl. Until the index has rows (first launch) the page-1 numbers stand in. [totalsLock]
+    // keeps a late page-1 answer from overwriting an index total that has already arrived.
+    private val totalsLock = Any()
+    private var indexTotals: com.smugview.app.data.db.SiteTotals? = null
+    private var totalsJob: Job? = null
+
+    private fun watchIndexTotals(nickname: String) {
+        totalsJob?.cancel()
+        // After the cancel, so a stale collector's write (it checks its own job under the lock) can't land after this reset.
+        synchronized(totalsLock) {
+            indexTotals = null
+            _activeSiteTotalGalleries.value = null
+            _activeSiteTotalPhotos.value = null
+        }
+        totalsJob = siteScope().launch {
+            val me = currentCoroutineContext()[Job]
+            repository.siteTotals(nickname).collect { totals ->
+                synchronized(totalsLock) {
+                    if (me?.isActive == false) return@synchronized
+                    indexTotals = totals
+                    if (totals != null) {
+                        _activeSiteTotalGalleries.value = totals.galleries
+                        _activeSiteTotalPhotos.value = totals.photos
+                    }
+                }
+            }
+        }
+    }
+
+    /** The first page's numbers, used only while the index has no totals. */
+    private fun setPageOneTotals(galleries: Int?, photos: Int?) = synchronized(totalsLock) {
+        if (indexTotals != null) return@synchronized
+        if (galleries != null) _activeSiteTotalGalleries.value = galleries
+        if (photos != null) _activeSiteTotalPhotos.value = photos
+    }
+
     fun loadActiveSiteDetails(nickname: String) {
         _isActiveSiteDetailsLoading.value = true
         _activeSiteRecentImages.value = emptyList()
         _activeSiteAlbums.value = emptyList()
         _activeSiteTopKeywords.value = emptyList()
-        _activeSiteTotalGalleries.value = null
-        _activeSiteTotalPhotos.value = null
+        watchIndexTotals(nickname) // also resets the totals
 
         val rootNodeId = getRootNodeId()
         if (BuildConfig.DEBUG) {
@@ -117,7 +153,7 @@ class SiteHubController(
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: albums response: ${res.response.albums?.size} items")
                             }
-                            _activeSiteTotalGalleries.value = res.response.pages?.total
+                            setPageOneTotals(galleries = res.response.pages?.total, photos = null)
                             val albums = res.response.albums ?: emptyList()
                             setUserAlbums(albums)
                             val expansions = res.expansions
@@ -210,7 +246,7 @@ class SiteHubController(
 
                     // Compute actual total photos across all loaded albums
                     val computedTotalPhotos = albums.sumOf { it.imageCount }
-                    _activeSiteTotalPhotos.value = computedTotalPhotos
+                    setPageOneTotals(galleries = null, photos = computedTotalPhotos)
 
                     _activeSiteRecentImages.value = resolvedRecentImages
                     _activeSiteAlbums.value = albums
@@ -286,6 +322,9 @@ class SiteHubController(
 
     /** Resets the hub dashboard flows (used by disconnectSite). */
     fun clearActiveSiteData() {
+        totalsJob?.cancel()
+        totalsJob = null
+        synchronized(totalsLock) { indexTotals = null }
         _activeSiteRecentImages.value = emptyList()
         _activeSiteAlbums.value = emptyList()
         _activeSiteTopKeywords.value = emptyList()

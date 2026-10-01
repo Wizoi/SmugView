@@ -2061,16 +2061,6 @@ class SmugViewModel @Inject constructor(
     suspend fun getAlbumKeyFromWebUri(webUri: String?): String? {
         val targetUri = webUri ?: return null
         if (targetUri.isEmpty()) return null
-        
-        if (_userAlbums == null) {
-            try {
-                val nickname = activeNickname.value?.ifEmpty { null } ?: return null
-                val response = repository.getUserAlbums(nickname, apiKey)
-                _userAlbums = response
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
 
         val path = try {
             val cleanedUriStr = targetUri.substringBefore("?")
@@ -2090,7 +2080,23 @@ class SmugViewModel @Inject constructor(
         } ?: return null
 
         val normalizedPath = path.trim('/').lowercase()
-        
+
+        // The gallery index has every gallery of the site (design 3.6); `user!albums` page 1 has 100 at most,
+        // so a photo in gallery 101+ is only found here.
+        activeNickname.value?.ifEmpty { null }?.let { nickname ->
+            repository.getAlbumByUrlPath(nickname, normalizedPath)?.let { return it.albumKey }
+        }
+
+        if (_userAlbums == null) {
+            try {
+                val nickname = activeNickname.value?.ifEmpty { null } ?: return null
+                val response = repository.getUserAlbums(nickname, apiKey)
+                _userAlbums = response
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         val matchedAlbum = _userAlbums?.find { album ->
             val albumPath = album.urlPath?.trim('/')?.lowercase() ?: ""
             albumPath == normalizedPath

@@ -202,17 +202,12 @@ class SearchController(
                     return@launch
                 }
 
-                // Resolve search scope URI
+                // The search scope: the picked folder, else the whole site as its own user. A user URI needs no
+                // lookup and can never be another site's root (design 3.6, R-33).
                 val activeScope = searchScope.value
-                val resolvedRootId = if (activeScope.nodeUri == null || activeScope.nodeId == null) {
-                    repository.getUserRootNodeId(nickname, apiKey).first().getOrNull()
-                } else {
-                    null
-                }
-
                 val scopeUri = activeScope.nodeUri
                 val scopeKey = activeScope.nodeId ?: "site:$nickname"
-                val apiScopeUri = scopeUri ?: resolvedRootId?.let { "/api/v2/node/$it" }
+                val apiScopeUri = scopeUri ?: "/api/v2/user/$nickname"
 
                 val lastSearchedAt = searchStatusPrefs.getLong("${scopeKey}_${query}_ts", 0L)
                 val cacheAgeMs = System.currentTimeMillis() - lastSearchedAt
@@ -329,14 +324,14 @@ class SearchController(
                 }
 
                 // 2. Search folders and galleries from API (node!search)
-                if (apiScopeUri != null) {
-                    try {
-                        // Note: searchNodesRemote still fetches folders if available from SmugMug search API.
-                        // Galleries are exclusively handled by the in-memory cache.
-                        repository.searchNodesRemote(nickname, apiScopeUri, scopeKey, query, apiKey).collect {}
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+                try {
+                    // Note: searchNodesRemote still fetches folders if available from SmugMug search API.
+                    // Galleries are exclusively handled by the in-memory cache.
+                    repository.searchNodesRemote(nickname, apiScopeUri, scopeKey, query, apiKey).collect {}
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
 
                 val updatedFolders = repository.getSearchResultNodes(query, scopeKey, "Folder")

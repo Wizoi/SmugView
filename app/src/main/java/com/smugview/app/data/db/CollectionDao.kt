@@ -58,6 +58,20 @@ interface CollectionDao {
     @Query("SELECT COUNT(*) FROM cached_albums WHERE nickname = :nickname OR nickname = ''")
     suspend fun getAlbumIndexCount(nickname: String): Int
 
+    /**
+     * Home's totals (design 3.6, Q3): every gallery the index holds for the site and the photos in them.
+     * A Flow, so they follow each crawl. Zero galleries means the index is not built yet (first launch).
+     */
+    @Query("SELECT COUNT(*) AS galleries, COALESCE(SUM(imageCount), 0) AS photos FROM cached_albums WHERE nickname = :nickname OR nickname = ''")
+    fun siteTotals(nickname: String): Flow<SiteTotals>
+
+    /**
+     * The gallery whose UrlPath is [path] (leading and trailing slashes ignored; [path] is already
+     * lower-cased the way SQLite's LOWER does it, A-Z only), for the site. A photo's WebUri has no key.
+     */
+    @Query("SELECT * FROM cached_albums WHERE (nickname = :nickname OR nickname = '') AND LOWER(TRIM(urlPath, '/')) = :path LIMIT 1")
+    suspend fun getAlbumByUrlPath(nickname: String, path: String): CachedAlbum?
+
     @Query("SELECT * FROM cached_nodes WHERE parentNodeId = :parentNodeId AND nodeId NOT LIKE 'virtual:%' ORDER BY sortIndex ASC")
     fun getCachedNodesByParent(parentNodeId: String?): Flow<List<CachedNode>>
 

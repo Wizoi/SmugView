@@ -82,6 +82,10 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.albumIndex)
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(SmugMugRepository.AlbumIndexSnapshot("", emptyList())))
             
+        // Home totals from the index: none yet, so the page-1 numbers stand (design 3.6)
+        Mockito.`when`(mockRepository.siteTotals(Mockito.anyString()))
+            .thenReturn(flowOf(null))
+
         Mockito.`when`(mockRepository.getSearchHistory())
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyList()))
             
@@ -282,8 +286,6 @@ class SmugViewModelTest {
             AlbumImageData(imageKey = "img555", title = "Sunset Shore")
         )
         
-        Mockito.`when`(mockRepository.getUserRootNodeId(Mockito.anyString(), Mockito.anyString()))
-            .thenReturn(flowOf(Result.success("4zqWw")))
             
         Mockito.`when`(mockRepository.getSearchResultNodes("Sunset", "site:testUser", "Folder"))
             .thenReturn(emptyList())
@@ -296,7 +298,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.hasSearchPhotosInDb("Sunset", "site:testUser"))
             .thenReturn(false)
             
-        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY))
+        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/user/testUser", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY))
             .thenReturn(flowOf(Result.success(emptyList())))
             
         // Mock getPagedSearchPhotos to return a dummy PagingSource
@@ -475,8 +477,6 @@ class SmugViewModelTest {
             AlbumImageData(imageKey = "img555", title = "Sunset Shore")
         )
         
-        Mockito.`when`(mockRepository.getUserRootNodeId(Mockito.anyString(), Mockito.anyString()))
-            .thenReturn(flowOf(Result.success("4zqWw")))
             
         Mockito.`when`(mockRepository.getSearchResultNodes("Sunset", "site:testUser", "Folder"))
             .thenReturn(emptyList())
@@ -489,7 +489,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockPrefs.getLong("site:testUser_Sunset_ts", 0L))
             .thenReturn(0L)
             
-        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY))
+        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/user/testUser", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY))
             .thenReturn(flowOf(Result.success(emptyList())))
             
         // Mock getPagedSearchPhotos to return a dummy PagingSource
@@ -514,7 +514,7 @@ class SmugViewModelTest {
         
         Mockito.verify(mockRepository).performBackgroundSearchImages(
             "testUser",
-            "/api/v2/node/4zqWw",
+            "/api/v2/user/testUser",
             "site:testUser",
             "Sunset",
             BuildConfig.SMUGMUG_API_KEY

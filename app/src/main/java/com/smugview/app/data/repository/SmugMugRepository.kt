@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -1109,7 +1110,8 @@ class SmugMugRepository @Inject constructor(
         try {
             dao.deleteSearchResultsForQueryAndType(query = query, scope = scopeKey, type = "Photo")
 
-            val targetScope = scopeUri ?: "/api/v2/node/4zqWw"
+            // No node scope: the site's own user, which needs no lookup and is never another site's root (R-33).
+            val targetScope = scopeUri ?: "/api/v2/user/$nickname"
             if (com.smugview.app.BuildConfig.DEBUG) {
                 android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages calling searchImages with scope=$targetScope")
             }
@@ -1563,6 +1565,19 @@ class SmugMugRepository @Inject constructor(
 
     fun getSearchHistory(nickname: String = ""): Flow<List<SearchHistory>> {
         return dao.getSearchHistory(nickname)
+    }
+
+    /**
+     * Home's totals from the gallery index (design 3.6, Q3): null while the site's index is empty (first
+     * launch, before the first crawl), so the caller keeps its page-1 numbers; then every crawl updates it.
+     */
+    fun siteTotals(nickname: String): Flow<com.smugview.app.data.db.SiteTotals?> =
+        dao.siteTotals(nickname).map { if (it.galleries == 0) null else it }
+
+    /** The index's gallery for a UrlPath (a photo's WebUri has no key), or null. Matches like SQLite's LOWER (A-Z). */
+    suspend fun getAlbumByUrlPath(nickname: String, urlPath: String): CachedAlbum? {
+        val path = urlPath.trim('/').map { if (it in 'A'..'Z') it + 32 else it }.joinToString("")
+        return dao.getAlbumByUrlPath(nickname, path)
     }
 
     suspend fun clearSearchHistory(nickname: String = "") {
