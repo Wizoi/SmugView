@@ -52,7 +52,7 @@ steps:
             3. Verify release notes exist for that versionCode under
                app/src/main/play/release-notes/en-US/<versionCode>.txt and have been reviewed.
           Prefer `build_appbundle` (local artifact, no upload) unless the user explicitly asked to publish.
-          The dedicated `/publish_app` skill applies these same gates — use it for real releases.
+          The dedicated `/publish-app` skill applies these same gates — use it for real releases.
         command: |
           $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
           ./gradlew publishReleaseBundle

@@ -3,7 +3,7 @@
 This doc collects everything needed to take SmugView from internal testing to a public
 production listing on Google Play: the store listing content, the assets, and the
 Play Console steps that have to happen outside the repo. It's meant to be read
-alongside [`.agents/skills/publish_app/SKILL.md`](../.agents/skills/publish_app/SKILL.md)
+alongside [`.claude/skills/publish-app/SKILL.md`](../.claude/skills/publish-app/SKILL.md)
 (the mechanics of cutting a release) — this doc is about the *store page* and the
 *production-readiness* gates, not the build/sign/upload steps.
 

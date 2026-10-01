@@ -4,7 +4,7 @@ purpose: |
   or all tests combined.
 
 prompt_options:
-  action: "When executing this skill, always prompt the user with the options using ask_question to choose the target test run."
+  action: "When executing this skill, always ask the user (AskUserQuestion) to choose the target test run."
 
 environment_setup:
   JAVA_HOME: "C:\\Program Files\\Android\\Android Studio\\jbr"

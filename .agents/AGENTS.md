@@ -4,7 +4,7 @@
 *   **Design Proposal Sign-off**: When receiving a new feature, bug fix, or scenario update request, always compile a structured implementation plan and wait for the user's explicit design sign-off/approval.
 *   **Direct Execution Phase (Silent Mode)**: Once the implementation plan is approved by the user, proceed to execute all file edits, terminal commands, and testing tasks in sequence without stopping to prompt the user, ask for file-by-file confirmation, or explain intermediate steps. Provide a single, comprehensive final walkthrough only when execution is complete.
 *   **Silent Mode EXCLUSIONS (always stop and confirm first)**: Silent Mode covers local, reversible work only. It NEVER authorizes irreversible or outward-facing actions. Plan approval is **not** approval for any of the following — confirm each one explicitly, in the moment:
-    *   Publishing/uploading to Google Play (`publishReleaseBundle`, `publishListing`, the `/publish_app` skill).
+    *   Publishing/uploading to Google Play (`publishReleaseBundle`, `publishListing`, the `/publish-app` skill).
     *   `git push`, force-push, history rewrites (`filter-repo`/BFG), tag/release creation, or anything that mutates a remote.
     *   Destructive git/data operations (`reset --hard`, `clean -fd`, branch/stash deletion, dropping or wiping database tables).
     *   Rotating, revoking, or writing credentials/secrets.
@@ -52,14 +52,13 @@
 
 
 
-## 🧭 Primary Agent Environment: Claude Code
-This project is now worked on primarily via the **Claude Code** extension (not Antigravity). Translate the older "Antigravity tool" instructions below accordingly:
-*   File search → `Glob`; content search → `Grep` (ripgrep-backed, pass a repo-relative `path` and `glob`); read → `Read`; edit → `Edit`/`Write`. Prefer these over shell `find`/`grep`/`cat`.
-*   There is **no `.gemini/antigravity-ide/brain` sibling-transcript coordination** under Claude Code. Coordinate via git (`git status`, `git log`, branches) and this `AGENTS.md`. The Antigravity-specific sections further down are retained for reference but do not apply here.
-*   Environment: Windows 11, Git Bash + PowerShell tools. See the Gradle shell-gotchas above before running builds/adb.
+## 🧭 Agent Environment: Claude Code
+*   Skills live in `.claude/skills/<name>/SKILL.md` (`ask-app-guide`, `deploy-app`, `find-root-cause`, `publish-app`, `run-tests`, `update-scenario`); `publish-app` and `deploy-app` are user-invoked only (`disable-model-invocation: true`). Their long-form instructions stay in `.agents/resources/*.yaml`.
+*   Prefer `Glob` / `Grep` / `Read` / `Edit` over shell `find`/`grep`/`cat`. Windows 11, Git Bash + PowerShell tools; see the Gradle shell-gotchas above before running builds/adb.
+*   Verify tool paths, env vars and commands against `CLAUDE.md` and the `ask-app-guide` skill before running Gradle, ADB or emulator binaries.
 
 ## 🤝 Parallel Workspace Coordination
-*   **Coordination (legacy Antigravity note)**: If concurrent developer agents are working the codebase under Antigravity, their logs live at `C:\Users\kidzi\.gemini\antigravity-ide\brain\<sibling-conversation-id>\.system_generated\logs\transcript.jsonl`. Under Claude Code this does not apply — use git. Either way, take care not to regress features when editing shared god-files like `BrowserScreen.kt` (~4k lines) or `SmugViewModel.kt` (~3.2k lines).
+*   Coordinate concurrent agents via git (`git status`, `git log`, branches) and this file. Take care not to regress features when editing shared god-files like `BrowserScreen.kt` (~4k lines) or `SmugViewModel.kt` (~3.2k lines).
 
 ## 🚀 SmugMug API Optimization Guidelines
 *   **Tag cloud / keyword scan is `getUserTopKeywords`, NOT a per-album `AlbumKeywords` batch scan.**
@@ -101,11 +100,6 @@ guidance above now describes what's actually implemented instead of an abandoned
     ```
 *   **Flow Test Imports**: When mock-stubbing flow variables (like `activeDevice` or `discoveredDevices` StateFlows) in test configuration setups, always ensure that `kotlinx.coroutines.flow.MutableStateFlow` or `kotlinx.coroutines.flow.flowOf` imports are explicitly declared rather than using unresolved short references.
 
-## 🤖 Antigravity Tool Usage Learnings
-*   **Ripgrep Windows File Search**: On Windows systems, ripgrep (`grep_search`) might fail to find matches if `SearchPath` is set directly to a file containing backslashes. Instead, set `SearchPath` to the containing directory and filter using the `Includes` parameter with the filename (e.g., `Includes = ["BrowserScreen.kt"]`).
-*   **Proactive Skill Verification**: Always check and view the `smugview_development_guidelines` SKILL.md file at the very start of any task or conversation. Never execute command-line tools (such as Gradle, ADB, or emulator binaries) without verifying the exact path, environment variables, or commands documented in the workspace guidelines first.
-*   **Windows Markdown Image Path Validation**: The IDE validator enforces absolute paths starting with `/` located inside the artifact directory on Windows. If the workspace drive uses lowercase casing (e.g. `c:\`) while the environment defines the app data path in uppercase (e.g. `C:\`), case-sensitive prefix checks fail. Slashes vs backslashes also cause issues. This false-alarm warning can be safely ignored; use forward slashes and absolute paths for correct image rendering: `![Caption](/C:/Users/kidzi/.gemini/antigravity-ide/brain/<uuid>/screen.png)`.
-
 ## 🔍 Scoped Search Learnings
 *   **Search Scope Race Condition**: In `performSearch()`, avoid launching `searchNodesRemote` concurrently with `searchImages`. If run concurrently, the image search will read the database before the remote galleries are resolved and cached, finding 0 matching galleries and returning empty images. Run them sequentially (letting `searchNodesRemote` complete first) to ensure the cache is fully populated before searching images.
 *   **Unit Test Speedup & Loop Constraints**: Do not loop over large album list counts (e.g., 100 albums) in live API unit tests. Limit loops verifying album details or scoped search flows to the first 1-2 galleries using `.take(2)`. Also, avoid redundant keyword checks in flow tests; use a single keyword (e.g., `"tahoma"`) to verify the end-to-end integration path cleanly and keep test runtimes under 1 minute.
@@ -113,12 +107,9 @@ guidance above now describes what's actually implemented instead of an abandoned
 *   **API Image Properties**: When interacting with the SmugMug API Image objects, use `FileName` to get the actual file name, and `OriginalSize` to get the raw byte size of the image.
 *   **Album Key Helper Consistency (`getAlbumKey`)**: Always use the helper method `node.getAlbumKey()` instead of inline calculations like `node.albumUri?.substringAfterLast("/") ?: node.nodeId`. The helper method handles stripping sub-resource suffixes (e.g. `!keys` or `!images`), avoiding key mismatches in downstream database lookups or API calls. Avoid writing inline substring logic to prevent parallel agent refactoring thrashing.
 
-## 🛡️ Antigravity Workspace Tool Boundaries
-*   **Internal Brain Directory Access**: Do NOT use the native `list_dir`, `grep_search`, or `view_file` tools to search or traverse the root `.gemini/antigravity-ide/brain` directory. This violates a hardcoded system protection boundary and will fail with `Permission denied`. To read sibling agent logs, use terminal commands (like `Get-ChildItem` and `Get-Content` in PowerShell) or access the exact conversation paths explicitly provided in your environment variables or rules.
-
 ## 🔍 Bug Investigation & Resolution Guidelines
 *   **Zero-Assumption Rule**: When investigating any bug or error, never assume that any part of the existing code is correct, even if it is pre-existing, compiles successfully, or returns an HTTP 200 OK. Every line of code related to the faulty flow must be suspected and validated from first principles.
-*   **Mandatory RCA Workflow**: Any analysis of runtime bugs, navigation failures, or errors MUST explicitly use the `/find_root_cause` skill to perform a structured, evidence-based investigation. Bypassing this workflow or applying code fixes without presenting a proposal plan to the user is strictly prohibited.
+*   **Mandatory RCA Workflow**: Any analysis of runtime bugs, navigation failures, or errors MUST explicitly use the `/find-root-cause` skill to perform a structured, evidence-based investigation. Bypassing this workflow or applying code fixes without presenting a proposal plan to the user is strictly prohibited.
 *   **Navigation & Key Instrumentation**: Add explicit diagnostic logging and user feedback (e.g. detailed Toast messages) around any functions checking, extracting, or using album keys/navigation parameters. Always log precisely when a key is extracted, from which source (e.g. `detailedPhoto` vs `currentPhoto`), and when or why it becomes empty.
 *   **Evidence-Based Reporting**: Before proposing or making code changes to fix any bug, always compile and provide a detailed evidence-based analysis report containing relevant logcat traces, databases/state snapshots, and actual API query inputs/outputs, along with recommendations for user review.
 *   **Stage-by-Stage Verification & Raw Payload Inspection**: When analyzing API discrepancies (e.g. between a browser request and the mobile client), never rely solely on parsed application models or memory state objects, which assume successful serialization. Fetch and inspect the raw HTTP response payloads anonymously (simulating the client) and check for visibility toggles (such as `"ShowKeywords": false`) or server-side redactions that explain the behavior.
