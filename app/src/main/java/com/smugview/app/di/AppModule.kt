@@ -8,6 +8,7 @@ import com.smugview.app.data.api.RetryingCallFactory
 import com.smugview.app.data.api.SessionCookieJar
 import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.api.cachePolicyInterceptor
+import com.smugview.app.data.api.forFileDownloads
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.CollectionDao
 import dagger.Module
@@ -172,11 +173,8 @@ object AppModule {
      * `Interceptor` in that chain would Toast on every intermediate 429/500, not just the final
      * outcome.
      *
-     * Both Retrofit ([provideSmugMugApi]) and Coil (`SmugViewApp.newImageLoader`) are wired to
-     * this instead of the raw [OkHttpClient] bean, so image loads keep the same retry/error
-     * behavior as API calls — see the "Aggressive Image Loading Cache (Coil)" note in
-     * `docs/SMUGMUG.md` ("routes all image file queries through the same ... retry policies used
-     * by Retrofit").
+     * Retrofit ([provideSmugMugApi]) is wired to this instead of the raw [OkHttpClient] bean. Coil has its own,
+     * cache-less factory ([provideImageCallFactory], R-37) so images never share the API's HTTP cache.
      */
     @Provides
     @Singleton
@@ -225,6 +223,15 @@ object AppModule {
             .build()
             .create(SmugMugApi::class.java)
     }
+
+    /** What Coil loads images through (R-37): no HTTP cache, same retry and telemetry. See [buildImageCallFactory]. */
+    @Provides
+    @Singleton
+    @javax.inject.Named("images")
+    fun provideImageCallFactory(
+        okHttpClient: OkHttpClient,
+        telemetry: com.smugview.app.diag.HttpTelemetry
+    ): okhttp3.Call.Factory = buildImageCallFactory(okHttpClient, telemetry::record)
 
     /**
      * Injected so [com.smugview.app.ui.viewmodel.SmugViewModel]'s off-main-thread work can be
@@ -285,3 +292,20 @@ object AppModule {
         return impl
     }
 }
+
+
+/**
+ * The `Call.Factory` Coil loads images through (R-37, design 3.7): the production client without its HTTP cache
+ * ([forFileDownloads]: same connection pool, interceptors, retry and telemetry), so the CDN's
+ * `public, max-age=31536000` photos never take space from the 50 MB cache that API JSON (offline browsing) lives
+ * in. Coil keeps its own disk cache (`respectCacheHeaders(false)` caches every image it loads), which is where
+ * offline thumbnails come from. Image requests are not API requests, so no error toast is shown for them.
+ */
+internal fun buildImageCallFactory(
+    client: OkHttpClient,
+    onComplete: (com.smugview.app.data.api.CallOutcome) -> Unit = {}
+): okhttp3.Call.Factory = RetryingCallFactory(
+    delegate = client.forFileDownloads(),
+    actionIdProvider = com.smugview.app.diag.DiagContext::currentActionId,
+    onComplete = onComplete
+)

@@ -9,6 +9,7 @@ import com.smugview.app.diag.DiagnosticsInitializer
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.Call
 import javax.inject.Inject
+import javax.inject.Named
 
 @HiltAndroidApp
 class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
@@ -16,10 +17,10 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
-    // The retry-wrapped Call.Factory (AppModule.provideRetryingCallFactory), not the raw
-    // OkHttpClient — keeps image loads on the same non-blocking retry/error-reporting behavior as
-    // API calls (see the Coil note in that provider's doc comment).
+    // The image Call.Factory (AppModule.provideImageCallFactory): retry and telemetry like the API, but no
+    // HTTP cache, so photos never evict API JSON from it (R-37). Coil has its own disk cache.
     @Inject
+    @field:Named("images")
     lateinit var callFactory: Call.Factory
 
     @Inject

@@ -462,6 +462,9 @@ design, and why.)*
 | 4-10 | Home's totals come from the index and keep the page-1 numbers until the index has a row; they count the index's rows for the site and the legacy `nickname = ''` rows (the convention of every other index query) | Q3 (a); null on an empty index, so first launch is unchanged until the first crawl |
 | 4-10 | `getAlbumByUrlPath` compares `LOWER(TRIM(urlPath,'/'))` with the path lower-cased A-Z only (SQLite's `LOWER`), not full Unicode; the old `_userAlbums` page-1 match stays as the fallback | A SQL lookup per photo instead of loading the whole index; both sides of the compare come from the same site, so only a non-ASCII upper-case letter could differ, and the fallback still covers page 1 |
 | 4-10 | 6 new tests, not 3 (a second pin each for the fallback, the follow-the-crawl case, and case/slash/unknown); `SmugViewModelTest` stubs `siteTotals` and its two search tests now expect `/api/v2/user/testUser` instead of the root `4zqWw` | The old expectation was the behaviour being fixed |
+| 4-11 | The images factory is built by `internal buildImageCallFactory(client, onComplete)` in `AppModule.kt` (the `@Named("images")` provider calls it) so the test can run it over the production client | The Hilt `@Provides` needs a `Context` and `HttpTelemetry`; the function does not, and is the whole wiring |
+| 4-11 | The images factory has no `onFinalResponse` (no error toast); the shared factory's toast is for `api.smugmug.com/api/v2/` requests only | Image requests were never API requests, so none was ever shown for them: no change |
+| 4-11 | 3 new tests, not 1 (the red one, a control that the shared factory does fill the cache, and a pin that `forFileDownloads` keeps the pool and interceptor chain) | The control makes the red meaningful |
 
 ## 10. findings.md rows
 
