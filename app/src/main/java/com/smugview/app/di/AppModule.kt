@@ -163,10 +163,15 @@ object AppModule {
     @Singleton
     fun provideRetryingCallFactory(
         okHttpClient: OkHttpClient,
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
+        telemetry: com.smugview.app.diag.HttpTelemetry
     ): okhttp3.Call.Factory {
         return RetryingCallFactory(
             delegate = okHttpClient,
+            // One diagnostics line per logical request (replaces the old SmugMugApiError log): it
+            // also covers IO failures, which no hook recorded before (R-50).
+            actionIdProvider = com.smugview.app.diag.DiagContext::currentActionId,
+            onComplete = telemetry::record,
             onFinalResponse = { request, response ->
                 val isApiRequest = request.url.host == "api.smugmug.com" && request.url.encodedPath.contains("/api/v2/")
                 if (isApiRequest && request.header("X-Ignore-Errors") != "true") {
@@ -177,13 +182,6 @@ object AppModule {
                     }
                     val friendlyMessage = com.smugview.app.data.api.SmugMugErrorMapper.getFriendlyMessage(
                         response.code, response.message, responseBodyContent
-                    )
-
-                    // Log every surfaced API failure so these are findable from the app's own tag
-                    // (path + code), not just as a transient toast.
-                    com.smugview.app.util.SmugLog.e(
-                        "SmugMugApiError",
-                        "${request.method} ${request.url.encodedPath} -> ${response.code} ($friendlyMessage)"
                     )
 
                     if (com.smugview.app.data.api.SmugMugErrorMapper.shouldShowToast(response.code)) {

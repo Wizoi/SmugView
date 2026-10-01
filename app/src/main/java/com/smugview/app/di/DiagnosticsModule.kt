@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.smugview.app.diag.DiagLog
 import com.smugview.app.diag.FileLogSink
+import com.smugview.app.diag.HttpTelemetry
 import com.smugview.app.diag.Level
 import com.smugview.app.diag.Redactor
 import dagger.Module
@@ -41,6 +42,10 @@ object DiagnosticsModule {
                 Log.println(if (level == Level.E) Log.ERROR else Log.WARN, cat, msg)
             }
         )
+
+    @Provides
+    @Singleton
+    fun provideHttpTelemetry(log: DiagLog): HttpTelemetry = HttpTelemetry(log)
 
     @Provides
     @Singleton
