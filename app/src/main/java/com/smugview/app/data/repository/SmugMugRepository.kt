@@ -1209,17 +1209,6 @@ class SmugMugRepository @Inject constructor(
         _albumIndex.value = AlbumIndexSnapshot(nickname, dao.getAlbumIndex(nickname).map { it.toCachedNode() })
     }
 
-    fun getSavedPasswordForNode(node: CachedNode): String? {
-        val albumKey = node.getAlbumKey()
-        var saved = passwordStore.getPassword(albumKey)
-        if (!saved.isNullOrEmpty()) return saved
-        saved = passwordStore.getPassword(node.nodeId)
-        if (!saved.isNullOrEmpty()) return saved
-        saved = passwordStore.getPassword(node.parentNodeId)
-        if (!saved.isNullOrEmpty()) return saved
-        return null
-    }
-
     suspend fun performBackgroundSearchImages(
         nickname: String,
         scopeUri: String?,
@@ -1376,7 +1365,8 @@ class SmugMugRepository @Inject constructor(
             val effectivePassword = nodePassword ?: savedPassword
             
             val cachedNode = dao.getNodeById(currentNodeId)
-            val isLocked = cachedNode != null && (cachedNode.access == "Password" || cachedNode.access == "Inherited")
+            // Cache-only (no apiKey): a password root with neither session nor saved password is skipped.
+            val isLocked = cachedNode != null && unlocks.needsPassword(cachedNode)
             val hasPw = !effectivePassword.isNullOrEmpty()
             if (isLocked && !hasPw) {
                 if (com.smugview.app.BuildConfig.DEBUG) {
@@ -1455,12 +1445,6 @@ class SmugMugRepository @Inject constructor(
         return dao.getNodesByAlbumUris(albumUris)
     }
 
-
-    // Verifies password correctness for an album
-    suspend fun verifyAlbumPassword(albumKey: String, apiKey: String, password: String?): Boolean {
-        if (password.isNullOrEmpty()) return false
-        return unlockAlbum(albumKey, apiKey, password)
-    }
 
     /** Outcome of an unlock attempt. Only [Rejected] (HTTP 401/403) proves the password is wrong;
      *  offline, 429, 5xx and OkHttp's synthetic 504 are [Transient] and must never delete a saved password. */

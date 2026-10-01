@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.activity.compose.BackHandler
+import com.smugview.app.data.repository.UnlockManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
@@ -365,18 +366,7 @@ fun BrowserScreen(
                     PasswordPromptDialog(
                         node = node,
                         error = viewModel.passwordError,
-                        onSubmit = { password -> 
-                            viewModel.submitPassword(password) {
-                                if (node.type != "Folder") {
-                                    val albumKey = if (node.albumUri?.contains("/album/") == true) {
-                                        node.albumUri.substringAfterLast("/").substringBefore("!")
-                                    } else {
-                                        node.nodeId
-                                    }
-                                    onNavigateToAlbum(albumKey, node.title)
-                                }
-                            }
-                        },
+                        onSubmit = { password -> viewModel.submitPassword(password) },
                         onDismiss = { viewModel.dismissPasswordPrompt() }
                     )
                 }
@@ -471,11 +461,12 @@ fun BrowserScreen(
 @Composable
 fun BrowserNodeItem(
     node: CachedNode,
-    isUnlocked: Boolean,
+    lock: UnlockManager.RowLock,
     hasActiveUpdate: Boolean,
     onMarkAsViewed: () -> Unit,
     onClick: () -> Unit
 ) {
+    val isUnlocked = lock == UnlockManager.RowLock.Open
     val neonColors = listOf(
         Color(0xFF00E5FF), // Cyan/Blue
         Color(0xFF00E676), // Green
@@ -579,7 +570,7 @@ fun BrowserNodeItem(
                         Spacer(modifier = Modifier.size(10.dp))
                     }
 
-                    if (node.access == "Password" || node.access == "Inherited") {
+                    if (lock != UnlockManager.RowLock.None) {
                         val lockIcon = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock
                         val lockColor = if (isUnlocked) Color(0xFF00E5FF) else Color(0xFFFFB800)
                         Icon(
@@ -787,4 +778,20 @@ fun BreadcrumbBar(
             }
         }
     }
+}
+
+
+/**
+ * The lock a list row shows (design 7 Q7): Locked when [SmugViewModel.needsPassword] would prompt, Open
+ * for an unlocked password root, nothing for a sub-folder under an unlocked root. Recomputed when any
+ * root's access changes (a prompt succeeding or a saved password being rejected).
+ */
+@Composable
+fun rememberRowLock(viewModel: SmugViewModel, node: CachedNode): UnlockManager.RowLock {
+    val access by viewModel.passwordAccess.collectAsState()
+    val saved by viewModel.unlockedNodeIds.collectAsState()
+    val lock by produceState(UnlockManager.RowLock.None, node, access, saved) {
+        value = viewModel.lockOf(node)
+    }
+    return lock
 }

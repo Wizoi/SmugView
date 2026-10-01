@@ -221,23 +221,17 @@ fun FoldersTabView(
                         verticalItemSpacing = 12.dp
                     ) {
                         items(uiState.nodes, key = { it.nodeId }) { node ->
-                            // Observed (not a blocking call) so the lock icon updates as soon as
-                            // the node — or an ancestor — is unlocked.
-                            val unlockedIds by viewModel.unlockedNodeIds.collectAsState()
-                            val isUnlocked = node.nodeId in unlockedIds
+                            val lock = rememberRowLock(viewModel, node)
                             val hasActiveUpdate = activeUpdates.contains(node.nodeId)
                             BrowserNodeItem(
                                 node = node,
-                                isUnlocked = isUnlocked,
+                                lock = lock,
                                 hasActiveUpdate = hasActiveUpdate,
                                 onMarkAsViewed = { viewModel.markNodeAsViewed(node.nodeId) },
                                 onClick = {
                                     if (node.type == "Folder") {
-                                        if ((node.access == "Password" || node.access == "Inherited") && !isUnlocked) {
-                                            viewModel.promptPassword(node)
-                                        } else {
-                                            viewModel.navigateToChildFolder(node)
-                                        }
+                                        // The navigator asks needsPassword and prompts for the password root.
+                                        viewModel.navigateToChildFolder(node)
                                     } else {
                                         // Use checkAndNavigateToAlbum to ensure pre-flight checks are run
                                         viewModel.checkAndNavigateToAlbum(node) { albumKey ->

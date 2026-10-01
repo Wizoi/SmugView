@@ -1,5 +1,6 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.data.repository.UnlockManager
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -918,8 +919,8 @@ fun HomeTabView(
                                         }
                                     }
                                     
-                                    val unlockedIds by viewModel.unlockedNodeIds.collectAsState()
-                                    val isUnlocked = album.isUnlocked(unlockedIds)
+                                    val lock = rememberRowLock(viewModel, album.asRowNode())
+                                    val isUnlocked = lock == UnlockManager.RowLock.Open
                                     val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
                                     if (album.hasActiveUpdate(activeUpdates)) {
                                         Box(
@@ -932,7 +933,7 @@ fun HomeTabView(
                                                 .background(Color(0xFF00F0FF))
                                         )
                                     }
-                                    if (album.access == "Password" || album.access == "Inherited") {
+                                    if (lock != UnlockManager.RowLock.None) {
                                         val lockIcon = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock
                                         val lockColor = if (isUnlocked) Color(0xFF00E5FF) else Color(0xFFFFB800)
                                         Icon(

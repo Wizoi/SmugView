@@ -526,12 +526,11 @@ fun SearchTabView(
                                                     modifier = Modifier.fillMaxSize()
                                                 ) {
                                                     items(state.galleries, key = { it.nodeId }) { gallery ->
-                                                        val unlockedIds by viewModel.unlockedNodeIds.collectAsState()
-                                                        val isUnlocked = gallery.nodeId in unlockedIds
+                                                        val lock = rememberRowLock(viewModel, gallery)
                                                         val hasActiveUpdate = activeUpdates.contains(gallery.nodeId)
                                                         BrowserNodeItem(
                                                             node = gallery,
-                                                            isUnlocked = isUnlocked,
+                                                            lock = lock,
                                                             hasActiveUpdate = hasActiveUpdate,
                                                             onMarkAsViewed = { viewModel.markNodeAsViewed(gallery.nodeId) },
                                                             onClick = {
@@ -566,20 +565,15 @@ fun SearchTabView(
                                                 modifier = Modifier.fillMaxSize()
                                             ) {
                                                 items(state.folders, key = { it.nodeId }) { folder ->
-                                                    val unlockedIds by viewModel.unlockedNodeIds.collectAsState()
-                                                    val isUnlocked = folder.nodeId in unlockedIds
+                                                    val lock = rememberRowLock(viewModel, folder)
                                                     val hasActiveUpdate = activeUpdates.contains(folder.nodeId)
                                                     BrowserNodeItem(
                                                         node = folder,
-                                                        isUnlocked = isUnlocked,
+                                                        lock = lock,
                                                         hasActiveUpdate = hasActiveUpdate,
                                                         onMarkAsViewed = { viewModel.markNodeAsViewed(folder.nodeId) },
                                                         onClick = {
-                                                            if ((folder.access == "Password" || folder.access == "Inherited") && !isUnlocked) {
-                                                                viewModel.promptPassword(folder)
-                                                            } else {
-                                                                viewModel.navigateToFolderFromSearch(folder)
-                                                            }
+                                                            viewModel.navigateToFolderFromSearch(folder)
                                                         }
                                                     )
                                                 }

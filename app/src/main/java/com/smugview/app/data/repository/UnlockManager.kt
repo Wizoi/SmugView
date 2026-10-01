@@ -121,6 +121,13 @@ class UnlockManager(
     suspend fun passwordFor(idOrKey: String, apiKey: String): String? =
         savedFor(idOrKey, rootOf(idOrKey, apiKey))
 
+    /**
+     * [passwordFor] without the network: the root comes from the cached rows only, and a legacy copy is
+     * still found. For callers that run on every folder load and must not cost a `!parents` read.
+     */
+    suspend fun cachedPasswordFor(idOrKey: String): String? =
+        savedFor(idOrKey, cachedRootOf(io.getNodeByIdOrKey(idOrKey)))
+
     private suspend fun savedFor(idOrKey: String, rootId: String?): String? {
         rootId?.let { store.getPassword(it) }?.takeIf { it.isNotEmpty() }?.let { return it }
         val keys = LinkedHashSet<String>()
@@ -157,7 +164,7 @@ class UnlockManager(
      * - No password at all, or a lineage that can't be read: Rejected or Transient, no state change.
      */
     suspend fun ensureSession(idOrKey: String, apiKey: String, password: String? = null): UnlockResult =
-        ensure(idOrKey, apiKey, password, readGot401 = false)
+        ensure(idOrKey, apiKey, password, readGot401 = false, force = false)
 
     /**
      * A read with this root's credentials just failed with 401 (or an unlocked-looking empty answer).
@@ -165,22 +172,59 @@ class UnlockManager(
      * unlocked again, once; callers already unlocking it share that request.
      */
     suspend fun reauthorize(idOrKey: String, apiKey: String, password: String? = null): UnlockResult =
-        ensure(idOrKey, apiKey, password, readGot401 = true)
+        ensure(idOrKey, apiKey, password, readGot401 = true, force = false)
 
-    private suspend fun ensure(idOrKey: String, apiKey: String, password: String?, readGot401: Boolean): UnlockResult {
+    /**
+     * [force]: the user typed [password] at a prompt, so it is tried even when the root is Session or
+     * Invalid, and a flight already running (for some other password) is waited out first.
+     */
+    private suspend fun ensure(
+        idOrKey: String,
+        apiKey: String,
+        password: String?,
+        readGot401: Boolean,
+        force: Boolean
+    ): UnlockResult {
         val rootId = rootOf(idOrKey, apiKey) ?: return UnlockResult.Transient
+        return ensureRoot(rootId, idOrKey, apiKey, password, readGot401, force)
+    }
+
+    private suspend fun ensureRoot(
+        rootId: String,
+        idOrKey: String,
+        apiKey: String,
+        password: String?,
+        readGot401: Boolean,
+        force: Boolean
+    ): UnlockResult {
         val saved = savedFor(idOrKey, rootId)
         val pw = password?.takeIf { it.isNotEmpty() } ?: saved
         val actionId = DiagContext.currentActionId() ?: DiagContext.newActionId("unlock")
+        if (force) {
+            while (true) {
+                val running = lock.withLock { inFlight[rootId] } ?: break
+                try {
+                    running.await()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // its own bookkeeping already ran
+                }
+            }
+        }
 
         val flight: Deferred<UnlockResult> = lock.withLock {
             inFlight[rootId]?.let { return@withLock it }
             val state = accessOf(rootId)
-            if (state == Access.Session && !readGot401) return UnlockResult.Success
-            if (state == Access.Invalid && pw != null && pw == saved) return UnlockResult.Rejected
+            if (!force) {
+                if (state == Access.Session && !readGot401) return UnlockResult.Success
+                if (state == Access.Invalid && pw != null && pw == saved) return UnlockResult.Rejected
+            }
             if (pw == null) return UnlockResult.Rejected
-            if (state == Access.Session) setAccess(rootId, Access.Saved)
-            else if (state == Access.None && saved != null) setAccess(rootId, Access.Saved)
+            if (!force) {
+                if (state == Access.Session) setAccess(rootId, Access.Saved)
+                else if (state == Access.None && saved != null) setAccess(rootId, Access.Saved)
+            }
             flights.async(DiagContext.element(actionId)) {
                 // This scope is never cancelled, so a flight always reaches the bookkeeping below.
                 val result = try {
@@ -191,7 +235,9 @@ class UnlockManager(
                 lock.withLock {
                     when (result) {
                         UnlockResult.Success -> setAccess(rootId, Access.Session)
-                        UnlockResult.Rejected -> setAccess(rootId, Access.Invalid)
+                        // Invalid means "the SAVED password was rejected". A typed password that differs
+                        // from the saved one and fails says nothing about the saved one.
+                        UnlockResult.Rejected -> if (saved != null && pw == saved) setAccess(rootId, Access.Invalid)
                         UnlockResult.Transient -> if (saved != null && accessOf(rootId) != Access.Session) setAccess(rootId, Access.Saved)
                     }
                     inFlight.remove(rootId)
@@ -219,6 +265,118 @@ class UnlockManager(
             asNode == UnlockResult.Transient || asAlbum == UnlockResult.Transient -> UnlockResult.Transient
             else -> UnlockResult.Rejected
         }
+    }
+
+    /**
+     * The password root that protects [node], or null when nothing is known to protect it. Cached rows
+     * first (the node itself or a cached ancestor whose own SecurityType is Password); then, only when
+     * an [apiKey] is given, `!parents`. Without an [apiKey] nothing here touches the network, so a list
+     * row can ask on every recomposition.
+     */
+    private suspend fun protectingRoot(node: CachedNode, apiKey: String?): String? {
+        cachedRootOf(node)?.let { return it }
+        if (apiKey == null) return if (node.access == "Inherited") node.nodeId else null
+        return when (val r = io.resolvePasswordRootNodeId(node.nodeId, apiKey)) {
+            is RootResolution.Resolved -> r.nodeId
+            else -> null
+        }
+    }
+
+    /**
+     * Does opening [node] need the user to type a password? True when its password root has no live
+     * session and no saved password, or its saved password was rejected (Invalid). False when the root
+     * is in Session or a saved password is there to try, and for anything no password root protects.
+     * "Inherited" is never sent by SmugMug (findings #19): a sub-folder is protected through its root.
+     */
+    suspend fun needsPassword(node: CachedNode, apiKey: String? = null): Boolean {
+        val rootId = protectingRoot(node, apiKey) ?: return false
+        return needsPasswordUnder(rootId, node)
+    }
+
+    private suspend fun needsPasswordUnder(rootId: String, node: CachedNode): Boolean = when (accessOf(rootId)) {
+        Access.Session -> false
+        Access.Invalid -> true
+        else -> (savedFor(node.nodeId, rootId)
+            ?: node.getAlbumKey().takeIf { it.isNotEmpty() && it != node.nodeId }?.let { savedFor(it, rootId) }) == null
+    }
+
+    /** The lock a list row shows (design 7 Q7). */
+    enum class RowLock { None, Locked, Open }
+
+    /**
+     * [RowLock.Locked] when [needsPassword]; [RowLock.Open] for a password root of its own that is
+     * unlocked (a saved password or a session: the icon saved folders always had); otherwise none, so
+     * a sub-folder under an unlocked root shows no icon. Cache-only without an [apiKey].
+     */
+    suspend fun lockOf(node: CachedNode, apiKey: String? = null): RowLock {
+        val rootId = protectingRoot(node, apiKey) ?: return RowLock.None
+        return when {
+            needsPasswordUnder(rootId, node) -> RowLock.Locked
+            rootId == node.nodeId -> RowLock.Open
+            else -> RowLock.None
+        }
+    }
+
+    /** What [submit] did. */
+    sealed interface Submit {
+        /** The password worked: open [target]. [rootIsFolder]: the root's subtree can be indexed now. */
+        data class Opened(val target: CachedNode, val rootId: String, val rootIsFolder: Boolean) : Submit
+
+        /** SmugMug said 401/403 to the typed password. */
+        data object Rejected : Submit
+
+        /** Offline, 429, 5xx, or the lineage could not be read: nothing is known, nothing changed. */
+        data object Transient : Submit
+    }
+
+    /**
+     * The prompt path: the user typed [password] for the root that protects [target]. The ROOT is
+     * unlocked (always asking SmugMug, whatever the state), and on success the password is saved under
+     * the root's key only, the root is Session, and [Submit.Opened] names what to open (the target, not
+     * the root: R-24). A password that replaced a different saved one drops the old copies.
+     *
+     * On a 401/403 the root stays as it is, except that the saved password is deleted (the root key and
+     * every key holding the same value) when it is the one being rejected: either the user typed it
+     * again, or it had already been rejected in the background (Invalid). Nothing else deletes.
+     */
+    suspend fun submit(target: CachedNode, password: String, apiKey: String): Submit {
+        val rootId = rootOf(target.nodeId, apiKey) ?: return Submit.Transient
+        val saved = savedFor(target.nodeId, rootId)
+        val before = accessOf(rootId)
+        return when (ensureRoot(rootId, target.nodeId, apiKey, password, readGot401 = false, force = true)) {
+            UnlockResult.Success -> {
+                if (saved != null && saved != password) dropValue(saved)
+                store.savePassword(rootId, password)
+                setAccess(rootId, Access.Session)
+                val root = io.getNodeById(rootId) ?: io.fetchNode(rootId, apiKey)
+                Submit.Opened(target, rootId, rootIsFolder = root?.type == "Folder")
+            }
+            UnlockResult.Rejected -> {
+                if (saved != null && (before == Access.Invalid || password == saved)) forget(rootId, saved)
+                Submit.Rejected
+            }
+            UnlockResult.Transient -> Submit.Transient
+        }
+    }
+
+    /**
+     * Drops the saved password of [rootId], and every key that holds the same value (copies older
+     * versions wrote under NodeIDs, AlbumKeys and descendants). [alsoValue]: a rejected value that
+     * was found through a legacy copy, not under the root key. With [submit] the only place a saved
+     * password is deleted.
+     */
+    fun forget(rootId: String, alsoValue: String? = null) {
+        val values = setOfNotNull(
+            store.getPassword(rootId)?.takeIf { it.isNotEmpty() },
+            alsoValue?.takeIf { it.isNotEmpty() }
+        )
+        store.remove(rootId)
+        for (v in values) dropValue(v)
+        _access.update { it + (rootId to Access.None) }
+    }
+
+    private fun dropValue(value: String) {
+        for ((key, v) in store.all()) if (v == value) store.remove(key)
     }
 
     /**

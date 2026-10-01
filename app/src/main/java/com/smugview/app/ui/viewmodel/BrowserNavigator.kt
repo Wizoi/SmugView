@@ -59,7 +59,9 @@ interface BrowserHost {
     fun rootId(): String?
     /** A saved or inherited password for [nodeId], or null. May read the network (`!parents`). */
     suspend fun savedPassword(nodeId: String): String?
-    /** Ask the owner for [node]'s password. */
+    /** Does opening [node] need the user to type a password (its password root has no session and no saved password)? */
+    suspend fun needsPassword(node: CachedNode): Boolean
+    /** Ask the owner for the password that protects [node]. */
     fun requestPassword(node: CachedNode)
     /** Cache-first listing of a folder. */
     fun children(nodeId: String, force: Boolean, password: String?): Flow<Result<List<CachedNode>>>
@@ -172,8 +174,7 @@ class BrowserNavigator(
     }
 
     private suspend fun child(node: CachedNode) {
-        val savedPassword = host.savedPassword(node.nodeId)
-        if ((node.access == "Password" || node.access == "Inherited") && savedPassword == null) {
+        if (host.needsPassword(node)) {
             host.requestPassword(node)
             return
         }

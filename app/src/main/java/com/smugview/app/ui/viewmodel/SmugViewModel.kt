@@ -230,7 +230,7 @@ class SmugViewModel @Inject constructor(
         savedFolderStateBeforeSearch = null
         passwordPromptNode = null
         passwordError = null
-        targetNodeToUnlockAfterSuccess = null
+        pendingOpen = null
         albums.reset()
         siteHub.clearActiveSiteData()
         resetPerSiteState()
@@ -373,11 +373,13 @@ class SmugViewModel @Inject constructor(
 
         override suspend fun savedPassword(nodeId: String): String? = getUnlockedPassword(nodeId)
 
+        override suspend fun needsPassword(node: CachedNode): Boolean = this@SmugViewModel.needsPassword(node)
+
         override fun requestPassword(node: CachedNode) {
             if (BuildConfig.DEBUG) {
                 android.util.Log.d("SmugViewModel", "navigator: password prompt needed for nodeId=${node.nodeId}")
             }
-            promptPassword(node)
+            this@SmugViewModel.requestPassword(node)
         }
 
         override fun children(nodeId: String, force: Boolean, password: String?): Flow<Result<List<CachedNode>>> =
@@ -393,12 +395,12 @@ class SmugViewModel @Inject constructor(
                 android.util.Log.e("SmugViewModel", "folder load failed for nodeId=$nodeId", error)
             }
             if (!password.isNullOrEmpty() && com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)) {
-                // SmugMug explicitly rejected the saved password (401/403): it was changed or invalid
-                passwordPrefs.edit().remove(nodeId).apply()
+                // SmugMug explicitly rejected the saved password (401/403). The repository's read retry has
+                // already asked UnlockManager, which marked the root Invalid. The password is KEPT: only
+                // the prompt for that root deletes it (design 3.4, Q5).
                 val node = repository.getNodeById(nodeId)
                 return if (node != null) {
-                    passwordPromptNode = node
-                    passwordError = "Saved password is no longer valid. Please re-enter."
+                    this@SmugViewModel.requestPassword(node, error = "Saved password is no longer valid. Please re-enter.")
                     LoadFailure(listing = null, popAfter = true)
                 } else {
                     LoadFailure(
@@ -411,7 +413,7 @@ class SmugViewModel @Inject constructor(
             if (isAccessDenied && !nodeId.startsWith("virtual:")) {
                 val node = repository.getNodeById(nodeId)
                 if (node != null) {
-                    promptPassword(node)
+                    this@SmugViewModel.requestPassword(node)
                     // Back out of the folder we navigated into; clear the loading state gracefully
                     return LoadFailure(BrowserUiState.Success(emptyList()), popAfter = true)
                 }
@@ -710,7 +712,10 @@ class SmugViewModel @Inject constructor(
     val allScopePhotos: StateFlow<List<AlbumImageData>> get() = tag.allScopePhotos
     val keywordPhotosTotal: StateFlow<Int> get() = tag.keywordPhotosTotal
 
-    private var targetNodeToUnlockAfterSuccess: CachedNode? = null
+    /** What the open password prompt is for: the target to open after a good password (R-24). */
+    private class PendingOpen(val target: CachedNode, val onUnlocked: ((albumKey: String) -> Unit)?)
+
+    private var pendingOpen: PendingOpen? = null
 
     // Per-site holders, declared before init{} because beginSite() (reached from init) resets them.
     var savedFolderStateBeforeSearch: Pair<String?, List<CachedNode>>? by mutableStateOf(null)
@@ -1006,23 +1011,14 @@ class SmugViewModel @Inject constructor(
                 }
             }
 
-            val isProtected = access == "Password" || access == "Inherited"
-            // isNodeUnlocked() is intentionally non-blocking (in-memory only) so it is safe to call
-            // during composition, but that means it can miss a password inherited from an ancestor
-            // that lives in the DB rather than the in-memory cache. We're already in a coroutine
-            // here, so fall back to the full suspend resolver before deciding to prompt — otherwise
-            // we'd prompt for galleries the user has already unlocked.
-            val alreadyUnlocked = isNodeUnlocked(resolvedNode.nodeId) ||
-                getUnlockedPassword(resolvedNode.nodeId) != null
-            if (isProtected && !alreadyUnlocked) {
-                // Ensure prompt node has accurate password hint from pre-flight
-                val promptNode = if (resolvedNode.access == null && access != null) {
-                    resolvedNode.copy(access = access, passwordHint = resolvedNode.passwordHint ?: resolvedNode.passwordHint)
-                } else resolvedNode
-                val finalPromptNode = if (promptNode.access == null && access != null) {
-                    promptNode.copy(access = access)
-                } else promptNode
-                promptPassword(finalPromptNode)
+            // The node as the pre-flight described it, so the prompt shows the right hint.
+            val target = if (resolvedNode.access == null && access != null) resolvedNode.copy(access = access) else resolvedNode
+            // One owner decides: UnlockManager (session or saved password on the password ROOT; a gallery
+            // whose own SecurityType is None under a password folder is protected too, findings #19).
+            // Bounded: the lineage read can be slow, and a gallery that loads is better than a stuck tap.
+            val locked = withTimeoutOrNull(3000L) { needsPassword(target) } ?: false
+            if (locked) {
+                requestPassword(target, onUnlocked = onNavigate)
             } else {
                 withContext(Dispatchers.Main) { onNavigate(albumKey) }
             }
@@ -1030,22 +1026,33 @@ class SmugViewModel @Inject constructor(
         tap.invokeOnCompletion { pendingAlbumTaps.remove(tapKey) }
     }
 
-    fun promptPassword(node: CachedNode) {
+    /**
+     * The one way to ask for a password (design 3.4). [target] is what the user wants to open; the
+     * dialog shows the password ROOT that protects it (a sub-folder or gallery shares its root's
+     * password). After a good password [target] opens (R-24): a folder via `navigate(Child)`, a gallery
+     * via [onUnlocked] (the caller's own navigation) or, without one, in the grid. A site switch
+     * dismisses the prompt ([beginSite]).
+     */
+    fun requestPassword(
+        target: CachedNode,
+        error: String? = null,
+        onUnlocked: ((albumKey: String) -> Unit)? = null
+    ) {
         if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "promptPassword called: nodeId=${node.nodeId}, title=${node.title}")
+            android.util.Log.d("SmugViewModel", "requestPassword: nodeId=${target.nodeId}, title=${target.title}")
         }
         session.scope.launch {
-            targetNodeToUnlockAfterSuccess = node
-            try {
-                val resolution = repository.resolvePasswordRootNodeId(node.nodeId, apiKey)
-                val rootNodeId = (resolution as? com.smugview.app.data.repository.RootResolution.Resolved)?.nodeId ?: node.nodeId
-                if (rootNodeId != node.nodeId) {
-                    var rootNode = repository.getNodeById(rootNodeId)
-                    if (rootNode == null) {
-                        val apiNode = repository.getNode(rootNodeId, apiKey)
+            pendingOpen = PendingOpen(target, onUnlocked)
+            passwordPromptNode = try {
+                val rootId = repository.unlocks.rootOf(target.nodeId, apiKey)
+                if (rootId == null || rootId == target.nodeId) {
+                    target
+                } else {
+                    repository.getNodeById(rootId) ?: run {
+                        val apiNode = repository.getNode(rootId, apiKey)
                         // In memory only: Uris.ParentNode is the node's own !parent link (R-01), and only a
                         // listing may place a row, so the prompt node is not inserted.
-                        rootNode = CachedNode(
+                        CachedNode(
                             nodeId = apiNode.nodeId,
                             parentNodeId = null,
                             type = apiNode.type,
@@ -1062,34 +1069,49 @@ class SmugViewModel @Inject constructor(
                             webUri = apiNode.webUri
                         )
                     }
-                    passwordPromptNode = rootNode
-                } else {
-                    passwordPromptNode = node
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                passwordPromptNode = node
+                target
             }
-            passwordError = null
+            passwordError = error
         }
     }
+
+    /**
+     * Does opening [node] need a typed password? UnlockManager's answer: its password root has no
+     * session and no saved password, or the saved one was rejected. Replaces the old
+     * `access == "Password" || "Inherited"` checks (SmugMug never sends "Inherited", findings #19).
+     * Reads the network (`!parents`) only when the cache can't say.
+     */
+    suspend fun needsPassword(node: CachedNode): Boolean = try {
+        repository.unlocks.needsPassword(node, apiKey)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false
+    }
+
+    /** The lock a list row shows. Cache-only (no network), so it is safe on every recomposition. */
+    suspend fun lockOf(node: CachedNode): com.smugview.app.data.repository.UnlockManager.RowLock = try {
+        repository.unlocks.lockOf(node, null)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        com.smugview.app.data.repository.UnlockManager.RowLock.None
+    }
+
+    /** Per password root: None, Saved, Session or Invalid. Rows recompute their lock when it changes. */
+    val passwordAccess: StateFlow<Map<String, com.smugview.app.data.repository.UnlockManager.Access>>
+        get() = repository.unlocks.access
 
     fun handleAlbumLoadError(albumKey: String, error: Throwable? = null) {
         // R-11: an album that is no longer on screen has no say about passwords or prompts.
         albums.currentKey?.let { if (it != albumKey) return }
         session.scope.launch {
-            val rejected = com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)
-            val password = getUnlockedPassword(albumKey)
-            if (!password.isNullOrEmpty() && rejected) {
-                passwordPrefs.edit().remove(albumKey).apply()
-            }
-            // Also clear if nodeId is the albumKey
-            val nodeKey = folderNavigationStack.lastOrNull { node ->
-                val key = node.getAlbumKey()
-                key == albumKey
-            }?.nodeId
-            if (nodeKey != null && rejected) {
-                passwordPrefs.edit().remove(nodeKey).apply()
-            }
+            // A rejected saved password is NOT deleted here (design 3.4, Q5): the repository's read retry
+            // already asked UnlockManager, which marked the root Invalid. Only the prompt deletes.
             if (error is retrofit2.HttpException && error.code() == 404) {
                 repository.removeBookmarkGlobally(albumKey)
             }
@@ -1118,19 +1140,20 @@ class SmugViewModel @Inject constructor(
                     }
                 }
                 if (node != null) {
-                    promptPassword(node)
+                    requestPassword(node)
                 }
             }
         }
     }
 
-    // Password Submit Handler
-    fun submitPassword(password: String, onSuccess: () -> Unit = {}) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "submitPassword called for node=${passwordPromptNode?.nodeId}, target=${targetNodeToUnlockAfterSuccess?.nodeId}")
-        }
+    /**
+     * The user typed [password] at the prompt. UnlockManager unlocks the password ROOT and saves the
+     * password under the root's key only; then the TARGET opens (R-24), not the prompt's root.
+     */
+    fun submitPassword(password: String) {
         val promptNode = passwordPromptNode ?: return
-        val targetNode = targetNodeToUnlockAfterSuccess ?: promptNode
+        val pending = pendingOpen
+        val target = pending?.target ?: promptNode
         passwordError = null
         val normalizedPassword = password
             .replace('“', '"')
@@ -1139,88 +1162,44 @@ class SmugViewModel @Inject constructor(
             .replace('’', '\'')
         session.scope.launch {
             try {
-                val isCorrect = apiTestFetch(promptNode, normalizedPassword)
-                if (isCorrect) {
-                    val promptAlbumKey = promptNode.getAlbumKey()
-                    passwordPrefs.edit()
-                        .putString(promptNode.nodeId, normalizedPassword)
-                        .putString(promptAlbumKey, normalizedPassword)
-                        .apply()
-                    
-                    if (targetNode != promptNode) {
-                        val targetAlbumKey = targetNode.getAlbumKey()
-                        passwordPrefs.edit()
-                            .putString(targetNode.nodeId, normalizedPassword)
-                            .putString(targetAlbumKey, normalizedPassword)
-                            .apply()
-                    }
-
-                    passwordPromptNode = null
-                    targetNodeToUnlockAfterSuccess = null
-                    
-                    // Cascade: store this password for any descendant children nodes in DB
-                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            val descendants = repository.getAllDescendants(promptNode.nodeId)
-                            val editor = passwordPrefs.edit()
-                            for (desc in descendants) {
-                                editor.putString(desc.nodeId, normalizedPassword)
-                                val key = desc.getAlbumKey()
-                                if (key.isNotEmpty()) {
-                                    editor.putString(key, normalizedPassword)
+                when (val result = repository.unlocks.submit(target, normalizedPassword, apiKey)) {
+                    is com.smugview.app.data.repository.UnlockManager.Submit.Opened -> {
+                        passwordPromptNode = null
+                        pendingOpen = null
+                        // Galleries under the unlocked folder are now visible: index them and refresh
+                        // what the user sees, off the tap.
+                        if (result.rootIsFolder) indexUnlockedSubtreeInBackground(result.rootId, normalizedPassword)
+                        resyncAfterUnlock()
+                        _activeNickname.value?.let { activeNick -> loadActiveSiteDetails(activeNick) }
+                        if (target.type == "Folder") {
+                            navigator.navigate(NavIntent.Child(target))
+                        } else {
+                            val albumKey = target.getAlbumKey()
+                            val open = pending?.onUnlocked
+                            if (open != null) {
+                                // Marked here, once: the caller only navigates (R-24).
+                                try {
+                                    repository.markNodeAsViewed(target.nodeId)
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    // a failed mark must not stop the gallery opening
                                 }
+                                withContext(Dispatchers.Main) { open(albumKey) }
+                            } else {
+                                selectAlbum(albumKey)
                             }
-                            editor.apply()
-                        } catch (e: Exception) {
-                            // Ignore db query errors
                         }
                     }
-
-                    // Re-load active site details if the active nickname is set
-                    _activeNickname.value?.let { activeNick ->
-                        loadActiveSiteDetails(activeNick)
-                    }
-
-                    if (targetNode.type == "Folder") {
-                        navigateToChildFolder(targetNode)
-                    } else {
-                        selectAlbum(targetNode.getAlbumKey())
-                        onSuccess()
-                    }
-                } else {
-                    passwordError = "Incorrect password"
+                    com.smugview.app.data.repository.UnlockManager.Submit.Rejected -> passwordError = "Incorrect password"
+                    com.smugview.app.data.repository.UnlockManager.Submit.Transient ->
+                        passwordError = "Couldn't check the password. Check the connection and try again."
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 passwordError = "Validation failed: ${e.localizedMessage}"
             }
-        }
-    }
-
-    private suspend fun apiTestFetch(node: CachedNode, password: String): Boolean {
-        return if (node.type == "Folder") {
-            val isUnlocked = repository.unlockNode(node.nodeId, apiKey, password)
-            if (isUnlocked) {
-                try {
-                    repository.getNodeChildren(_activeNickname.value.orEmpty(), node.nodeId, apiKey, true, password).first()
-                } catch (e: Exception) {
-                    // Ignore pre-fetch failures if unlock succeeded
-                }
-                // The synchronous fetch above only reaches the unlocked folder's DIRECT children,
-                // which merges any galleries found at that level into the search index (see
-                // SmugMugRepository.mergeAlbumsIntoIndex). Real sites commonly nest galleries under
-                // sub-folders (e.g. locked "Family" -> "School" -> the actual gallery), so without
-                // descending further those deeper galleries stay invisible to search even though the
-                // folder itself now shows as unlocked. Index the rest of the subtree in the
-                // background so unlocking doesn't block navigation into the folder just opened.
-                indexUnlockedSubtreeInBackground(node.nodeId, password)
-                resyncAfterUnlock()
-                true
-            } else {
-                false
-            }
-        } else {
-            val albumKey = node.getAlbumKey()
-            repository.verifyAlbumPassword(albumKey, apiKey, password).also { if (it) resyncAfterUnlock() }
         }
     }
 
@@ -1253,71 +1232,26 @@ class SmugViewModel @Inject constructor(
     fun dismissPasswordPrompt() {
         passwordPromptNode = null
         passwordError = null
+        pendingOpen = null
     }
 
     fun getUnlockedPasswordSync(nodeId: String): String? {
         return passwordPrefs.getString(nodeId, null)
     }
 
+    /**
+     * The saved password for [nodeId] (a NodeID or an AlbumKey), from UnlockManager: the password
+     * root's key first, legacy copies as the fallback. Read-only: nothing is written back (R-04).
+     */
     suspend fun getUnlockedPassword(nodeId: String): String? {
         if (nodeId == "site" || nodeId.isBlank()) return null
-        // 1. Try direct lookup by nodeId or albumKey
-        var pw = passwordPrefs.getString(nodeId, null)
-        if (pw != null) return pw
-
-        // 2. If nodeId is an album key, find the corresponding cached node to get its nodeId
-        var currentId: String? = nodeId
-        var node = repository.getNodeById(nodeId)
-        if (node == null) {
-            // Indexed lookup by nodeId OR album key. Previously this loaded the ENTIRE
-            // cached_nodes table via getAllCachedNodes() and scanned it in memory, which hung
-            // for many seconds on large caches (and is exactly the pattern AGENTS.md prohibits).
-            node = repository.getNodeByIdOrKey(nodeId)
-            if (node != null) {
-                currentId = node.nodeId
-                pw = passwordPrefs.getString(currentId, null)
-                if (pw != null) return pw
-            }
-        } else {
-            // If we found the node by nodeId, check if we have a password under its album key
-            val albumKey = node.getAlbumKey()
-            if (albumKey != nodeId) {
-                pw = passwordPrefs.getString(albumKey, null)
-                if (pw != null) return pw
-            }
-        }
-        
-        // 3. Inherited passwords: walk the ancestors from the lineage (`node/{id}!parents`, or the
-        // cached rows offline). Read-only: nothing is written back to cached_nodes (R-04).
-        return inheritedPasswordFor(currentId ?: nodeId, nodeId)
-    }
-
-    /** Nearest ancestor of [lineageId] with a saved password (by NodeID or AlbumKey); caches it under [cacheKey]. */
-    private suspend fun inheritedPasswordFor(lineageId: String, cacheKey: String): String? {
-        val chain = repository.lineageOf(lineageId, apiKey)
-        for (i in 1 until chain.size) {
-            val ancestor = chain[i]
-            val found = passwordPrefs.getString(ancestor.nodeId, null)
-                ?: ancestor.getAlbumKey().takeIf { it != ancestor.nodeId }?.let { passwordPrefs.getString(it, null) }
-            if (found != null) {
-                passwordPrefs.edit()
-                    .putString(cacheKey, found)
-                    .putString(chain[i - 1].nodeId, found)
-                    .apply()
-                return found
-            }
-        }
-        return null
+        return repository.unlocks.cachedPasswordFor(nodeId)
     }
 
     suspend fun getUnlockedPasswordForNode(node: CachedNode?): String? {
         if (node == null) return null
-        val galleryKey = node.getAlbumKey()
-        
-        val pw = passwordPrefs.getString(galleryKey, null) ?: passwordPrefs.getString(node.nodeId, null)
-        if (pw != null) return pw
-        
-        return inheritedPasswordFor(node.nodeId, node.nodeId)
+        return getUnlockedPassword(node.nodeId)
+            ?: node.getAlbumKey().takeIf { it.isNotEmpty() && it != node.nodeId }?.let { getUnlockedPassword(it) }
     }
 
     private fun cleanAlbumKey(uri: String): String {
@@ -1574,23 +1508,26 @@ class SmugViewModel @Inject constructor(
         // else triggers the prompt. Album metadata (incl. SecurityType) is public, so
         // getAlbum above still resolves it without a password.
         val securityType = albumDetails?.securityType
-        if ((securityType == "Password" || securityType == "Inherited") && password.isNullOrEmpty()) {
+        val promptNode = repository.getNodeByIdOrKey(albumKey) ?: CachedNode(
+            nodeId = albumDetails?.nodeId ?: albumKey,
+            parentNodeId = null,
+            type = "Album",
+            title = albumDetails?.name ?: "Gallery",
+            description = null,
+            access = securityType,
+            passwordHint = albumDetails?.passwordHint,
+            uri = albumDetails?.uri ?: "/api/v2/album/$albumKey",
+            childNodesUri = null,
+            albumUri = albumDetails?.uri ?: "/api/v2/album/$albumKey"
+        )
+        val locked = kotlinx.coroutines.withTimeoutOrNull(3000) {
+            needsPassword(promptNode.copy(access = promptNode.access ?: securityType))
+        } ?: false
+        if (locked) {
             // R-11: never prompt for an album the user has already left.
             if (!run.isCurrent) return
-            val promptNode = repository.getNodeByIdOrKey(albumKey) ?: CachedNode(
-                nodeId = albumDetails?.nodeId ?: albumKey,
-                parentNodeId = null,
-                type = "Album",
-                title = albumDetails?.name ?: "Gallery",
-                description = null,
-                access = securityType,
-                passwordHint = albumDetails?.passwordHint,
-                uri = albumDetails?.uri ?: "/api/v2/album/$albumKey",
-                childNodesUri = null,
-                albumUri = albumDetails?.uri ?: "/api/v2/album/$albumKey"
-            )
             run.update { it.copy(loading = false, status = null) }
-            promptPassword(promptNode)
+            requestPassword(promptNode.copy(access = promptNode.access ?: securityType))
             return
         }
 
@@ -1842,7 +1779,6 @@ class SmugViewModel @Inject constructor(
                             if (!candidatePw.isNullOrEmpty()) {
                                 val unlocked = repository.unlocks.ensureSession(resolvedKey, apiKey, candidatePw) == com.smugview.app.data.repository.SmugMugRepository.UnlockResult.Success
                                 if (unlocked) {
-                                    passwordPrefs.edit().putString(resolvedKey, candidatePw).apply()
                                     var tempResult: Result<AlbumImageData>? = null
                                     repository.getImage(imageKey, apiKey, candidatePw).collect { result ->
                                         tempResult = result
@@ -2071,8 +2007,7 @@ class SmugViewModel @Inject constructor(
                 nodePath == parentPath
             }
             if (matchedNode != null) {
-                val pw = passwordPrefs.getString(matchedNode.nodeId, null) 
-                    ?: passwordPrefs.getString(matchedNode.getAlbumKey(), null)
+                val pw = getUnlockedPasswordForNode(matchedNode)
                 if (!pw.isNullOrEmpty()) return pw
             }
         }
@@ -2182,5 +2117,19 @@ data class HubAlbumItem(
 
     /** Whether the lock shows open; [unlockedIds] holds NodeIDs of everything under an unlocked root, plus saved keys. */
     fun isUnlocked(unlockedIds: Set<String>): Boolean = albumKey in unlockedIds || (nodeId != null && nodeId in unlockedIds)
+
+    /** The row as a node, for the lock check (the index lists galleries at the top: no cached lineage). */
+    fun asRowNode(): CachedNode = CachedNode(
+        nodeId = nodeId ?: albumKey,
+        parentNodeId = "root",
+        type = "Album",
+        title = title,
+        description = null,
+        access = access,
+        passwordHint = passwordHint,
+        uri = "/api/v2/album/$albumKey",
+        childNodesUri = null,
+        albumUri = "/api/v2/album/$albumKey"
+    )
 }
 
