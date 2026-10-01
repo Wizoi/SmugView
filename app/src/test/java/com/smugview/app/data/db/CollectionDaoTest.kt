@@ -279,4 +279,38 @@ class CollectionDaoTest {
         )
         assertEquals(setOf("a", "leaf"), dao.getAllDescendants("b").map { it.nodeId }.toSet())
     }
+
+    // R-07 (Phase 2 step 2-4): insertNodes is REPLACE, so a child that vanished server-side stayed in
+    // the cache forever. A listing result now replaces the parent's children as one transaction.
+    @Test
+    fun replaceChildren_dropsAChildTheListingNoLongerHas_keepsTheRest_andOtherParents() = runBlocking {
+        dao.insertNodes(
+            listOf(
+                node("P4BKB", "2sDN5x", "Folder"),
+                node("LCdk7F", "P4BKB", "Album", dateModified = recent()),
+                node("x2", "P4BKB", "Album", dateModified = recent()),
+                node("sXQz4G", "3BxbFF", "Album", dateModified = recent()),
+                node("virtual:v1", "P4BKB", "Folder")
+            )
+        )
+
+        dao.replaceChildren("P4BKB", listOf(node("LCdk7F", "P4BKB", "Album", dateModified = recent()).copy(title = "renamed")))
+
+        val children = dao.getCachedNodesByParent("P4BKB").first()
+        assertEquals(listOf("LCdk7F"), children.map { it.nodeId })
+        assertEquals("renamed", children.single().title)
+        assertEquals(null, dao.getNodeById("x2"))
+        // untouched: another parent's child, the parent itself, and a virtual row
+        assertEquals("sXQz4G", dao.getNodeById("sXQz4G")?.nodeId)
+        assertEquals("P4BKB", dao.getNodeById("P4BKB")?.nodeId)
+        assertEquals("virtual:v1", dao.getNodeById("virtual:v1")?.nodeId)
+    }
+
+    @Test
+    fun replaceChildren_withAnEmptyListing_clearsThatParentOnly() = runBlocking {
+        dao.insertNodes(listOf(node("a", "P", "Album"), node("b", "Q", "Album")))
+        dao.replaceChildren("P", emptyList())
+        assertEquals(emptyList<String>(), dao.getCachedNodesByParent("P").first().map { it.nodeId })
+        assertEquals(listOf("b"), dao.getCachedNodesByParent("Q").first().map { it.nodeId })
+    }
 }

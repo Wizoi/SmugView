@@ -13,6 +13,19 @@ interface CollectionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNodes(nodes: List<CachedNode>)
 
+    /**
+     * R-07: a parent's listing REPLACES its cached children in one transaction (REPLACE alone kept a
+     * child that vanished server-side forever). Other parents' rows and `virtual:` rows are untouched.
+     */
+    @androidx.room.Transaction
+    suspend fun replaceChildren(parentNodeId: String, rows: List<CachedNode>) {
+        deleteRealChildren(parentNodeId)
+        insertNodes(rows)
+    }
+
+    @Query("DELETE FROM cached_nodes WHERE parentNodeId = :parentNodeId AND nodeId NOT LIKE 'virtual:%'")
+    suspend fun deleteRealChildren(parentNodeId: String)
+
     // --- Persisted flat album index (see CachedAlbum) ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAlbums(albums: List<CachedAlbum>)

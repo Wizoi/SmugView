@@ -39,6 +39,38 @@ internal fun debugHttpLogger(
     redactHeader("Set-Cookie")
 }
 
+/**
+ * Cache Interceptor (a NETWORK interceptor): force OkHttp to cache GET responses by replacing
+ * 'no-cache/no-store' with a 5-minute cache header. SmugMug itself sends `private, no-store, no-cache,
+ * max-age=0` (findings V11). Search/unlock/Password/Text requests are excluded: they must always hit
+ * the network. A request that itself says `Cache-Control: no-cache` skips the cache lookup in OkHttp
+ * (R-35), which is how a forced listing gets fresh data inside the 5-minute window.
+ * Top-level and internal so a loopback test can run the exact production rewrite.
+ */
+internal fun smugMugCacheRewriteInterceptor(): Interceptor = Interceptor { chain ->
+    val request = chain.request()
+    val response = chain.proceed(request)
+    val urlPath = request.url.encodedPath
+    val isBypassedEndpoint = urlPath.contains("imagesearch") ||
+        urlPath.contains("image!search") ||
+        urlPath.contains("node!search") ||
+        urlPath.contains("unlock") ||
+        request.url.queryParameter("Text") != null ||
+        request.url.queryParameter("Password") != null
+    if (request.method == "GET" && response.isSuccessful && !isBypassedEndpoint) {
+        val cacheControl = response.header("Cache-Control")
+        if (cacheControl == null || cacheControl.contains("no-store") || cacheControl.contains("no-cache") || cacheControl.contains("max-age=0")) {
+            response.newBuilder()
+                .header("Cache-Control", "public, max-age=300") // Cache for 5 minutes
+                .build()
+        } else {
+            response
+        }
+    } else {
+        response
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
@@ -86,31 +118,7 @@ object AppModule {
             chain.proceed(request)
         }
 
-        // Cache Interceptor: Force OkHttp to cache GET responses by replacing 'no-cache/no-store' with a 5-minute cache header.
-        // IMPORTANT: Search endpoints are explicitly excluded — they must always hit the network for fresh results.
-        val cacheInterceptor = Interceptor { chain ->
-            val request = chain.request()
-            val response = chain.proceed(request)
-            val urlPath = request.url.encodedPath
-            val isBypassedEndpoint = urlPath.contains("imagesearch") ||
-                urlPath.contains("image!search") ||
-                urlPath.contains("node!search") ||
-                urlPath.contains("unlock") ||
-                request.url.queryParameter("Text") != null ||
-                request.url.queryParameter("Password") != null
-            if (request.method == "GET" && response.isSuccessful && !isBypassedEndpoint) {
-                val cacheControl = response.header("Cache-Control")
-                if (cacheControl == null || cacheControl.contains("no-store") || cacheControl.contains("no-cache") || cacheControl.contains("max-age=0")) {
-                    response.newBuilder()
-                        .header("Cache-Control", "public, max-age=300") // Cache for 5 minutes
-                        .build()
-                } else {
-                    response
-                }
-            } else {
-                response
-            }
-        }
+        val cacheInterceptor = smugMugCacheRewriteInterceptor()
 
         val cookieJar = object : okhttp3.CookieJar {
             // OkHttp may invoke these from multiple dispatcher threads concurrently.

@@ -96,6 +96,13 @@ class SmugMugRepository @Inject constructor(
         dao.insertNodes(scoped)
     }
 
+    /** A listing result for [parentId]: replaces that parent's cached children (R-07), stamped with the active site. */
+    private suspend fun replaceChildrenScoped(parentId: String, nodes: List<CachedNode>) {
+        val site = activeNickname
+        val scoped = if (site.isEmpty()) nodes else nodes.map { if (it.nickname == site) it else it.copy(nickname = site) }
+        dao.replaceChildren(parentId, scoped)
+    }
+
     private val _albumsCache = kotlinx.coroutines.flow.MutableStateFlow<List<CachedNode>>(emptyList())
     val albumsCache: kotlinx.coroutines.flow.StateFlow<List<CachedNode>> = _albumsCache
 
@@ -199,6 +206,8 @@ class SmugMugRepository @Inject constructor(
             return@flow
         }
 
+        // R-35: a forced listing must reach the server, not the 5-minute HTTP cache rewrite.
+        val cacheControl = if (forceRefresh) "no-cache" else null
         val lock = nodeLocks.getOrPut(nodeId) { Mutex() }
         lock.withLock {
             // Re-check cache after acquiring the lock in case another coroutine populated it
@@ -224,13 +233,13 @@ class SmugMugRepository @Inject constructor(
                             com.smugview.app.data.api.NodeListPayload(emptyList())
                         )
                     } else {
-                        api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors)
+                        api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                     }
                 } catch (e: Exception) {
                     if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                         val unlocked = unlockInheritedPasswordRoot(nodeId, apiKey, password)
                         if (unlocked) {
-                            api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors)
+                            api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                         } else {
                             throw e
                         }
@@ -252,7 +261,7 @@ class SmugMugRepository @Inject constructor(
                     }
                     kotlinx.coroutines.delay(100)
                     val overriddenUrl = overrideUrlCount(nextUrl, 100)
-                    val nextResponse = api.getNodeChildrenByUri(overriddenUrl, apiKey, password, ignoreErrors = ignoreErrors)
+                    val nextResponse = api.getNodeChildrenByUri(overriddenUrl, apiKey, password, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                     nextResponse.response.nodes?.let { allApiNodes.addAll(it) }
                     nextResponse.expansions?.let { allExpansions.putAll(it) }
                     nextUrl = nextResponse.response.pages?.next
@@ -288,8 +297,8 @@ class SmugMugRepository @Inject constructor(
                     )
                 }
 
-                // Save to database
-                insertNodesScoped(dbNodes)
+                // Save to database. The listing is the truth for this parent: children it no longer has go (R-07).
+                if (nodeId.startsWith("virtual:")) insertNodesScoped(dbNodes) else replaceChildrenScoped(nodeId, dbNodes)
                 dao.updateChildCount(nodeId, dbNodes.size)
                 // Any Album-type children (e.g. galleries revealed by unlocking a password-protected
                 // parent folder) also need to land in the flat gallery index, since search matches

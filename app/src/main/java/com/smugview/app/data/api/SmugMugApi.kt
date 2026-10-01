@@ -39,7 +39,8 @@ interface SmugMugApi {
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl,DateModified",
         @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage",
         @Query("_verbosity") verbosity: Int = 1,
-        @Header("X-Ignore-Errors") ignoreErrors: String? = null
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null,
+        @Header("Cache-Control") cacheControl: String? = null
     ): NodeListResponse
 
     @GET
@@ -47,7 +48,8 @@ interface SmugMugApi {
         @Url url: String,
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
-        @Header("X-Ignore-Errors") ignoreErrors: String? = null
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null,
+        @Header("Cache-Control") cacheControl: String? = null
     ): NodeListResponse
 
     @GET("node/{node_id}")
@@ -234,7 +236,8 @@ interface SmugMugApi {
         // Sorting by last-modified (newest first) enables the incremental album-index sync:
         // fetch newest-first and stop once we reach an album we already have cached.
         @Query("SortMethod") sortMethod: String? = null,
-        @Query("SortDirection") sortDirection: String? = null
+        @Query("SortDirection") sortDirection: String? = null,
+        @Header("Cache-Control") cacheControl: String? = null
     ): UserAlbumsResponse
 
     @GET
