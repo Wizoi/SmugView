@@ -1,8 +1,9 @@
 package com.smugview.app.ui.viewmodel
 
-import com.smugview.app.data.api.SmugMugErrorMapper
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.diag.DiagContext
+import com.smugview.app.ui.text.Problem
+import com.smugview.app.ui.text.Subject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -54,6 +55,8 @@ sealed interface NavIntent {
      * is dropped whole. The listing is cache-first, so it works offline.
      */
     data class Restore(val stackIds: List<String>, val returnToSearchIds: List<String>?) : NavIntent
+    /** The site could not be opened (its profile failed): the listing is that [problem] until a retry begins a new site. */
+    data class SiteFailed(val problem: Problem) : NavIntent
 }
 
 /** What the host wants done when a folder's listing failed (the 401 handling stays in the host). */
@@ -168,7 +171,8 @@ class BrowserNavigator(
             }
             is NavIntent.Refresh -> {
                 val id = _state.value.currentId ?: return
-                load(id, intent.force)
+                // A background relist (the site sync) keeps the listing on screen while it runs: it is the same folder.
+                load(id, intent.force, keepListing = intent.background)
             }
             is NavIntent.FromSearch -> {
                 val s = _state.value
@@ -179,6 +183,7 @@ class BrowserNavigator(
             is NavIntent.Reveal -> reveal(intent.galleryKey)
             is NavIntent.Shortcut -> shortcut(intent.nodeId)
             is NavIntent.Restore -> restore(intent)
+            is NavIntent.SiteFailed -> set(_state.value.copy(stack = emptyList(), listing = BrowserUiState.Error(intent.problem)))
         }
     }
 
@@ -242,15 +247,19 @@ class BrowserNavigator(
     }
 
     private suspend fun shortcut(nodeId: String) {
+        var failure: Exception? = null
         val chain = try {
             host.nodeLineage(nodeId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            failure = e
             null
         }
         if (chain.isNullOrEmpty()) {
-            set(_state.value.copy(listing = BrowserUiState.Error("Couldn't open that folder. Check your connection and try again.")))
+            // A lookup that threw says why (offline, 5xx); one that found nothing means the folder is not there any more.
+            val problem = failure?.let { Problem.from(it, Subject.Folder) } ?: Problem.Gone(Subject.Folder)
+            set(_state.value.copy(listing = BrowserUiState.Error(problem)))
             return
         }
         val root = host.rootId()
@@ -259,8 +268,14 @@ class BrowserNavigator(
         (stack.lastOrNull()?.nodeId ?: root)?.let { load(it, force = false) }
     }
 
-    private suspend fun load(id: String, force: Boolean, quiet: Boolean = false) {
-        publish(id, BrowserUiState.Loading)
+    /**
+     * [keepListing]: a background relist of the folder on screen. While it runs, and if it fails, the `Success` the
+     * owner is reading stays; only new rows replace it. (A sync that relisted the open folder used to show a spinner
+     * over it, and a failed one an error.)
+     */
+    private suspend fun load(id: String, force: Boolean, quiet: Boolean = false, keepListing: Boolean = false) {
+        val held = keepListing && _state.value.listing is BrowserUiState.Success
+        if (!held) publish(id, BrowserUiState.Loading)
         val password = host.savedPassword(id)
         host.children(id, force, password).collect { result ->
             if (_state.value.currentId != id) return@collect
@@ -268,10 +283,10 @@ class BrowserNavigator(
                 onSuccess = { nodes -> publish(id, BrowserUiState.Success(nodes)) },
                 onFailure = { error ->
                     if (quiet) {
-                        publish(id, BrowserUiState.Error(SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy", com.smugview.app.ui.text.Subject.Folder)))
+                        publish(id, BrowserUiState.Error(Problem.from(error, Subject.Folder)))
                     } else {
                         val failure = host.onLoadFailure(id, password, error)
-                        failure.listing?.let { publish(id, it) }
+                        failure.listing?.let { if (!(held && it is BrowserUiState.Error)) publish(id, it) }
                         if (failure.popAfter && _state.value.currentId == id) navigate(NavIntent.Back(viaSearch = false))
                     }
                 }

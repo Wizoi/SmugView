@@ -101,6 +101,8 @@ import com.smugview.app.ui.theme.SurfaceDark
 import com.smugview.app.ui.theme.GlowGreen
 import androidx.compose.foundation.BorderStroke
 import com.smugview.app.ui.viewmodel.BrowserUiState
+import com.smugview.app.ui.text.ProblemAction
+import com.smugview.app.ui.text.UserMessages
 import com.smugview.app.ui.viewmodel.BrowserTab
 import com.smugview.app.ui.viewmodel.SearchUiState
 import com.smugview.app.ui.viewmodel.SplashUiState
@@ -136,6 +138,12 @@ fun FoldersTabView(
             }
         }
         is BrowserUiState.Error -> {
+            // Design 3.3 (N2, R-47): the real cause and the way out. With no folder open the failure is the site's own
+            // (its profile did not load), so Try again opens the site again; inside a folder it lists that folder again.
+            val problem = uiState.problem
+            val siteAttempt by viewModel.siteAttempt.collectAsState()
+            val siteName = (siteAttempt ?: nickname)?.replaceFirstChar { it.uppercase() }
+            val goesBack = UserMessages.primaryAction(problem) == ProblemAction.GoBack
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -143,12 +151,39 @@ fun FoldersTabView(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(text = uiState.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 16.dp))
-                Button(
-                    onClick = { currentFolderId?.let { viewModel.loadFolderContents(it, forceRefresh = true) } },
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonBlue)
-                ) {
-                    Text("Retry")
+                Text(
+                    text = UserMessages.heading(problem),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = UserMessages.body(problem, siteName),
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                if (!goesBack) {
+                    Button(
+                        onClick = {
+                            val open = currentFolderId
+                            if (open == null) viewModel.retryActiveSite() else viewModel.loadFolderContents(open, forceRefresh = true)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonBlue)
+                    ) {
+                        Text(UserMessages.BUTTON_TRY_AGAIN)
+                    }
+                }
+                if (goesBack || navStack.isNotEmpty()) {
+                    TextButton(onClick = {
+                        // Inside a folder: back to its parent. At the site root there is no parent: leave the site.
+                        if (navStack.isEmpty()) viewModel.disconnectSite() else viewModel.navigateBackFolder()
+                    }) {
+                        Text(UserMessages.BUTTON_GO_BACK)
+                    }
                 }
             }
         }

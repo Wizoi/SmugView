@@ -693,11 +693,14 @@ class SmugViewModelTest {
 
         val state = viewModel.browserState.value
         assertTrue(state.toString(), state is BrowserUiState.Error)
+        val problem = (state as BrowserUiState.Error).problem
+        assertEquals(com.smugview.app.ui.text.Problem.OfflineNothingSaved(com.smugview.app.ui.text.Subject.Folder), problem)
         assertEquals(
-            "You're offline. This folder hasn't been opened on this phone yet, so there's nothing saved to show. " +
+            "This folder hasn't been opened on this phone yet, so there's nothing saved to show. " +
                 "Connect to the internet and tap Try again.",
-            (state as BrowserUiState.Error).message
+            com.smugview.app.ui.text.UserMessages.body(problem)
         )
+        assertEquals("You're offline", com.smugview.app.ui.text.UserMessages.heading(problem))
     }
 
     @Test

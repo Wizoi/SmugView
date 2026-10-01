@@ -69,6 +69,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.History
 import com.smugview.app.ui.component.ProfilePreviewCard
 import com.smugview.app.ui.component.ProfileAvatar
+import com.smugview.app.ui.text.UserMessages
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import androidx.compose.material3.*
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -550,17 +551,24 @@ fun HomeTabView(
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        text = state.message,
+                                        text = UserMessages.heading(state.problem),
                                         color = MaterialTheme.colorScheme.error,
                                         fontWeight = FontWeight.Medium,
                                         fontSize = 14.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = UserMessages.body(state.problem),
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Button(
                                         onClick = { viewModel.searchPublicSites(nicknameQuery) },
                                         colors = ButtonDefaults.buttonColors(containerColor = NeonBlue)
                                     ) {
-                                        Text("Retry")
+                                        Text(UserMessages.BUTTON_TRY_AGAIN)
                                     }
                                 }
                             }
@@ -700,6 +708,8 @@ fun HomeTabView(
         val albums by viewModel.activeSiteAlbums.collectAsState()
         val topKeywords by viewModel.activeSiteTopKeywords.collectAsState()
         val isDetailsLoading by viewModel.isActiveSiteDetailsLoading.collectAsState()
+        val albumsProblem by viewModel.albumsProblem.collectAsState()
+        val siteProblem by viewModel.siteProblem.collectAsState()
 
         val totalGalleriesOpt by viewModel.activeSiteTotalGalleries.collectAsState()
         val totalPhotosOpt by viewModel.activeSiteTotalPhotos.collectAsState()
@@ -862,7 +872,26 @@ fun HomeTabView(
                             .background(SurfaceDark),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("No public galleries found.", color = Color.White.copy(alpha = 0.4f), fontSize = 13.sp)
+                        // Design 3.3 (R-47): "none" only when the request succeeded with none; a failure says what failed.
+                        val problem = siteProblem ?: albumsProblem
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            Text(
+                                UserMessages.homeAlbums(problem),
+                                color = Color.White.copy(alpha = if (problem == null) 0.4f else 0.7f),
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            if (problem != null) {
+                                TextButton(onClick = {
+                                    if (siteProblem != null) viewModel.retryActiveSite() else viewModel.retryHomeGalleries()
+                                }) {
+                                    Text(UserMessages.BUTTON_TRY_AGAIN, color = NeonBlue)
+                                }
+                            }
+                        }
                     }
                 } else {
                     LazyRow(

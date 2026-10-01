@@ -117,8 +117,9 @@ object UserMessages {
         is Problem.RateLimited -> "Too many requests in a short time. Wait a minute, then tap Try again."
         is Problem.SmugMugTrouble -> "SmugMug answered with error ${problem.code}. This is on SmugMug's side. " +
             "Wait a few minutes, then tap Try again."
-        is Problem.Gone -> "This ${problem.subject.noun} may have been deleted, moved, or made private. " +
-            "Go back and refresh the folder."
+        is Problem.Gone ->
+            if (problem.subject == Subject.Site) "${siteName ?: "This site"} may have been deleted, moved, or made private. Go back and pick another site."
+            else "This ${problem.subject.noun} may have been deleted, moved, or made private. Go back and refresh the folder."
         is Problem.Locked -> "This ${if (problem.subject == Subject.Folder) "folder" else "gallery"} needs its password."
         is Problem.LockedPending -> when (problem.reason) {
             TransientReason.Offline -> AlbumLockedException.OFFLINE_MESSAGE
@@ -161,4 +162,17 @@ object UserMessages {
     /** True when the cause is "no network": the 5-9 offline notice already says what is shown then. */
     fun isOfflineKind(problem: Problem): Boolean =
         problem is Problem.OfflineNothingSaved || (problem is Problem.LockedPending && problem.reason == TransientReason.Offline)
+
+    /** `HOME_FAILED`: the featured-galleries row when the request failed and nothing saved could stand in. */
+    fun homeFailed(problem: Problem): String = "Couldn't load the galleries. ${shortCause(problem)}"
+
+    /**
+     * What Home's featured row says when it has no galleries to show: [HOME_EMPTY] only when the request succeeded
+     * ([problem] null); a failure says so, with the offline kind in the offline words.
+     */
+    fun homeAlbums(problem: Problem?): String = when {
+        problem == null -> HOME_EMPTY
+        isOfflineKind(problem) -> HOME_OFFLINE
+        else -> homeFailed(problem)
+    }
 }

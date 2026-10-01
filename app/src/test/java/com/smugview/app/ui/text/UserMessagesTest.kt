@@ -163,4 +163,31 @@ class UserMessagesTest {
     @Test fun otherIOExceptions_areOffline_likeIsOffline() {
         assertEquals(Problem.OfflineNothingSaved(gallery), Problem.from(IOException("reset"), gallery))
     }
+
+    @Test fun homeFeaturedRow_saysEmptyOnlyWhenTheRequestSucceeded() {
+        val site = Subject.Site
+        assertEquals("This site has no public galleries.", UserMessages.homeAlbums(null))
+        assertEquals(
+            "You're offline. Galleries show here when you're back online.",
+            UserMessages.homeAlbums(Problem.OfflineNothingSaved(site))
+        )
+        assertEquals(
+            "Couldn't load the galleries. SmugMug is having trouble.",
+            UserMessages.homeAlbums(Problem.SmugMugTrouble(site, 503))
+        )
+        assertEquals(
+            "Couldn't load the galleries. SmugMug asked the app to slow down.",
+            UserMessages.homeAlbums(Problem.RateLimited(site))
+        )
+    }
+
+    @Test fun aSiteThatIsGone_namesTheSite_andSaysWhereToGo() {
+        val gone = Problem.Gone(Subject.Site)
+        assertEquals("Not found on SmugMug", UserMessages.heading(gone))
+        assertEquals(
+            "Nobody may have been deleted, moved, or made private. Go back and pick another site.",
+            UserMessages.body(gone, "Nobody")
+        )
+        assertTrue(UserMessages.body(gone).startsWith("This site may have been deleted"))
+    }
 }

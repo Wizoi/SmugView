@@ -71,19 +71,22 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import android.widget.Toast
 import com.smugview.app.data.repository.AlbumLockedException
+import com.smugview.app.ui.text.Problem
+import com.smugview.app.ui.text.Subject
 import javax.inject.Inject
 
 sealed interface SplashUiState {
     object Idle : SplashUiState
     object Loading : SplashUiState
     data class Success(val rootNodeId: String) : SplashUiState
-    data class Error(val message: String) : SplashUiState
+    /** The profile could not be fetched (design 3.3, N2): what went wrong, as a kind the screens put in words. */
+    data class Error(val problem: com.smugview.app.ui.text.Problem) : SplashUiState
 }
 
 sealed interface BrowserUiState {
     object Loading : BrowserUiState
     data class Success(val nodes: List<CachedNode>) : BrowserUiState
-    data class Error(val message: String) : BrowserUiState
+    data class Error(val problem: com.smugview.app.ui.text.Problem) : BrowserUiState
 }
 
 data class SearchScope(
@@ -220,6 +223,9 @@ class SmugViewModel @Inject constructor(
      */
     private fun beginSite(nickname: String) {
         if (pendingRestore?.nickname != nickname) pendingRestore = null
+        _siteProblem.value = null
+        _siteAttempt.value = nickname.ifEmpty { null }
+        attemptWasTap = false
         session.close()
         session = SiteSession(nickname, viewModelScope.coroutineContext[kotlinx.coroutines.Job])
         navigator = BrowserNavigator(session.scope, browserHost)
@@ -362,6 +368,18 @@ class SmugViewModel @Inject constructor(
     private val _splashState = MutableStateFlow<SplashUiState>(SplashUiState.Idle)
     val splashState: StateFlow<SplashUiState> = _splashState.asStateFlow()
 
+    /**
+     * Why the site could not be opened (design 3.3, N2): the failed profile of [loadUserProfile] / [selectSite], or null.
+     * The Folders tab shows it through the navigator; Home shows it where the featured galleries would be.
+     */
+    private val _siteProblem = MutableStateFlow<Problem?>(null)
+    val siteProblem: StateFlow<Problem?> = _siteProblem.asStateFlow()
+
+    /** The nickname the latest launch or tap tried to open: the name in the failure text and what Try again retries. */
+    private val _siteAttempt = MutableStateFlow<String?>(null)
+    val siteAttempt: StateFlow<String?> = _siteAttempt.asStateFlow()
+    private var attemptWasTap = false
+
     // Browser / Navigation State
     private val _browserState = MutableStateFlow<BrowserUiState>(BrowserUiState.Loading)
     val browserState: StateFlow<BrowserUiState> = _browserState.asStateFlow()
@@ -414,7 +432,7 @@ class SmugViewModel @Inject constructor(
                     LoadFailure(listing = null, popAfter = true)
                 } else {
                     LoadFailure(
-                        BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy", com.smugview.app.ui.text.Subject.Folder)),
+                        BrowserUiState.Error(Problem.from(error, Subject.Folder)),
                         popAfter = true
                     )
                 }
@@ -431,12 +449,12 @@ class SmugViewModel @Inject constructor(
                     collections.removeBookmarkGlobally(nodeId)
                 }
                 return LoadFailure(
-                    BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Access Denied / Not Found", com.smugview.app.ui.text.Subject.Folder)),
+                    BrowserUiState.Error(Problem.from(error, Subject.Folder)),
                     popAfter = false
                 )
             }
             return LoadFailure(
-                BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy", com.smugview.app.ui.text.Subject.Folder)),
+                BrowserUiState.Error(Problem.from(error, Subject.Folder)),
                 popAfter = false
             )
         }
@@ -723,6 +741,7 @@ class SmugViewModel @Inject constructor(
     val globalSearchState: StateFlow<GlobalSearchUiState> get() = siteHub.globalSearchState
     val activeSiteRecentImages: StateFlow<List<AlbumImageData>> get() = siteHub.activeSiteRecentImages
     val activeSiteAlbums: StateFlow<List<HubAlbumItem>> get() = siteHub.activeSiteAlbums
+    val albumsProblem: StateFlow<Problem?> get() = siteHub.albumsProblem
     val activeSiteTopKeywords: StateFlow<List<String>> get() = siteHub.activeSiteTopKeywords
     val activeSiteTotalGalleries: StateFlow<Int?> get() = siteHub.activeSiteTotalGalleries
     val activeSiteTotalPhotos: StateFlow<Int?> get() = siteHub.activeSiteTotalPhotos
@@ -735,6 +754,9 @@ class SmugViewModel @Inject constructor(
     fun clearGlobalSiteSearch() = siteHub.clearGlobalSiteSearch()
 
     private fun loadActiveSiteDetails(nickname: String) = siteHub.loadActiveSiteDetails(nickname)
+
+    /** Home's "Try again" when only the gallery list failed (the site itself opened): fetches the dashboard again, leaving Folders where it is. */
+    fun retryHomeGalleries() { _activeNickname.value?.let { loadActiveSiteDetails(it) } }
 
     // Detail-view flag — shared with the photo-detail screens (stays in the ViewModel).
     private val _isViewingDetail = MutableStateFlow(false)
@@ -829,12 +851,13 @@ class SmugViewModel @Inject constructor(
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "loadUserProfile called: nickname=$nickname")
         }
-        if (apiKey.isEmpty() || apiKey == "YOUR_API_KEY_HERE") {
-            _splashState.value = SplashUiState.Error("API Key is missing or invalid. Set it in local.properties.")
-            return
-        }
         _splashState.value = SplashUiState.Loading
         beginSite(nickname)
+        if (apiKey.isEmpty() || apiKey == "YOUR_API_KEY_HERE") {
+            // A build without an API key: nothing the person can fix, so the generic failure with its own code.
+            showSiteProblem(Problem.Unexpected(Subject.Site, "API key"))
+            return
+        }
         val mySession = session
         mySession.scope.launch {
             repository.getUserProfile(nickname, apiKey).collect { result ->
@@ -866,18 +889,32 @@ class SmugViewModel @Inject constructor(
                         loadActiveSiteDetails(nickname)
                     },
                     onFailure = { error ->
-                        _splashState.value = SplashUiState.Error(error.localizedMessage ?: "Connection error")
+                        failSite(error)
                     }
                 )
             }
         }
     }
 
+    /**
+     * The profile of the site being opened could not be fetched (N2). [showSiteProblem] records the kind of failure
+     * for Home and the splash state, and publishes it as the Folders listing, so no screen is left on a spinner.
+     */
+    private fun failSite(error: Throwable) = showSiteProblem(Problem.from(error, Subject.Site))
+
+    private fun showSiteProblem(problem: Problem) {
+        _siteProblem.value = problem
+        _splashState.value = SplashUiState.Error(problem)
+        navigator.navigate(NavIntent.SiteFailed(problem))
+    }
+
+    /** Try again after a failed launch or tap: opens the same site the same way. A saved folder (3-9) is used by it. */
     fun retryActiveSite() {
+        val nickname = _siteAttempt.value ?: _activeNickname.value ?: return
         if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "retryActiveSite called: activeNickname=${_activeNickname.value}")
+            android.util.Log.d("SmugViewModel", "retryActiveSite called: nickname=$nickname, tap=$attemptWasTap")
         }
-        _activeNickname.value?.let { loadUserProfile(it) }
+        if (attemptWasTap) selectSite(nickname) else loadUserProfile(nickname)
     }
 
     // Selects and locks in a SmugMug nickname to browse
@@ -891,6 +928,7 @@ class SmugViewModel @Inject constructor(
         _splashState.value = SplashUiState.Loading
         // Q1: cancel everything bound to the old site NOW, at tap time, not when the new profile arrives.
         beginSite(normalizedNickname)
+        attemptWasTap = true
         val mySession = session
         mySession.scope.launch {
             repository.getUserProfile(normalizedNickname, apiKey).collect { result ->
@@ -934,7 +972,7 @@ class SmugViewModel @Inject constructor(
                         if (BuildConfig.DEBUG) {
                             android.util.Log.e("SmugViewModel", "selectSite failed: $error")
                         }
-                        _splashState.value = SplashUiState.Error(error.localizedMessage ?: "Failed to resolve root node")
+                        failSite(error)
                     }
                 )
             }
@@ -2260,7 +2298,7 @@ sealed interface GlobalSearchUiState {
     object Idle : GlobalSearchUiState
     object Loading : GlobalSearchUiState
     data class Success(val sites: List<com.smugview.app.data.repository.DiscoveredSite>) : GlobalSearchUiState
-    data class Error(val message: String) : GlobalSearchUiState
+    data class Error(val problem: com.smugview.app.ui.text.Problem) : GlobalSearchUiState
 }
 
 data class HubAlbumItem(

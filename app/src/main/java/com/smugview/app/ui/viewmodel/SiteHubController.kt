@@ -61,6 +61,10 @@ class SiteHubController(
     private val _activeSiteAlbums = MutableStateFlow<List<HubAlbumItem>>(emptyList())
     val activeSiteAlbums: StateFlow<List<HubAlbumItem>> = _activeSiteAlbums.asStateFlow()
 
+    /** Why the site's gallery list could not be fetched (design 3.3), or null. Set only when the request failed; an empty list that succeeded leaves it null. */
+    private val _albumsProblem = MutableStateFlow<com.smugview.app.ui.text.Problem?>(null)
+    val albumsProblem: StateFlow<com.smugview.app.ui.text.Problem?> = _albumsProblem.asStateFlow()
+
     private val _activeSiteTopKeywords = MutableStateFlow<List<String>>(emptyList())
     val activeSiteTopKeywords: StateFlow<List<String>> = _activeSiteTopKeywords.asStateFlow()
 
@@ -114,6 +118,7 @@ class SiteHubController(
 
     fun loadActiveSiteDetails(nickname: String) {
         _isActiveSiteDetailsLoading.value = true
+        _albumsProblem.value = null
         _activeSiteRecentImages.value = emptyList()
         _activeSiteAlbums.value = emptyList()
         _activeSiteTopKeywords.value = emptyList()
@@ -155,6 +160,7 @@ class SiteHubController(
                             }
                             setPageOneTotals(galleries = res.response.pages?.total, photos = null)
                             val albums = res.response.albums ?: emptyList()
+                            _albumsProblem.value = null
                             setUserAlbums(albums)
                             val expansions = res.expansions
                             albums.map { album ->
@@ -175,7 +181,10 @@ class SiteHubController(
                                     nodeId = album.nodeId
                                 )
                             }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e // the site changed: the new site's load owns the state now
                         } catch (e: Exception) {
+                            _albumsProblem.value = com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Site)
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.e("SmugViewModel", "loadActiveSiteDetails albums failed, falling back to persisted gallery index", e)
                             }
@@ -308,7 +317,7 @@ class SiteHubController(
                         _globalSearchState.value = GlobalSearchUiState.Success(sites)
                     },
                     onFailure = { error ->
-                        _globalSearchState.value = GlobalSearchUiState.Error(error.localizedMessage ?: "Failed to perform discovery search")
+                        _globalSearchState.value = GlobalSearchUiState.Error(com.smugview.app.ui.text.Problem.from(error, com.smugview.app.ui.text.Subject.Search))
                     }
                 )
             }
@@ -327,6 +336,7 @@ class SiteHubController(
         synchronized(totalsLock) { indexTotals = null }
         _activeSiteRecentImages.value = emptyList()
         _activeSiteAlbums.value = emptyList()
+        _albumsProblem.value = null
         _activeSiteTopKeywords.value = emptyList()
         _activeSiteTotalGalleries.value = null
         _activeSiteTotalPhotos.value = null

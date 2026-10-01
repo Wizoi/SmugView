@@ -19,14 +19,11 @@ class NoRawExceptionTextGuardTest {
     /** File name to the number of lines that still read an exception's text or a state's `.message`. */
     private val allowed: Map<String, Int> = mapOf(
         "CollectionsTabView.kt" to 1,   // Toast "Download failed: ..." (6-15)
-        "FoldersTabView.kt" to 1,       // BrowserUiState.Error.message (6-5 passes a Problem)
-        "HomeTabView.kt" to 1,          // GlobalSearchUiState.Error.message (6-5)
         "SearchTabView.kt" to 1,        // SearchUiState.Error.message (6-6)
         "PhotoDetailScreen.kt" to 1,    // Toast "Error: ..." (6-7)
         "CastController.kt" to 1,       // onMessage(e.message) (6-8)
         "SearchController.kt" to 1,     // SearchUiState.Error (6-6)
-        "SiteHubController.kt" to 1,    // GlobalSearchUiState.Error (6-5)
-        "SmugViewModel.kt" to 3,        // splash x2 (6-5), password check (6-6)
+        "SmugViewModel.kt" to 1,        // password check (6-6)
         "TagSearchController.kt" to 2   // scan progress x2 (6-6)
     )
 
