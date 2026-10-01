@@ -152,21 +152,6 @@ interface SmugMugApi {
         @Query("Password") password: String? = null
     ): ImageSearchResponse
 
-    @GET("user/{nickname}!imagesearch")
-    suspend fun searchImagesUser(
-        @Path("nickname") nickname: String,
-        @Query("APIKey") apiKey: String,
-        @Query("Text") text: String,
-        @Query("Scope") scope: String? = null,
-        @Query("Password") password: String? = null,
-        @Query("count") count: Int = 250,
-        @Query("start") start: Int = 1,
-        @Query("_expand") expand: String? = null,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format,Keywords,KeywordArray,Uris,WebUri",
-        @Query("_filteruri") filterUri: String = "ImageAlbum",
-        @Query("_verbosity") verbosity: Int = 1
-    ): ImageSearchResponse
-
     @GET
     suspend fun searchImagesUserByUri(
         @Url url: String,
@@ -261,7 +246,7 @@ interface SmugMugApi {
     suspend fun getUserTopKeywords(
         @Path("nickname") nickname: String,
         @Query("APIKey") apiKey: String,
-        @Query("NodeID") nodeId: String? = null,
+        @Query("NodeURI") nodeUri: String? = null,
         @Query("_verbosity") verbosity: Int = 1,
         @Query("Password") password: String? = null
     ): TopKeywordsResponse

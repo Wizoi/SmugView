@@ -122,6 +122,14 @@ class FakeSmugMugServer {
         return !sessionFromCookieHeader || req.header("Cookie")?.contains("SMSESS=") == true
     }
 
+    /**
+     * When true, a GET of any endpoint in `accepted-params.json` that the fake has no specific answer
+     * for gets a 200 with a placeholder body (and the `Response.Uri` echo), so `ApiContractTest` can
+     * check the parameters of every `SmugMugApi` method. Off by default: the Phase 3 scenarios keep
+     * their 404 for what the fake does not model.
+     */
+    var genericAnswers = false
+
     /** Page-size caps of the live API (design P13). `imageCaps` overrides [imagesPageCap] per album. */
     var childrenPageCap = 200
     var albumsPageCap = 100
@@ -604,6 +612,9 @@ class FakeSmugMugServer {
         if (req.method == "GET" && path == "image!search") return imageSearch(req)
         if (req.method == "GET" && path.startsWith("user/") && path.endsWith("!topkeywords")) return topKeywords(req, path)
         if (req.method == "GET" && path.startsWith("image/")) return imageRoute(req, path)
+        if (genericAnswers && req.method == "GET" && AcceptedParams.templateOf(path) in AcceptedParams.templates) {
+            return json(req, 200, """{"Response":{"Generic":true},"Code":200}""")
+        }
         return json(req, 404, """{"Code":404,"Message":"unhandled in fake"}""")
     }
 

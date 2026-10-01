@@ -752,7 +752,7 @@ class SmugMugApiTest {
         val expected = "TopKeywordsResponse containing keywords list"
         try {
             val response = runBlocking {
-                ctx.api.getUserTopKeywords(ctx.nickname, ctx.apiKey, ctx.nodeId)
+                ctx.api.getUserTopKeywords(ctx.nickname, ctx.apiKey, "/api/v2/node/${ctx.nodeId}")
             }
             assertNotNull(response.response)
             actual = "Top keywords fetched: ${response.response.userTopKeywords?.keywords?.size ?: 0} tags"
@@ -930,42 +930,6 @@ class SmugMugApiTest {
     }
 
     @Test
-    fun testPagingSearchImagesUser() {
-        val ctx = resolveTestContext()
-        unlockTahomaAlbum(ctx)
-        var success = false
-        var actual = "Failed"
-        val endpoint = "user/${ctx.nickname}!imagesearch?Text=Christmas&count=5"
-        val expected = "Retrieve page 1 (5 items) and page 2 (using next URL, at least 1 item)"
-        try {
-            val mockApi = MockSmugMugApi(ctx.api)
-            val page1Response = runBlocking {
-                mockApi.searchImagesUser(ctx.nickname, ctx.apiKey, text = "Christmas", scope = null, password = ctx.tahomaPassword, count = 5)
-            }
-            val page1Images = page1Response.response.images ?: emptyList()
-            val nextUrl = page1Response.response.pages?.next
-            
-            if (nextUrl == null) {
-                actual = "Page 1 returned ${page1Images.size} images, but no next page URL was present to test page 2"
-                success = page1Images.isNotEmpty()
-            } else {
-                Thread.sleep(250)
-                val page2Response = runBlocking {
-                    mockApi.searchImagesUserByUri(nextUrl, ctx.apiKey, password = ctx.tahomaPassword)
-                }
-                val page2Images = page2Response.response.images ?: emptyList()
-                actual = "Page 1 size: ${page1Images.size}, Page 2 size: ${page2Images.size}.<br/>Next URL: $nextUrl"
-                success = page1Images.size == 5 && page2Images.isNotEmpty()
-            }
-        } catch (e: Exception) {
-            actual = "Error: ${e.message}"
-            throw e
-        } finally {
-            logResult("testPagingSearchImagesUser", endpoint, expected, actual, success)
-        }
-    }
-
-    @Test
     fun testFeaturedSitesValidity() {
         if (!RECORD_MODE) {
             println("Skipping testFeaturedSitesValidity: Only runs when RECORD_MODE = true (live API verification).")
@@ -1040,25 +1004,6 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun searchUsers(apiKey: String, query: String, verbosity: Int) = delegate.searchUsers(apiKey, query, verbosity)
     override suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int, filter: String, filterUri: String, verbosity: Int, password: String?) = delegate.getUserRecentImages(nickname, apiKey, count, filter, filterUri, verbosity, password)
     
-    override suspend fun searchImagesUser(nickname: String, apiKey: String, text: String, scope: String?, password: String?, count: Int, start: Int, expand: String?, filter: String, filterUri: String, verbosity: Int): ImageSearchResponse {
-        val images = List(count) { i ->
-            AlbumImageData(
-                imageKey = "mock_image_${start + i}",
-                title = "Mock Image ${start + i}",
-                caption = "Mock Caption ${start + i}",
-                thumbnailUrl = "https://example.com/thumb_${start + i}.jpg",
-                fileName = "mock_${start + i}.jpg"
-            )
-        }
-        val pages = PagesData(
-            start = start,
-            count = count,
-            total = 10,
-            nextField = "mock_next_page_url"
-        )
-        return ImageSearchResponse(ImageSearchPayload(images, pages))
-    }
-
     override suspend fun searchImagesUserByUri(url: String, apiKey: String, password: String?): ImageSearchResponse {
         val images = List(5) { i ->
             AlbumImageData(
@@ -1087,6 +1032,6 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, password: String?, cacheControl: String?) = delegate.getUserAlbums(nickname, apiKey, count, start, expand, filter, filterUri, verbosity, password, cacheControl)
     override suspend fun getUserAlbumsByUri(url: String, apiKey: String) = delegate.getUserAlbumsByUri(url, apiKey)
     override suspend fun getAlbumKeywords(albumKeys: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getAlbumKeywords(albumKeys, apiKey, password, expand, filter, filterUri, verbosity)
-    override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeId: String?, verbosity: Int, password: String?) = delegate.getUserTopKeywords(nickname, apiKey, nodeId, verbosity, password)
+    override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeUri: String?, verbosity: Int, password: String?) = delegate.getUserTopKeywords(nickname, apiKey, nodeUri, verbosity, password)
     override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, filterUri: String, verbosity: Int) = delegate.getImagesByKeyword(apiKey, scope, text, count, start, filter, filterUri, verbosity)
 }

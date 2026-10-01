@@ -477,7 +477,8 @@ class SmugMugRepository @Inject constructor(
         nodeId: String? = null,
         password: String? = null
     ): com.smugview.app.data.api.TopKeywordsResponse {
-        return api.getUserTopKeywords(nickname, apiKey, nodeId = nodeId, password = password)
+        // user!topkeywords is scoped by NodeURI; it silently ignores NodeID (Phase 4, Q6, R-28).
+        return api.getUserTopKeywords(nickname, apiKey, nodeUri = nodeId?.let { "/api/v2/node/$it" }, password = password)
     }
 
     suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int = 10): List<AlbumImageData> {
