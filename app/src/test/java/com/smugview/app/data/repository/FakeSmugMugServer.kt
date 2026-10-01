@@ -11,6 +11,9 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Fixture "F" from docs/design/phase-2-tree-and-dot.md section 6, served as an OkHttp interceptor.
@@ -24,8 +27,47 @@ import java.io.IOException
  * `!parents` is SELF FIRST and anonymous, like the live API (design V6, V7). Every request is
  * recorded in [requests] as "METHOD path" (query and body are not recorded, so no secret can
  * land in it).
+ *
+ * Phase 3 additions (synthetic IDs, real shapes and lengths, NodeID != AlbumKey):
+ *   site B, nickname `siteb`: Rb7Tq2 (root) -> Hq2Lm9 (public folder) -> gallery NodeID Vt4Kp8 / AlbumKey jX9wQe
+ *   a second password root on site A, Wq8Rz3 (SecurityType Password), reachable by id and listed
+ *   under the root only after [listSecondPasswordRoot]
  */
 class FakeSmugMugServer {
+
+    /**
+     * A request held inside the interceptor (an OkHttp thread) until [release]. [awaitArrived] says
+     * whether the first matching request reached the fake in time.
+     */
+    class Gate internal constructor(internal val pathContains: String) {
+        private val arrived = CountDownLatch(1)
+        private val released = CountDownLatch(1)
+        internal fun arrive() = arrived.countDown()
+        internal fun awaitRelease() { released.await(30, TimeUnit.SECONDS) }
+        fun awaitArrived(timeoutMs: Long = 5_000): Boolean = arrived.await(timeoutMs, TimeUnit.MILLISECONDS)
+        fun release() = released.countDown()
+    }
+
+    private val gates = java.util.concurrent.CopyOnWriteArrayList<Gate>()
+
+    /**
+     * Holds every request whose "path?query" contains [pathContains] until [Gate.release]. Requests
+     * that arrive after the release go straight through.
+     */
+    fun hold(pathContains: String): Gate = Gate(pathContains).also { gates += it }
+
+    /** Lets every held request go (test teardown). */
+    fun releaseAllGates() = gates.forEach { it.release() }
+
+    private class Throttle(val pathContains: String, val remaining: AtomicInteger)
+
+    private val throttles = java.util.concurrent.CopyOnWriteArrayList<Throttle>()
+
+    /** The next [times] requests whose "path?query" contains [pathContains] answer 429 with `Retry-After: 0`. */
+    fun respond429(pathContains: String, times: Int) {
+        throttles += Throttle(pathContains, AtomicInteger(times))
+    }
+
     val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
 
     /** Replaces the answer to any `!parents` request (may throw an IOException). */
@@ -103,6 +145,25 @@ class FakeSmugMugServer {
         )
     )
 
+    /** What `user!albums` lists for site B (`siteb`). */
+    var albumsB: List<FakeAlbum> = listOf(
+        FakeAlbum(
+            "jX9wQe", "Vt4Kp8", "Site B Gallery", "/Public/Site-B-Gallery",
+            lastUpdated = daysAgo(3), imagesLastUpdated = daysAgo(3)
+        )
+    )
+
+    private fun albumsOf(nickname: String) = if (nickname == SITE_B) albumsB else albums
+    private fun hostOf(nickname: String) =
+        if (nickname == SITE_B) "https://siteb.smugmug.com" else "https://gallery.idzifamily.com"
+
+    /** How many images each album holds (default 12); pages are capped at 100 like the live API. */
+    val imageCounts: MutableMap<String, Int> = mutableMapOf("FfHCms" to 150)
+
+    /** ImageKeys of [albumKey], in listing order. */
+    fun imageKeysOf(albumKey: String): List<String> =
+        (1..(imageCounts[albumKey] ?: 12)).map { "${albumKey}i${it.toString().padStart(3, '0')}" }
+
     /** Replaces the answer to a `user!albums` page: return a Response, throw, or null to fall through. */
     var albumsOverride: ((start: Int, req: Request) -> Response?)? = null
 
@@ -115,12 +176,12 @@ class FakeSmugMugServer {
         val start = req.url.queryParameter("start")?.toIntOrNull() ?: 1
         albumsOverride?.invoke(start, req)?.let { return it }
         val count = (req.url.queryParameter("count")?.toIntOrNull() ?: 100).coerceAtMost(100)
-        val visible = albums.filter { !(cookieGate && it.needsSession && family.id !in unlockedRoots) }
+        val visible = albumsOf(nickname).filter { !(cookieGate && it.needsSession && family.id !in unlockedRoots) }
         val page = visible.drop(start - 1).take(count)
         val body = page.joinToString(",") {
             val ilu = it.imagesLastUpdated?.let { v -> ""","ImagesLastUpdated":"$v"""" } ?: ""
             """{"Uri":"/api/v2/album/${it.albumKey}","AlbumKey":"${it.albumKey}","NodeID":"${it.nodeId}","Name":"${it.name}",""" +
-                """"UrlPath":"${it.urlPath}","WebUri":"https://gallery.idzifamily.com${it.urlPath}","SecurityType":"${it.security}",""" +
+                """"UrlPath":"${it.urlPath}","WebUri":"${hostOf(nickname)}${it.urlPath}","SecurityType":"${it.security}",""" +
                 """"ImageCount":12,"LastUpdated":"${it.lastUpdated}"$ilu,""" +
                 """"Uris":{"Folder":"/api/v2/folder/user/$nickname${it.folderPath}"}}"""
         }
@@ -147,12 +208,26 @@ class FakeSmugMugServer {
     private val publicFolder = N("3BxbFF", "Folder", "Kentridge", "None", "None", "https://gallery.idzifamily.com/Kentridge")
     private val publicGallery = N("sXQz4G", "Album", "Public Gallery", "None", "None", "https://gallery.idzifamily.com/Kentridge/Public")
 
+    private val secondRoot = N("Wq8Rz3", "Folder", "Work", "Password", "Password", "https://gallery.idzifamily.com/Work")
+
+    private val rootB = N("Rb7Tq2", "Folder", "Home", "None", "None", "https://siteb.smugmug.com")
+    private val publicFolderB = N("Hq2Lm9", "Folder", "Public", "None", "None", "https://siteb.smugmug.com/Public")
+    private val galleryB = N("Vt4Kp8", "Album", "Site B Gallery", "None", "None", "https://siteb.smugmug.com/Public/Site-B-Gallery")
+
     private val childrenOf: MutableMap<String, MutableList<N>> = mutableMapOf(
         root.id to mutableListOf(family, publicFolder),
         family.id to mutableListOf(school),
         school.id to mutableListOf(gallery),
-        publicFolder.id to mutableListOf(publicGallery)
+        publicFolder.id to mutableListOf(publicGallery),
+        secondRoot.id to mutableListOf(),
+        rootB.id to mutableListOf(publicFolderB),
+        publicFolderB.id to mutableListOf(galleryB)
     )
+
+    /** Makes `Wq8Rz3` (a second password root) show up in site A's root listing from now on. */
+    fun listSecondPasswordRoot() {
+        synchronized(childrenOf) { childrenOf.getValue(root.id).add(secondRoot) }
+    }
 
     /**
      * Adds a sub-folder to [parentId]'s `!children` listing from now on (a folder created on the
@@ -171,10 +246,19 @@ class FakeSmugMugServer {
         school.id to listOf(school, family, root),
         gallery.id to listOf(gallery, school, family, root),
         publicFolder.id to listOf(publicFolder, root),
-        publicGallery.id to listOf(publicGallery, publicFolder, root)
+        publicGallery.id to listOf(publicGallery, publicFolder, root),
+        secondRoot.id to listOf(secondRoot, root),
+        rootB.id to listOf(rootB),
+        publicFolderB.id to listOf(publicFolderB, rootB),
+        galleryB.id to listOf(galleryB, publicFolderB, rootB)
     )
 
-    private val albumKeyToNodeId = mapOf("FfHCms" to "LCdk7F", "N74KSK" to "sXQz4G")
+    private val albumKeyToNodeId = mapOf("FfHCms" to "LCdk7F", "N74KSK" to "sXQz4G", "jX9wQe" to "Vt4Kp8")
+
+    companion object {
+        const val SITE_A = "idzifamily"
+        const val SITE_B = "siteb"
+    }
 
     val interceptor = Interceptor { chain -> handle(chain.request()) }
 
@@ -200,13 +284,27 @@ class FakeSmugMugServer {
         requests += "${req.method} $path"
         requestLog += req
         if (unlockedRoots.isNotEmpty()) requestsWithSession += "${req.method} $path"
+        val target = "$path?${req.url.query.orEmpty()}"
+        gates.firstOrNull { target.contains(it.pathContains) }?.let {
+            it.arrive()
+            try { it.awaitRelease() } catch (e: InterruptedException) { throw IOException("held request interrupted", e) }
+        }
+        throttles.firstOrNull { target.contains(it.pathContains) && it.remaining.get() > 0 }?.let {
+            if (it.remaining.getAndDecrement() > 0) {
+                return json(req, 429, """{"Code":429,"Message":"Too Many Requests"}""")
+                    .newBuilder().header("Retry-After", "0").build()
+            }
+        }
         if (path.startsWith("node/") && path.endsWith("!children")) {
             val id = path.removePrefix("node/").removeSuffix("!children")
             childrenOverride?.invoke(id, req)?.let { return it }
             if (cookieGate && (id == family.id || id == school.id) && family.id !in unlockedRoots) {
                 return json(req, 401, """{"Code":401,"Message":"Unauthorized"}""")
             }
-            val kids = childrenOf[id] ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
+            if (cookieGate && id == secondRoot.id && secondRoot.id !in unlockedRoots) {
+                return json(req, 401, """{"Code":401,"Message":"Unauthorized"}""")
+            }
+            val kids = synchronized(childrenOf) { childrenOf[id]?.toList() } ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
             val nodes = kids.joinToString(",") {
                 val uris = if (it.type == "Folder") """"ChildNodes":"/api/v2/node/${it.id}!children""""
                 else """"Album":"/api/v2/album/${albumKeyToNodeId.entries.first { e -> e.value == it.id }.key}""""
@@ -226,6 +324,36 @@ class FakeSmugMugServer {
         if (req.method == "GET" && path.startsWith("user/") && path.endsWith("!albums")) {
             return albumsPage(req, path.removePrefix("user/").removeSuffix("!albums"))
         }
+        if (req.method == "GET" && path.startsWith("user/") && !path.contains("!")) {
+            val nick = path.removePrefix("user/")
+            val rootId = if (nick == SITE_B) rootB.id else root.id
+            return json(
+                req, 200,
+                """{"Response":{"User":{"NickName":"$nick","Name":"$nick","WebUri":"${hostOf(nick)}",""" +
+                    """"Uris":{"Node":"/api/v2/node/$rootId"}}},"Code":200}"""
+            )
+        }
+        if (req.method == "GET" && path.startsWith("album/") && path.endsWith("!images")) {
+            val key = path.removePrefix("album/").removeSuffix("!images")
+            val nodeId = albumKeyToNodeId[key] ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
+            val web = lineages.getValue(nodeId).first().web
+            val keys = imageKeysOf(key)
+            val start = req.url.queryParameter("start")?.toIntOrNull() ?: 1
+            val count = (req.url.queryParameter("count")?.toIntOrNull() ?: 100).coerceAtMost(100)
+            val page = keys.drop(start - 1).take(count)
+            val images = page.joinToString(",") { ik ->
+                """{"Uri":"/api/v2/album/$key/image/$ik-0","ImageKey":"$ik","Title":"","FileName":"$ik.jpg","Format":"JPG",""" +
+                    """"ThumbnailUrl":"https://photos.smugmug.com/photos/$ik/0/Th/$ik-Th.jpg","WebUri":"$web/i-$ik",""" +
+                    """"OriginalWidth":4000,"OriginalHeight":3000,"OriginalSize":3145728,"Date":"${daysAgo(10)}",""" +
+                    """"Uris":{"Album":"/api/v2/album/$key"}}"""
+            }
+            val next = if (start - 1 + page.size < keys.size)
+                ""","NextPage":"/api/v2/album/$key!images?count=$count&start=${start + count}"""" else ""
+            return json(
+                req, 200,
+                """{"Response":{"AlbumImage":[$images],"Pages":{"Start":$start,"Count":${page.size},"Total":${keys.size}$next}},"Code":200}"""
+            )
+        }
         if (path.startsWith("node/") && path.endsWith("!parents")) {
             parentsOverride?.let { return it(req) }
             val id = path.removePrefix("node/").removeSuffix("!parents")
@@ -240,7 +368,7 @@ class FakeSmugMugServer {
             val key = path.removePrefix("album/")
             val nodeId = albumKeyToNodeId[key] ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
             // A gallery that is in `albums` also reports its dates (the 2-10 getAlbum filter asks for them).
-            val dates = albums.firstOrNull { it.albumKey == key }?.let {
+            val dates = (albums + albumsB).firstOrNull { it.albumKey == key }?.let {
                 val ilu = it.imagesLastUpdated?.let { v -> ""","ImagesLastUpdated":"$v"""" } ?: ""
                 ""","LastUpdated":"${it.lastUpdated}"$ilu"""
             } ?: ""

@@ -134,7 +134,9 @@ class SmugViewModel @Inject constructor(
      */
     private val defaultDispatcher: CoroutineDispatcher,
     /** Records the launch-unlock run (Phase 1b-3). The default keeps tests that don't care unchanged. */
-    private val syncReporter: com.smugview.app.diag.SyncReporter = com.smugview.app.diag.SyncReporter.NOOP
+    private val syncReporter: com.smugview.app.diag.SyncReporter = com.smugview.app.diag.SyncReporter.NOOP,
+    /** Hilt supplies the real handle; it holds the navigation state across process death (Phase 3, step 3-9). */
+    private val savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle()
 ) : AndroidViewModel(application) {
 
     private val apiKey = BuildConfig.SMUGMUG_API_KEY
