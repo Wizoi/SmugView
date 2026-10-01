@@ -29,7 +29,7 @@ class DoubleTapScenarioTest {
 
     private val vm get() = rig.viewModel
     private fun listedIds() = (vm.browserState.value as? BrowserUiState.Success)?.nodes?.map { it.nodeId }
-    private fun stackIds() = vm.folderNavigationStack.map { it.nodeId }
+    private fun stackIds() = readState { vm.folderNavigationStack.map { it.nodeId } }
 
     private fun openSiteAndSettle() {
         rig.passwords.savePassword("2sDN5x", "pw")

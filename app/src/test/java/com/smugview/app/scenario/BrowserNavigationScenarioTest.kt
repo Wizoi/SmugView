@@ -29,7 +29,7 @@ class BrowserNavigationScenarioTest {
 
     private val vm get() = rig.viewModel
     private fun listedIds() = (vm.browserState.value as? BrowserUiState.Success)?.nodes?.map { it.nodeId }
-    private fun stackIds() = vm.folderNavigationStack.map { it.nodeId }
+    private fun stackIds() = readState { vm.folderNavigationStack.map { it.nodeId } }
 
     /** Site A selected, root listed, and every background run finished, so the tree is cached. */
     private fun openSiteAndSettle() {

@@ -34,7 +34,7 @@ class ProcessDeathScenarioTest {
 
     private val vm get() = rig.viewModel
     private fun SmugViewModel.listed() = (browserState.value as? BrowserUiState.Success)?.nodes?.map { it.nodeId }
-    private fun SmugViewModel.stackIds() = folderNavigationStack.map { it.nodeId }
+    private fun SmugViewModel.stackIds() = readState { folderNavigationStack.map { it.nodeId } }
 
     /** Root -> Family -> School in the running process, with a query typed and searched. */
     private fun browseToSchool() {

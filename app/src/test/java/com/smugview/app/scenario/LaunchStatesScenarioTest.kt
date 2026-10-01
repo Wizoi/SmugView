@@ -95,7 +95,7 @@ class LaunchStatesScenarioTest {
         online()
         restored.retryActiveSite()
         awaitUntil("School's listing after Try again", 10_000) {
-            restored.folderNavigationStack.map { it.nodeId } == listOf("2sDN5x", "P4BKB") &&
+            readState { restored.folderNavigationStack.map { it.nodeId } } == listOf("2sDN5x", "P4BKB") &&
                 (restored.browserState.value as? BrowserUiState.Success)?.nodes?.any { it.nodeId == "LCdk7F" } == true
         }
         assertEquals("P4BKB", restored.currentFolderId)
