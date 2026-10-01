@@ -32,7 +32,7 @@ import org.mockito.Mockito
  * [awaitUntil]. Call [close] from `@After`.
  */
 @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.DelicateCoroutinesApi::class)
-class ScenarioRig {
+class ScenarioRig(retrying: Boolean = false) {
     val server = FakeSmugMugServer()
     val db: AppDatabase = TestDb.inMemory()
     val dao: CollectionDao = db.collectionDao()
@@ -49,7 +49,7 @@ class ScenarioRig {
     init {
         Dispatchers.setMain(mainThread)
         app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE).edit().clear().commit()
-        repository = SmugMugRepository(server.api(), dao, passwords, app, reporter, syncState).also {
+        repository = SmugMugRepository(server.api(retrying), dao, passwords, app, reporter, syncState).also {
             it.treeSyncDelayMs = 0
             it.unlockDelayMs = 0
         }

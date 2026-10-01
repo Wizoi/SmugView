@@ -323,7 +323,7 @@ class TagSearchController(
                         if (targetScopeId != null) {
                             val savedPassword = getUnlockedPassword(targetScopeId)
                             if (savedPassword != null) {
-                                repository.unlockInheritedPasswordRoot(targetScopeId, apiKey, savedPassword)
+                                repository.unlocks.ensureSession(targetScopeId, apiKey, savedPassword)
                             }
                         }
 
@@ -485,7 +485,7 @@ class TagSearchController(
                 val savedPassword = getUnlockedPassword(targetScopeId)
                 if (savedPassword != null) {
                     _scanProgress.value = "Unlocking scope..."
-                    repository.unlockInheritedPasswordRoot(targetScopeId, apiKey, savedPassword)
+                    repository.unlocks.ensureSession(targetScopeId, apiKey, savedPassword)
                 }
 
                 _scanProgress.value = "Fetching keywords..."

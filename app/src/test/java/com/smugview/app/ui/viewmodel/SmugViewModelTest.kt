@@ -123,6 +123,8 @@ class SmugViewModelTest {
         }
         
         fakePasswordStore = com.smugview.app.data.security.FakePasswordStore()
+        Mockito.`when`(mockRepository.unlocks)
+            .thenReturn(com.smugview.app.data.repository.UnlockManager(mockRepository, fakePasswordStore))
         viewModel = SmugViewModel(mockApp, mockRepository, mockWorkManager, mockCastManager, fakePasswordStore, testDispatcher)
     }
 
@@ -780,8 +782,10 @@ class SmugViewModelTest {
         // credential now has to resolve to this node.)
         fakePasswordStore.savePassword(testAlbumKey, "gallery")
 
-        Mockito.`when`(mockRepository.unlockAlbum(testAlbumKey, BuildConfig.SMUGMUG_API_KEY, "gallery"))
-            .thenReturn(true)
+        // The unlock goes through repository.unlocks (UnlockManager over the repository's UnlockIo).
+        Mockito.`when`(mockRepository.getNodeById(testAlbumKey)).thenReturn(albumNode)
+        Mockito.`when`(mockRepository.unlockAlbumResult(testAlbumKey, BuildConfig.SMUGMUG_API_KEY, "gallery"))
+            .thenReturn(com.smugview.app.data.repository.SmugMugRepository.UnlockResult.Success)
             
         val anonymousImg = AlbumImageData(
             imageKey = testImageKey,

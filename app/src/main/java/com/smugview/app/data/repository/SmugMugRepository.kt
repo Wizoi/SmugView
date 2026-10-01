@@ -55,7 +55,13 @@ class SmugMugRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val syncReporter: com.smugview.app.diag.SyncReporter = com.smugview.app.diag.SyncReporter.NOOP,
     private val syncState: SyncStateStore = InMemorySyncStateStore()
-) {
+) : UnlockIo {
+    /**
+     * The one owner of unlock sessions per password root (design phase-3 3.4). A singleton like the
+     * cookie jar it describes; the repository is its [UnlockIo].
+     */
+    val unlocks: UnlockManager by lazy { UnlockManager(io = this, store = passwordStore) }
+
     /**
      * Upper bound on how many pages the "follow next-url" pagination loops will fetch.
      * Unbounded in production; tests set a small value so they don't page through a fake's whole
@@ -275,7 +281,7 @@ class SmugMugRepository @Inject constructor(
             }
         } catch (e: Exception) {
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                val unlocked = unlockInheritedPasswordRoot(nodeId, apiKey, password)
+                val unlocked = unlocks.reauthorize(nodeId, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
                     api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                 } else {
@@ -357,7 +363,7 @@ class SmugMugRepository @Inject constructor(
                 api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true").response.album
             } catch (e: Exception) {
                 if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                    val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
+                    val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                     if (unlocked) {
                         api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true").response.album
                     } else {
@@ -431,7 +437,7 @@ class SmugMugRepository @Inject constructor(
             
             // If the response is successful but images is null or empty, and we have a password, try unlocking parent root
             if ((images == null || images.isEmpty()) && !password.isNullOrEmpty()) {
-                val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
+                val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
                     val retryResponse = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
                     if (retryResponse.response.images != null && retryResponse.response.images.isNotEmpty()) {
@@ -446,7 +452,7 @@ class SmugMugRepository @Inject constructor(
             response
         } catch (e: Exception) {
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                val unlocked = unlockInheritedPasswordRoot(albumKey, apiKey, password)
+                val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
                     val retryResponse = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
                     if (retryResponse.response.images == null) {
@@ -853,7 +859,11 @@ class SmugMugRepository @Inject constructor(
      * the crawl may prune index rows only then (design 3.3), because a root that failed to unlock
      * hides its galleries from the listing and they would look deleted.
      */
-    data class UnlockSummary(val roots: Int, val ok: Int, val rejected: Int, val transient: Int) {
+    data class UnlockSummary(
+        val roots: Int, val ok: Int, val rejected: Int, val transient: Int,
+        /** What happened to each root, by the root's NodeID (or the bare saved key when its node is unknown). */
+        val results: Map<String, UnlockResult> = emptyMap()
+    ) {
         val allSucceeded: Boolean get() = rejected == 0 && transient == 0
 
         companion object { val NONE = UnlockSummary(0, 0, 0, 0) }
@@ -897,16 +907,20 @@ class SmugMugRepository @Inject constructor(
                 var rejected = 0
                 var transient = 0
                 var first = true
+                val results = LinkedHashMap<String, UnlockResult>()
                 for (t in targets.values) {
                     if (!first && unlockDelayMs > 0) kotlinx.coroutines.delay(unlockDelayMs)
                     first = false
-                    when (unlockTarget(t, apiKey)) {
+                    val result = unlockTarget(t, apiKey)
+                    when (result) {
                         UnlockResult.Success -> ok++
                         UnlockResult.Rejected -> rejected++
                         UnlockResult.Transient -> transient++
                     }
+                    (t.node?.nodeId ?: t.bareKey)?.let { results[it] = result }
                 }
-                summary = UnlockSummary(targets.size, ok, rejected, transient)
+                summary = UnlockSummary(targets.size, ok, rejected, transient, results)
+                unlocks.recordLaunch(summary)
                 run?.stop = com.smugview.app.diag.StopReason.Completed
             } catch (e: CancellationException) {
                 run?.stop = com.smugview.app.diag.StopReason.Cancelled
@@ -1458,10 +1472,10 @@ class SmugMugRepository @Inject constructor(
         else -> UnlockResult.Transient
     }
 
-    suspend fun unlockNodeResult(nodeId: String, apiKey: String, password: String): UnlockResult =
+    override suspend fun unlockNodeResult(nodeId: String, apiKey: String, password: String): UnlockResult =
         timedUnlock(nodeId, "node") { api.unlockNode(nodeId, apiKey, password, "true").code() }
 
-    suspend fun unlockAlbumResult(albumKey: String, apiKey: String, password: String): UnlockResult =
+    override suspend fun unlockAlbumResult(albumKey: String, apiKey: String, password: String): UnlockResult =
         timedUnlock(albumKey, "album") { api.unlockAlbum(albumKey, apiKey, password, "true").code() }
 
     /**
@@ -1623,8 +1637,8 @@ class SmugMugRepository @Inject constructor(
 
     // --- Offline Local Collections Room Interface ---
 
-    suspend fun getNodeById(nodeId: String): CachedNode? = dao.getNodeById(nodeId)
-    suspend fun getNodeByIdOrKey(idOrKey: String): CachedNode? = dao.getNodeByIdOrKey(idOrKey)
+    override suspend fun getNodeById(nodeId: String): CachedNode? = dao.getNodeById(nodeId)
+    override suspend fun getNodeByIdOrKey(idOrKey: String): CachedNode? = dao.getNodeByIdOrKey(idOrKey)
 
     suspend fun insertNodes(nickname: String, nodes: List<CachedNode>) {
         val safeNodes = nodes.map { node ->
@@ -1847,7 +1861,7 @@ class SmugMugRepository @Inject constructor(
      * walk-while-Inherited stopped at the first sub-folder. [RootResolution.Unknown] means the lineage
      * could not be read; callers must not unlock or delete anything on Unknown.
      */
-    suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): RootResolution {
+    override suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): RootResolution {
         return try {
             val chain = readLineage(nodeId, apiKey)
             if (chain.isNullOrEmpty()) return RootResolution.Unknown
@@ -1878,6 +1892,32 @@ class SmugMugRepository @Inject constructor(
             val realId = api.getAlbum(mappedId, apiKey, ignoreErrors = "true").response.album.nodeId
             if (realId.isNullOrEmpty() || realId == mappedId) null else parentsOf(realId)
         }
+    }
+
+    /** The node as the API describes it, in memory only: nothing here knows the real parent (R-01), so no row is placed. */
+    override suspend fun fetchNode(nodeId: String, apiKey: String): CachedNode? = try {
+        val apiNode = getNode(nodeId, apiKey, ignoreErrors = "true")
+        CachedNode(
+            nodeId = apiNode.nodeId,
+            parentNodeId = null,
+            type = apiNode.type,
+            title = apiNode.name ?: "Folder",
+            description = apiNode.description,
+            access = apiNode.securityType ?: apiNode.privacy ?: "Public",
+            passwordHint = apiNode.passwordHint,
+            uri = apiNode.uri,
+            childNodesUri = apiNode.uris.childNodes,
+            albumUri = apiNode.uris.album,
+            highlightImageUrl = null,
+            childCount = null,
+            sortIndex = 0,
+            webUri = apiNode.webUri,
+            dateModified = apiNode.dateModified
+        )
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     suspend fun unlockInheritedPasswordRoot(idOrKey: String, apiKey: String, password: String): Boolean {

@@ -1840,7 +1840,7 @@ class SmugViewModel @Inject constructor(
                             val candidatePw = getUnlockedPasswordForNode(matchedNode)
                                 ?: getUnlockedPassword(resolvedKey)
                             if (!candidatePw.isNullOrEmpty()) {
-                                val unlocked = repository.unlockAlbum(resolvedKey, apiKey, candidatePw) || repository.unlockNode(resolvedKey, apiKey, candidatePw)
+                                val unlocked = repository.unlocks.ensureSession(resolvedKey, apiKey, candidatePw) == com.smugview.app.data.repository.SmugMugRepository.UnlockResult.Success
                                 if (unlocked) {
                                     passwordPrefs.edit().putString(resolvedKey, candidatePw).apply()
                                     var tempResult: Result<AlbumImageData>? = null

@@ -267,12 +267,19 @@ class FakeSmugMugServer {
 
     val interceptor = Interceptor { chain -> handle(chain.request()) }
 
-    fun api(): SmugMugApi = Retrofit.Builder()
-        .baseUrl("https://api.smugmug.com/api/v2/")
-        .client(OkHttpClient.Builder().addInterceptor(interceptor).build())
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-        .create(SmugMugApi::class.java)
+    /**
+     * [retrying] wraps the client in the app's real [com.smugview.app.data.api.RetryingCallFactory]
+     * (5 tries on 429/5xx), so one logical request is several requests on the wire, as in production.
+     */
+    fun api(retrying: Boolean = false): SmugMugApi {
+        val client = OkHttpClient.Builder().addInterceptor(interceptor).build()
+        val builder = Retrofit.Builder()
+            .baseUrl("https://api.smugmug.com/api/v2/")
+            .addConverterFactory(GsonConverterFactory.create())
+        if (retrying) builder.callFactory(com.smugview.app.data.api.RetryingCallFactory(client, initialDelayMs = 1))
+        else builder.client(client)
+        return builder.build().create(SmugMugApi::class.java)
+    }
 
     /** Requests (method + path) that match [pathContains], in order. */
     fun requestsTo(pathContains: String): List<String> = synchronized(requests) {
