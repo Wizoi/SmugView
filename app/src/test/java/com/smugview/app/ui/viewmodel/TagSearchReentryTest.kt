@@ -2,6 +2,9 @@ package com.smugview.app.ui.viewmodel
 
 import android.content.SharedPreferences
 import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.data.api.ImageSearchPayload
+import com.smugview.app.data.api.ImageSearchResponse
+import com.smugview.app.data.api.PagesData
 import com.smugview.app.data.api.TopKeywordsPayload
 import com.smugview.app.data.api.TopKeywordsResponse
 import com.smugview.app.data.api.UserTopKeywordsContainer
@@ -43,8 +46,8 @@ class TagSearchReentryTest {
         runBlocking {
             `when`(repo.getUserTopKeywords(anyString(), anyString(), anyString(), isNull()))
                 .thenReturn(TopKeywordsResponse(TopKeywordsPayload(UserTopKeywordsContainer(listOf("sunset", "dog")))))
-            `when`(repo.getImagesByKeywordPage(anyString(), anyString(), anyString(), anyInt(), anyInt(), isNull()))
-                .thenReturn(Triple(photos, null, photos.size))
+            `when`(repo.getImagesByKeywordPage(anyString(), anyString(), anyString(), anyInt(), anyInt()))
+                .thenReturn(ImageSearchResponse(ImageSearchPayload(photos, PagesData(1, photos.size, photos.size))))
         }
         controller = TagSearchController(
             repository = repo, apiKey = "k", viewModelScope = root, siteScope = { root }, sharedPrefs = prefs,

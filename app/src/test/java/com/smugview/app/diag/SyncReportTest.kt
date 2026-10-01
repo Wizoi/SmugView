@@ -76,10 +76,12 @@ class SyncReportTest {
         append(""""Uris":{"Folder":"/api/v2/folder/user/nick/Family/School","HighlightImage":"/api/v2/highlight/album/$key"}}""")
     }
 
+    // A page that has a NextPage is a full one, so its Count is 100 (the crawl advances by the server's Count,
+    // Phase 4-5); the fixtures list a few albums to keep the JSON short.
     private fun albumsPage(albums: List<String>, next: String?, total: Int = 9) = buildString {
         append("""{"Response":{"Uri":"/api/v2/user/nick!albums","Album":[""")
         append(albums.joinToString(","))
-        append("""],"Pages":{"Start":1,"Count":${albums.size},"Total":$total""")
+        append("""],"Pages":{"Start":1,"Count":${if (next != null) 100 else albums.size},"Total":$total""")
         if (next != null) append(""","NextPage":"$next"""")
         append("}},\"Code\":200,\"Message\":\"Ok\"}")
     }
@@ -104,7 +106,7 @@ class SyncReportTest {
         val repository = repo { chain ->
             val url = chain.request().url.toString()
             if (chain.request().url.queryParameter("start") == "101") {
-                reply(chain, 200, albumsPage(listOf(albumJson("AAAAAA", "N3", daysAgo(5))), next = null, total = 104))
+                reply(chain, 200, albumsPage(listOf(albumJson("AAAAAA", "N3", daysAgo(5))), next = null, total = 101))
             } else {
                 reply(
                     chain, 200,
@@ -115,7 +117,7 @@ class SyncReportTest {
                             albumJson("PwAlbm", "N4", daysAgo(9), security = "Password")
                         ),
                         next = "/api/v2/user/nick!albums?start=101&count=100",
-                        total = 104
+                        total = 101
                     )
                 )
             }

@@ -433,6 +433,12 @@ design, and why.)*
 | 4-4 | The grid's streaming loop uses `Pager` with `delayMs = 0` (the old loop had no pause); `getAllAlbumImages` keeps the 100 ms pause it had | Behaviour unchanged; a pause would slow every multi-page gallery the user opens |
 | 4-4 | Added `Page.nextStart(window)` and `pageOf`/`toPage` (album, search, node) to `Pager.kt`; `Pager.each` uses `nextStart` | Page 1 of a gallery is fetched outside the loop (lock detection, reauthorize), so the caller needs the same stop rule; 4-5 reuses `toPage` |
 | 4-4 | Page 2+ requests send no `X-Ignore-Errors` (page 1 does) | Same as the old `getAlbumImagesByUri` calls, so error behaviour on later pages is unchanged |
+| 4-5 | Page 2+ of the photo search no longer sends `Password` | It was inert (R-23); the old `searchImagesUserByUri` carried it, `Pager` pages never did. The 4-7 sweep removes the rest |
+| 4-5 | Photo search and the Tags loader page by `start` at 100 per page (the server's cap), not the nominal 500 | The fake and the live API clamp to 100; the old Tags stop (`start > 9501`) assumed 500 and lost the last 400 results |
+| 4-5 | `getImagesByKeywordPage` throws on failure; the Tags controller's catch logs it and keeps the resume point (the old one swallowed the error and set the total to 0) | A page that fails must not read as "0 results"; the next re-entry resumes from the same `start` |
+| 4-5 | A finished Tags load is not re-requested on re-entry (the old code made one extra empty request) | `nextStartToLoad == null` means done; one request fewer |
+| 4-5 | `GalleryCrawl.fetchAll` advances by the server's `Count` (it added a fixed 100) | `Pager` principle; the live API returns 100 for a full page, so nothing changes there. `SyncReportTest` fixtures were made to say so (full page = `Count` 100) |
+| 4-5 | Photo search pauses 100 ms between pages (`Pager`'s default; the old loop 200 ms) | Same order of magnitude; one rule for every loop |
 
 ## 10. findings.md rows
 

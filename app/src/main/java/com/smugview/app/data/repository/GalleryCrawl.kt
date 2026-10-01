@@ -1,10 +1,11 @@
 package com.smugview.app.data.repository
 
 import com.smugview.app.data.api.AlbumDetails
+import com.smugview.app.data.api.Page
+import com.smugview.app.data.api.Pager
 import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.db.CachedAlbum
 import com.smugview.app.data.db.CollectionDao
-import kotlinx.coroutines.delay
 
 /**
  * The gallery crawl (design 3.3): read EVERY page of `user!albums`, then write all or nothing.
@@ -46,34 +47,40 @@ internal class GalleryCrawl(
         onPage: (pages: Int, seen: Int, nullLastUpdated: Int, passwordSecurity: Int) -> Unit = { _, _, _, _ -> }
     ): Fetched {
         val all = ArrayList<Crawled>()
-        var start = 1
         var pages = 0
         var nullLastUpdated = 0
         var passwordSecurity = 0
-        while (true) {
-            val response = api.getUserAlbums(nickname, apiKey, count = PAGE_SIZE, start = start, cacheControl = "no-cache")
-            val albums = response.response.albums ?: emptyList()
-            val expansions = response.expansions
-            pages++
-            for (album in albums) {
-                val highlightUrl = album.uris?.highlightImage?.let { expansions?.get(it)?.image?.thumbnailUrl }
-                    ?.replace("/Th/", "/M/")?.replace("/th/", "/m/")
-                    ?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
-                all.add(Crawled(album, highlightUrl, folderPathOf(album.uris?.folder, nickname)))
-            }
-            nullLastUpdated += albums.count { it.dateModified == null }
-            passwordSecurity += albums.count { it.securityType == "Password" }
-            onPage(pages, all.size, nullLastUpdated, passwordSecurity)
-
-            val total = response.response.pages?.total
-            val done = albums.isEmpty() ||
-                (total != null && start + PAGE_SIZE > total) ||
-                (total == null && albums.size < PAGE_SIZE)
-            if (done) break
-            if (pages >= MAX_PAGES) throw IllegalStateException("PageCap")
-            start += PAGE_SIZE
-            if (pageDelayMs > 0) delay(pageDelayMs)
-        }
+        // Every page is the same typed call with `start` (Pages.NextPage drops _expand and _verbosity, V3),
+        // paged by Pager: next start from the server's Count, PageCap at MAX_PAGES, a pause between pages.
+        // The listing is unsorted, so there is no early stop: only the total or an empty page ends it.
+        Pager.each(
+            pageSize = PAGE_SIZE,
+            maxPages = MAX_PAGES,
+            delayMs = pageDelayMs,
+            fetch = { start, count ->
+                val response = api.getUserAlbums(nickname, apiKey, count = count, start = start, cacheControl = "no-cache")
+                val albums = response.response.albums ?: emptyList()
+                val serverPages = response.response.pages
+                val expansions = response.expansions
+                for (album in albums) {
+                    val highlightUrl = album.uris?.highlightImage?.let { expansions?.get(it)?.image?.thumbnailUrl }
+                        ?.replace("/Th/", "/M/")?.replace("/th/", "/m/")
+                        ?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
+                    all.add(Crawled(album, highlightUrl, folderPathOf(album.uris?.folder, nickname)))
+                }
+                nullLastUpdated += albums.count { it.dateModified == null }
+                passwordSecurity += albums.count { it.securityType == "Password" }
+                pages++
+                onPage(pages, all.size, nullLastUpdated, passwordSecurity)
+                // No Pages block: a short page is the last one, a full page means there may be more.
+                Page(
+                    albums, start,
+                    count = serverPages?.count?.takeIf { it > 0 } ?: albums.size,
+                    total = serverPages?.total ?: if (albums.size < PAGE_SIZE) start - 1 + albums.size else null
+                )
+            },
+            onPage = { true }
+        )
         return Fetched(all, pages, nullLastUpdated, passwordSecurity)
     }
 

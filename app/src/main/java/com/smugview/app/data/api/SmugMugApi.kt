@@ -114,12 +114,6 @@ interface SmugMugApi {
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 
-    @GET
-    suspend fun searchImagesByUri(
-        @Url url: String,
-        @Query("APIKey") apiKey: String
-    ): ImageSearchResponse
-
     @GET("user!search")
     suspend fun searchUsers(
         @Query("APIKey") apiKey: String,
@@ -135,13 +129,6 @@ interface SmugMugApi {
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,Uris",
         @Query("_filteruri") filterUri: String = "ImageAlbum",
         @Query("_verbosity") verbosity: Int = 1,
-        @Query("Password") password: String? = null
-    ): ImageSearchResponse
-
-    @GET
-    suspend fun searchImagesUserByUri(
-        @Url url: String,
-        @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null
     ): ImageSearchResponse
 

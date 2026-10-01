@@ -127,8 +127,8 @@ To maintain a resilient and high-performing integration, any future changes or o
 ### 6. user-level imagesearch vs. image!search — both are used, deliberately
 > Corrected: this section previously claimed `user/{nickname}!imagesearch` was "legacy/deprecated —
 > do not use it". That contradicted `DESIGN.md` §D and the shipping code, which calls **both**
-> endpoints on purpose (`SmugMugRepository.searchImages` -> `image!search`, and
-> `searchImagesUserByUri` -> `user!imagesearch`). Treat `DESIGN.md` §D as canonical.
+> endpoints on purpose (`SmugMugRepository.searchImages` -> `image!search`, and a user-scoped
+> `user!imagesearch`, whose Retrofit method was deleted in Phase 4 as dead code). Treat `DESIGN.md` §D as canonical.
 
 * **`GET user/{nickname}!imagesearch` (primary, scoped)**: user-scoped and supports the `Password`
   parameter. Required for searching inside password-protected or `Searchable: No` albums. This is
@@ -329,9 +329,6 @@ This section provides a structured guide to all Retrofit endpoint definitions, q
 | **GET** | `album/{album_key}` | `getAlbum` | Fetches details (title, security hint, key) for a gallery.<br>• *Params*: `albumKey`, `apiKey`, `password` (optional), `verbosity = 1` |
 | **GET** | `album/{album_key}!images` | `getAlbumImages` | Retrieves paginated images in a gallery (up to 500/request).<br>• *Params*: `albumKey`, `apiKey`, `password` (optional), `count = 500`, `start` (page 2+ is the same call with `start`; `Pages.NextPage` is never followed, it drops `_expand`), `expand = "LargestVideo"`, `filter`, `verbosity = 1` |
 | **GET** | `image!search` | `searchImages` | Performs global public image search (scoped or unscoped).<br>• *Params*: `apiKey`, `scope`, `text` (search term), `sortMethod`, `sortDirection`, `count = 500`, `start = 1`, `filter`, `expand`, `verbosity = 1` |
-| **GET** | *(Dynamic Url)* | `searchImagesByUri` | Follows next page links for global image search results.<br>• *Params*: `url`, `apiKey` only — no other params (all baked into `pages.next`). |
-| **GET** | `user/{nickname}!imagesearch` | `searchImagesUser` | Searches for images restricted to a specific user account.<br>• *Params*: `nickname`, `apiKey`, `text`, `scope`, `password` (optional), `count = 250`, `start = 1`, `expand`, `filter`, `verbosity = 1` |
-| **GET** | *(Dynamic Url)* | `searchImagesUserByUri` | Follows next page links for user-scoped image searches.<br>• *Params*: `url`, `apiKey`, `password` (optional). No `expand`/`filter`/`verbosity` — baked into `pages.next`. |
 | **GET** | `node!search` | `searchNodes` | Finds folders and galleries matching a keyword.<br>• *Params*: `apiKey`, `scope`, `text`, `password` (optional), `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
 | **GET** | `image/{image_key}` | `getImage` | Fetches details and metadata for a single photo.<br>• *Params*: `imageKey`, `apiKey`, `password` (optional), `expand`, `filter`, `verbosity = 1` |
 | **GET** | `image/{image_key}!metadata` | `getImageExif` | Fetches EXIF/camera metadata for a photo.<br>• *Params*: `imageKey`, `apiKey`, `password` (optional), `verbosity = 1` |

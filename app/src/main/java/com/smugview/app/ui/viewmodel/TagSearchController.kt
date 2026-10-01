@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.data.api.Pager
+import com.smugview.app.data.api.toPage
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.data.repository.SmugMugRepository
 import kotlinx.coroutines.CoroutineScope
@@ -71,8 +73,8 @@ class TagSearchController(
     // Tag Search Optimizations Caching & Pagination
     private var lastLoadedKeywords: String = ""
     private var lastLoadedScope: String = ""
-    private var nextStartToLoad: Int = 1
-    private var nextUrlToLoad: String? = null
+    /** Where the keyword search resumes: 1 = not started, null = every page loaded (or the window reached). */
+    private var nextStartToLoad: Int? = 1
 
     private val _keywordPhotosTotal = MutableStateFlow(0)
     val keywordPhotosTotal: StateFlow<Int> = _keywordPhotosTotal.asStateFlow()
@@ -245,7 +247,6 @@ class TagSearchController(
         lastLoadedKeywords = ""
         lastLoadedScope = ""
         nextStartToLoad = 1
-        nextUrlToLoad = null
         scopeLoadingSuppressed = false
         loadedAlbumImages.clear()
         scopeAlbums = emptyList()
@@ -280,7 +281,6 @@ class TagSearchController(
                     lastLoadedKeywords = ""
                     lastLoadedScope = ""
                     nextStartToLoad = 1
-                    nextUrlToLoad = null
                     _isLoadingPhotos.value = false
                     return@collect
                 }
@@ -307,7 +307,6 @@ class TagSearchController(
                     lastLoadedKeywords = keywordsQuery
                     lastLoadedScope = scopeUri
                     nextStartToLoad = 1
-                    nextUrlToLoad = null
                     _keywordPhotosTotal.value = 0
                     _allScopePhotos.value = emptyList()
                 } else if (imageLoadJob?.isActive == true) {
@@ -328,85 +327,58 @@ class TagSearchController(
                             }
                         }
 
-                        var currentStart = nextStartToLoad
-                        var currentNextUrl = nextUrlToLoad
-                        var isFirstPage = (currentStart == 1 && currentNextUrl == null)
-
-                        // SmugMug's Elasticsearch-backed search refuses pagination past ~10,000
-                        // results (from + size <= 10000). If we've already loaded up to that window,
-                        // stop rather than triggering the "Result window is too large" error.
-                        if (currentStart > MAX_SEARCH_START) {
-                            _keywordPhotosTotal.value = _allScopePhotos.value.size
+                        val firstStart = nextStartToLoad
+                        if (firstStart == null) {
+                            // Every page (or the whole 10,000-result window) is already loaded.
                             _isLoadingPhotos.value = false
                             return@imageSearchLaunch
                         }
 
-                        // Load page by page
-                        val (pageImages, nextUrlToken, total) = repository.getImagesByKeywordPage(
-                            scope = scopeUri,
-                            keywords = keywordsQuery,
-                            apiKey = apiKey,
-                            count = 500,
-                            start = currentStart,
-                            nextUrl = currentNextUrl
-                        )
-
-                        val mappedPage = pageImages.map { img ->
-                            if (img.keywordsString.isNullOrEmpty()) {
-                                img.copy(keywordArray = included.toList())
-                            } else {
-                                img
-                            }
-                        }
-
-                        if (isFirstPage) {
-                            _allScopePhotos.value = mappedPage
-                        } else {
-                            _allScopePhotos.value = (_allScopePhotos.value + mappedPage).distinctBy { it.imageKey }
-                        }
-
-                        _keywordPhotosTotal.value = total
-                        currentNextUrl = nextUrlToken
-                        currentStart += pageImages.size
-                        nextStartToLoad = currentStart
-                        nextUrlToLoad = currentNextUrl
-
-                        var pageCount = 1
-                        while (currentNextUrl != null && currentStart <= MAX_SEARCH_START && pageCount < repository.maxPagesPerFetch) {
-                            if (!isActive) break
-
-                            val (nextPageImages, nextPageToken, nextPageTotal) = repository.getImagesByKeywordPage(
-                                scope = scopeUri,
-                                keywords = keywordsQuery,
-                                apiKey = apiKey,
-                                count = 500,
-                                start = currentStart,
-                                nextUrl = currentNextUrl
-                            )
-
-                            val mappedNextPage = nextPageImages.map { img ->
-                                if (img.keywordsString.isNullOrEmpty()) {
-                                    img.copy(keywordArray = included.toList())
-                                } else {
-                                    img
+                        // Every page is the same typed call with `start`, resumed from an Int. SmugMug's search
+                        // refuses a request past 10,000 results (start + count - 1 <= 10,000), so the pager trims
+                        // the last page to the window and stops there silently (R-31, design 3.2).
+                        var pageCount = 0
+                        var lastEnd = 0
+                        var serverTotal = 0
+                        Pager.each(
+                            first = firstStart,
+                            pageSize = SmugMugRepository.SEARCH_PAGE,
+                            window = Pager.SEARCH_WINDOW,
+                            fetch = { start, count ->
+                                val response = repository.getImagesByKeywordPage(
+                                    scope = scopeUri,
+                                    keywords = keywordsQuery,
+                                    apiKey = apiKey,
+                                    count = count,
+                                    start = start
+                                )
+                                serverTotal = response.response.pages?.total ?: 0
+                                response.toPage(start)
+                            },
+                            onPage = { page ->
+                                val mappedPage = page.items.map { img ->
+                                    if (img.keywordsString.isNullOrEmpty()) {
+                                        img.copy(keywordArray = included.toList())
+                                    } else {
+                                        img
+                                    }
                                 }
+                                if (page.start == 1) {
+                                    _allScopePhotos.value = mappedPage
+                                } else {
+                                    _allScopePhotos.value = (_allScopePhotos.value + mappedPage).distinctBy { it.imageKey }
+                                }
+                                _keywordPhotosTotal.value = serverTotal
+                                lastEnd = page.start + page.count - 1
+                                nextStartToLoad = page.nextStart(Pager.SEARCH_WINDOW)
+                                ++pageCount < repository.maxPagesPerFetch
                             }
-
-                            _allScopePhotos.value = (_allScopePhotos.value + mappedNextPage).distinctBy { it.imageKey }
-
-                            _keywordPhotosTotal.value = nextPageTotal
-                            currentNextUrl = nextPageToken
-                            currentStart += nextPageImages.size
-                            nextStartToLoad = currentStart
-                            nextUrlToLoad = currentNextUrl
-                            pageCount++
-                            kotlinx.coroutines.delay(100)
-                        }
+                        )
 
                         // If we stopped at the result-window cap rather than the true end of
                         // results, report the loaded count as the total so the determinate progress
                         // bar settles instead of stalling short of 100%.
-                        if (currentNextUrl != null && currentStart > MAX_SEARCH_START) {
+                        if (nextStartToLoad == null && lastEnd >= Pager.SEARCH_WINDOW) {
                             _keywordPhotosTotal.value = _allScopePhotos.value.size
                         }
                     } catch (e: Exception) {
@@ -476,7 +448,7 @@ class TagSearchController(
             scopeAlbums = emptyList()
             // Leaving the tab cancelled the page loader. If it had not finished, resume it for the
             // kept results; a finished load (no next page) needs nothing.
-            if (keepPhotos && (nextUrlToLoad != null || nextStartToLoad == 1)) {
+            if (keepPhotos && nextStartToLoad != null) {
                 _scopeReloadTrigger.value = _scopeReloadTrigger.value + 1
             }
 
@@ -526,11 +498,5 @@ class TagSearchController(
                 _isScanningTags.value = false
             }
         }
-    }
-
-    companion object {
-        // SmugMug's Elasticsearch search backend caps deep pagination at from + size <= 10000.
-        // With a page size of 500, the last safe 1-indexed start is 9501.
-        private const val MAX_SEARCH_START = 9501
     }
 }

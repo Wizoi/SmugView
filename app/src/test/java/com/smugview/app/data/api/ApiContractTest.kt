@@ -38,7 +38,6 @@ class ApiContractTest(private val method: String) {
             "getAlbum" to setOf("Password"),
             "getAlbumImages" to setOf("Password"),
             "getImageSizeDetailsByUri" to setOf("Password"),
-            "searchImagesUserByUri" to setOf("Password"),
             "searchNodes" to setOf("Password"),
             "getUserRecentImages" to setOf("Password"),
             "getImage" to setOf("Password"),
@@ -61,12 +60,10 @@ class ApiContractTest(private val method: String) {
             "getAlbumImages" to { getAlbumImages("N74KSK", K, password = "pw", start = 501, ignoreErrors = "true") },
             "getImageSizeDetailsByUri" to { getImageSizeDetailsByUri("/api/v2/image/N74KSKi001-0!sizedetails", K, password = "pw") },
             "searchImages" to {
-                searchImages(K, scope = "/api/v2/node/4zqWw", text = "kentridge", sortMethod = "DateAdded", sortDirection = "Descending", expand = "ImageAlbum")
+                searchImages(K, scope = "/api/v2/node/4zqWw", text = "kentridge", sortMethod = "DateAdded", sortDirection = "Descending", start = 101, expand = "ImageAlbum")
             },
-            "searchImagesByUri" to { searchImagesByUri("/api/v2/image!search?Text=kentridge&start=101&count=100", K) },
             "searchUsers" to { searchUsers(K, "idzi") },
             "getUserRecentImages" to { getUserRecentImages("idzifamily", K, password = "pw") },
-            "searchImagesUserByUri" to { searchImagesUserByUri("/api/v2/image!search?Text=kentridge&start=101&count=100", K, password = "pw") },
             "searchNodes" to { searchNodes(K, scope = "/api/v2/node/4zqWw", text = "meet", password = "pw") },
             "getImage" to { getImage("N74KSKi001-0", K, password = "pw") },
             "getImageExif" to { getImageExif("N74KSKi001-0", K, password = "pw") },

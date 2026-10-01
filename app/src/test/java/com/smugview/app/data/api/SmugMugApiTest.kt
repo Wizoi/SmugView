@@ -767,25 +767,25 @@ class SmugMugApiTest {
         var success = false
         var actual = "Failed"
         val endpoint = "image!search?Text=tahoma&count=5"
-        val expected = "Retrieve page 1 (5 items) and page 2 (using next URL, at least 1 item)"
+        val expected = "Retrieve page 1 (5 items) and page 2 (start=6, at least 1 item)"
         try {
             val rootNodeScope = "/api/v2/node/${ctx.rootNodeId}"
             val page1Response = runBlocking {
                 ctx.api.searchImages(ctx.apiKey, scope = rootNodeScope, text = "tahoma", count = 5)
             }
             val page1Images = page1Response.response.images ?: emptyList()
-            val nextUrl = page1Response.response.pages?.next
-            
-            if (nextUrl == null) {
-                actual = "Page 1 returned ${page1Images.size} images, but no next page URL was present to test page 2"
+            val total = page1Response.response.pages?.total ?: 0
+
+            if (total <= page1Images.size) {
+                actual = "Page 1 returned ${page1Images.size} of $total images, so there is no page 2 to test"
                 success = page1Images.isNotEmpty()
             } else {
                 Thread.sleep(250)
                 val page2Response = runBlocking {
-                    ctx.api.searchImagesByUri(nextUrl, ctx.apiKey)
+                    ctx.api.searchImages(ctx.apiKey, scope = rootNodeScope, text = "tahoma", count = 5, start = 6)
                 }
                 val page2Images = page2Response.response.images ?: emptyList()
-                actual = "Page 1 size: ${page1Images.size}, Page 2 size: ${page2Images.size}.<br/>Next URL: $nextUrl"
+                actual = "Page 1 size: ${page1Images.size}, Page 2 size: ${page2Images.size} (start=6)"
                 success = page1Images.size == 5 && page2Images.isNotEmpty()
             }
         } catch (e: Exception) {
@@ -865,29 +865,9 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbumImages(albumKey, apiKey, password, count, start, expand, filter, filterUri, verbosity, ignoreErrors)
     override suspend fun getImageSizeDetailsByUri(url: String, apiKey: String, password: String?) = delegate.getImageSizeDetailsByUri(url, apiKey, password)
     override suspend fun searchImages(apiKey: String, scope: String?, text: String?, sortMethod: String?, sortDirection: String?, count: Int, start: Int, filter: String, filterUri: String, expand: String?, verbosity: Int) = delegate.searchImages(apiKey, scope, text, sortMethod, sortDirection, count, start, filter, filterUri, expand, verbosity)
-    override suspend fun searchImagesByUri(url: String, apiKey: String) = delegate.searchImagesByUri(url, apiKey)
     override suspend fun searchUsers(apiKey: String, query: String, verbosity: Int) = delegate.searchUsers(apiKey, query, verbosity)
     override suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int, filter: String, filterUri: String, verbosity: Int, password: String?) = delegate.getUserRecentImages(nickname, apiKey, count, filter, filterUri, verbosity, password)
     
-    override suspend fun searchImagesUserByUri(url: String, apiKey: String, password: String?): ImageSearchResponse {
-        val images = List(5) { i ->
-            AlbumImageData(
-                imageKey = "mock_image_${i + 5}",
-                title = "Mock Image ${i + 5}",
-                caption = "Mock Caption ${i + 5}",
-                thumbnailUrl = "https://example.com/thumb_${i + 5}.jpg",
-                fileName = "mock_${i + 5}.jpg"
-            )
-        }
-        val pages = PagesData(
-            start = 6,
-            count = 5,
-            total = 10,
-            nextField = null
-        )
-        return ImageSearchResponse(ImageSearchPayload(images, pages))
-    }
-
     override suspend fun searchNodes(apiKey: String, scope: String, text: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.searchNodes(apiKey, scope, text, password, expand, filter, filterUri, verbosity)
     override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getImage(imageKey, apiKey, password, expand, filter, filterUri, verbosity)
     override suspend fun getImageExif(imageKey: String, apiKey: String, password: String?, verbosity: Int) = delegate.getImageExif(imageKey, apiKey, password, verbosity)

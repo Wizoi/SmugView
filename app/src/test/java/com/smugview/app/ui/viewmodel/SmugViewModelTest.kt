@@ -103,22 +103,16 @@ class SmugViewModelTest {
                 Mockito.anyString(),
                 Mockito.anyString(),
                 Mockito.anyInt(),
-                Mockito.anyInt(),
-                Mockito.nullable(String::class.java)
+                Mockito.anyInt()
             )).thenAnswer { invocation ->
                 val scope = invocation.arguments[0] as? String
                 val keywords = invocation.arguments[1] as String
-                val apiKey = invocation.arguments[2] as String
                 val count = invocation.arguments[3] as Int
                 val start = invocation.arguments[4] as Int
-                val nextUrl = invocation.arguments[5] as? String
-
-                if (nextUrl == null) {
-                    val list = keywordPages["$scope|$keywords|$count|$start"] ?: emptyList()
-                    Triple(list, null, list.size)
-                } else {
-                    Triple(emptyList<AlbumImageData>(), null, 0)
-                }
+                val list = keywordPages["$scope|$keywords|$count|$start"] ?: emptyList()
+                com.smugview.app.data.api.ImageSearchResponse(
+                    com.smugview.app.data.api.ImageSearchPayload(list, com.smugview.app.data.api.PagesData(start, list.size, list.size))
+                )
             }
         }
         
@@ -549,9 +543,9 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.getUserRootNodeId("testUser", BuildConfig.SMUGMUG_API_KEY))
             .thenReturn(flowOf(Result.success("4zqWw")))
 
-        keywordPages["/api/v2/node/4zqWw|clara|500|1"] = claraImages
+        keywordPages["/api/v2/node/4zqWw|clara|100|1"] = claraImages
             
-        keywordPages["/api/v2/node/4zqWw|clara,laurel|500|1"] = claraLaurelImages
+        keywordPages["/api/v2/node/4zqWw|clara,laurel|100|1"] = claraLaurelImages
 
         // Start collecting tagFilteredPhotos to keep the WhileSubscribed flow active
         val collectJob = launch {
@@ -882,7 +876,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.getUserRootNodeId("testUser", BuildConfig.SMUGMUG_API_KEY))
             .thenReturn(flowOf(Result.success("4zqWw")))
             
-        keywordPages["/api/v2/node/4zqWw|dancing|500|1"] = listOf(redactedImage)
+        keywordPages["/api/v2/node/4zqWw|dancing|100|1"] = listOf(redactedImage)
             
         val collectJob = launch {
             viewModel.tagFilteredPhotos.collect {}

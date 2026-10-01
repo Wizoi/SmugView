@@ -370,42 +370,6 @@ class SmugMugRepository @Inject constructor(
         return album
     }
 
-    private fun overrideUrlCount(url: String, newCount: Int = 500): String {
-        val countOverridden = if (url.contains("count=")) {
-            url.replace(Regex("count=\\d+"), "count=$newCount")
-        } else {
-            val separator = if (url.contains("?")) "&" else "?"
-            "$url${separator}count=$newCount"
-        }
-        return if (countOverridden.contains("_verbosity=")) {
-            countOverridden.replace(Regex("_verbosity=\\d+"), "_verbosity=1")
-        } else {
-            val separator = if (countOverridden.contains("?")) "&" else "?"
-            "$countOverridden${separator}_verbosity=1"
-        }
-    }
-
-    private fun overrideUrlCountAndStart(url: String, newCount: Int = 500, newStart: Int): String {
-        val countOverridden = if (url.contains("count=")) {
-            url.replace(Regex("count=\\d+"), "count=$newCount")
-        } else {
-            val separator = if (url.contains("?")) "&" else "?"
-            "$url${separator}count=$newCount"
-        }
-        val startOverridden = if (countOverridden.contains("start=")) {
-            countOverridden.replace(Regex("start=\\d+"), "start=$newStart")
-        } else {
-            val separator = if (countOverridden.contains("?")) "&" else "?"
-            "$countOverridden${separator}start=$newStart"
-        }
-        return if (startOverridden.contains("_verbosity=")) {
-            startOverridden.replace(Regex("_verbosity=\\d+"), "_verbosity=1")
-        } else {
-            val separator = if (startOverridden.contains("?")) "&" else "?"
-            "$startOverridden${separator}_verbosity=1"
-        }
-    }
-
     /**
      * One page of a gallery, from [start] (design 3.2): every page is this same typed call, so `_expand`
      * and the filters ride on every page (never a followed `Pages.NextPage`, R-27). Page 1 carries the
@@ -486,40 +450,25 @@ class SmugMugRepository @Inject constructor(
         return api.getUserRecentImages(nickname, apiKey, count = count, password = password)
     }
 
+    /**
+     * One page of the keyword search from [start] (Tags tab). The same typed call for every page, never
+     * a followed `NextPage`, so a caller resumes from an `Int` (design 3.2). The server clamps [count]
+     * to 100 and answers an empty 500 when `start + count - 1 > 10,000` ([Pager.SEARCH_WINDOW]), so the
+     * caller trims with the window. A failure throws; the caller keeps its resume point.
+     */
     suspend fun getImagesByKeywordPage(
         scope: String?,
         keywords: String,
         apiKey: String,
-        count: Int = 500,
-        start: Int = 1,
-        nextUrl: String? = null
-    ): Triple<List<AlbumImageData>, String?, Int> {
-        val spaceSeparatedText = keywords.replace(",", " ")
-        return try {
-            val response = if (!nextUrl.isNullOrEmpty()) {
-                val overriddenUrl = overrideUrlCountAndStart(nextUrl, count, start)
-                val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
-                api.searchImagesByUri(
-                    url = absoluteUrl,
-                    apiKey = apiKey
-                )
-            } else {
-                api.getImagesByKeyword(
-                    apiKey = apiKey,
-                    scope = scope,
-                    text = spaceSeparatedText,
-                    count = count,
-                    start = start
-                )
-            }
-            val pageImages = response.response.images ?: emptyList()
-            val total = response.response.pages?.total ?: 0
-            Triple(pageImages, response.response.pages?.next, total)
-        } catch (e: Exception) {
-            android.util.Log.e("SmugMugRepository", "Failed to getImagesByKeywordPage", e)
-            Triple(emptyList(), null, 0)
-        }
-    }
+        count: Int = SEARCH_PAGE,
+        start: Int = 1
+    ): ImageSearchResponse = api.getImagesByKeyword(
+        apiKey = apiKey,
+        scope = scope,
+        text = keywords.replace(",", " "),
+        count = count,
+        start = start
+    )
 
     suspend fun updateImageMetadata(imageKey: String, apiKey: String, keywords: String): Boolean {
         val body = com.smugview.app.data.api.UpdateImageMetadataRequest(keywords)
@@ -773,6 +722,9 @@ class SmugMugRepository @Inject constructor(
 
         /** What the app asks of `album!images` per page (the server's cap is 500). */
         const val ALBUM_IMAGES_PAGE = 500
+
+        /** What the app asks of `image!search` per page (the server's cap is 100, P13). */
+        const val SEARCH_PAGE = 100
     }
 
     /** Wall clock for the crawl gate; tests move it. */
@@ -1166,87 +1118,38 @@ class SmugMugRepository @Inject constructor(
             if (com.smugview.app.BuildConfig.DEBUG) {
                 android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages calling searchImages with scope=$targetScope")
             }
-            val response = api.searchImages(
-                apiKey = apiKey,
-                scope = targetScope,
-                text = query,
-                start = 1,
-                count = 500
-            )
 
             var insertedCount = 0
             val insertedKeys = mutableSetOf<String>()
+            var fetched = 0
 
-            var nextUrl = response.response.pages?.next
-            val pageImages = response.response.images ?: emptyList()
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages page 1 returned ${pageImages.size} images")
-            }
-            val pageExpansions = response.expansions
-            if (pageExpansions != null) {
-                pageImages.forEach { img ->
-                    if (img.isVideo) {
-                        val largestVideoUri = img.uris?.largestVideo
-                        if (largestVideoUri != null) {
-                            img.videoUrl = pageExpansions[largestVideoUri]?.largestVideo?.url
-                        }
+            // Every page is the same typed call with `start` (never a followed `NextPage`), trimmed to the
+            // search backend's 10,000-result window, which it answers with an empty 500 (design 3.2, P6).
+            Pager.each(
+                pageSize = SEARCH_PAGE,
+                window = Pager.SEARCH_WINDOW,
+                fetch = { start, count ->
+                    val response = api.searchImages(apiKey = apiKey, scope = targetScope, text = query, start = start, count = count)
+                    val pageImages = response.response.images ?: emptyList()
+                    if (com.smugview.app.BuildConfig.DEBUG) {
+                        android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages page ${fetched + 1} returned ${pageImages.size} images")
                     }
-                }
-            }
-            
-            val filteredPageImages = pageImages.filter { img -> insertedKeys.add(img.imageKey) }
-            if (filteredPageImages.isNotEmpty()) {
-                dao.insertSearchResults(
-                    results = filteredPageImages.mapIndexed { index, img ->
-                        img.toSearchResult(query = query, scope = scopeKey, index = insertedCount + index)
-                    }
-                )
-                insertedCount += filteredPageImages.size
-            }
-
-            var pageCount = 1
-            var nextStart = 1 + pageImages.size
-            while (nextUrl != null && pageCount < maxPagesPerFetch) {
-                val overriddenUrl = overrideUrlCountAndStart(nextUrl, 500, nextStart)
-                val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
-                if (com.smugview.app.BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages calling searchImagesUserByUri: page ${pageCount + 1}")
-                }
-                val nextPageResponse = api.searchImagesUserByUri(
-                    url = absoluteUrl,
-                    apiKey = apiKey,
-                    password = password
-                )
-                val nextPageImages = nextPageResponse.response.images ?: emptyList()
-                if (com.smugview.app.BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages page ${pageCount + 1} returned ${nextPageImages.size} images")
-                }
-                val nextPageExpansions = nextPageResponse.expansions
-                if (nextPageExpansions != null) {
-                    nextPageImages.forEach { img ->
-                        if (img.isVideo) {
-                            val largestVideoUri = img.uris?.largestVideo
-                            if (largestVideoUri != null) {
-                                img.videoUrl = nextPageExpansions[largestVideoUri]?.largestVideo?.url
+                    applyVideoUrls(pageImages, response.expansions)
+                    response.toPage(start)
+                },
+                onPage = { page ->
+                    val fresh = page.items.filter { img -> insertedKeys.add(img.imageKey) }
+                    if (fresh.isNotEmpty()) {
+                        dao.insertSearchResults(
+                            results = fresh.mapIndexed { index, img ->
+                                img.toSearchResult(query = query, scope = scopeKey, index = insertedCount + index)
                             }
-                        }
+                        )
+                        insertedCount += fresh.size
                     }
+                    ++fetched < maxPagesPerFetch
                 }
-                
-                val filteredNextPageImages = nextPageImages.filter { img -> insertedKeys.add(img.imageKey) }
-                if (filteredNextPageImages.isNotEmpty()) {
-                    dao.insertSearchResults(
-                        results = filteredNextPageImages.mapIndexed { index, img ->
-                            img.toSearchResult(query = query, scope = scopeKey, index = insertedCount + index)
-                        }
-                    )
-                    insertedCount += filteredNextPageImages.size
-                }
-                nextUrl = nextPageResponse.response.pages?.next
-                nextStart += nextPageImages.size
-                pageCount++
-                kotlinx.coroutines.delay(100)
-            }
+            )
             if (com.smugview.app.BuildConfig.DEBUG) {
                 android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages completed: total inserted = $insertedCount")
             }
