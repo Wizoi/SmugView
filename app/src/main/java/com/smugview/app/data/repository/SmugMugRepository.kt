@@ -102,20 +102,30 @@ class SmugMugRepository @Inject constructor(
         dao.replaceChildren(parentId, scoped)
     }
 
-    private val _albumsCache = kotlinx.coroutines.flow.MutableStateFlow<List<CachedNode>>(emptyList())
-    val albumsCache: kotlinx.coroutines.flow.StateFlow<List<CachedNode>> = _albumsCache
+    /**
+     * The in-memory gallery index of ONE site: the snapshot carries its nickname, so a reader asking
+     * for another site's index gets nothing instead of the previous site's galleries (design 3.1).
+     */
+    data class AlbumIndexSnapshot(val nickname: String, val nodes: List<CachedNode>)
+
+    private val _albumIndex = kotlinx.coroutines.flow.MutableStateFlow(AlbumIndexSnapshot("", emptyList()))
+    val albumIndex: kotlinx.coroutines.flow.StateFlow<AlbumIndexSnapshot> = _albumIndex
+
+    /** The in-memory gallery index of [nickname]; empty when the held snapshot belongs to another site. */
+    fun albumsCacheFor(nickname: String): List<CachedNode> =
+        _albumIndex.value.let { if (it.nickname == nickname) it.nodes else emptyList() }
 
     private val _isAlbumsCacheLoaded = kotlinx.coroutines.flow.MutableStateFlow(false)
     val isAlbumsCacheLoaded: kotlinx.coroutines.flow.StateFlow<Boolean> = _isAlbumsCacheLoaded
 
     /**
-     * True while any [unlockAndIndexSubtree] walk is actively writing to [albumsCache] /
+     * True while any [unlockAndIndexSubtree] walk is actively writing to [albumIndex] /
      * `cached_nodes` in the background. A counter (not a plain boolean) because more than one
      * unlock can be in flight — the flag should only drop once the LAST one finishes, not the
      * first.
      *
      * Exists so a foreground read that depends on the cache being complete (e.g. gallery search
-     * matching `albumsCache.value` right after the user unlocks a folder) can wait for the
+     * matching `albumsCacheFor(nickname)` right after the user unlocks a folder) can wait for the
      * background writer to finish instead of racing it and silently caching/showing incomplete
      * results — see the "search reads incomplete data mid-background-sync" fix in AGENTS.md.
      */
@@ -709,7 +719,7 @@ class SmugMugRepository @Inject constructor(
                 run?.isFirstSync = isFirstSync
                 run?.persistedCount = persisted.size
                 if (!isFirstSync) {
-                    _albumsCache.value = persisted.map { it.toCachedNode() }
+                    _albumIndex.value = AlbumIndexSnapshot(nickname, persisted.map { it.toCachedNode() })
                     _isAlbumsCacheLoaded.value = true
                 } else {
                     _isAlbumsCacheLoaded.value = false
@@ -742,9 +752,9 @@ class SmugMugRepository @Inject constructor(
                 syncState.putLong(gateKey, clock())
                 run?.stop = com.smugview.app.diag.StopReason.NoNextPage
                 run?.changedCount = written.changed.size
-                _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
+                _albumIndex.value = AlbumIndexSnapshot(nickname, dao.getAlbumIndex(nickname).map { it.toCachedNode() })
                 if (com.smugview.app.BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugMugRepository", "album index crawled: ${written.changed.size} new/changed, total=${_albumsCache.value.size}")
+                    android.util.Log.d("SmugMugRepository", "album index crawled: ${written.changed.size} new/changed, total=${_albumIndex.value.nodes.size}")
                 }
 
                 // 4. Parents from the folder paths (relisting the nearest cached ancestor of a recent
@@ -754,7 +764,7 @@ class SmugMugRepository @Inject constructor(
                 parentsResolved = resolved.resolved
                 unresolved = resolved.unresolved
                 if (resolved.resolved > 0 || resolved.relisted.isNotEmpty()) {
-                    _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
+                    _albumIndex.value = AlbumIndexSnapshot(nickname, dao.getAlbumIndex(nickname).map { it.toCachedNode() })
                 }
 
                 // 5. A new or changed gallery means its parent folder's cached listing (the Folders
@@ -770,16 +780,17 @@ class SmugMugRepository @Inject constructor(
                 relistedCount = relisted.size
                 run?.invalidatedParents = relisted.size
                 relisted
+            } catch (e: CancellationException) {
+                // Recorded, then rethrown (design 3.1): a cancelled crawl stops its caller too, so a site
+                // switch really ends the site's sync. No gate stamp is written: the gate counts from a
+                // completed crawl only, so switching straight back runs the crawl again.
+                run?.stop = com.smugview.app.diag.StopReason.Cancelled
+                throw e
             } catch (e: Exception) {
                 SmugLog.e("SmugMugRepository", "Failed to sync gallery cache", e)
-                // Recorded, not rethrown: swallowing (cancellation included) is today's behaviour.
-                if (e is CancellationException) {
-                    run?.stop = com.smugview.app.diag.StopReason.Cancelled
-                } else {
-                    run?.stop = com.smugview.app.diag.StopReason.Error
-                    run?.stopDetail = e.javaClass.simpleName +
-                        ((e as? retrofit2.HttpException)?.let { " ${it.code()}" } ?: "")
-                }
+                run?.stop = com.smugview.app.diag.StopReason.Error
+                run?.stopDetail = e.javaClass.simpleName +
+                    ((e as? retrofit2.HttpException)?.let { " ${it.code()}" } ?: "")
                 emptySet()
             } finally {
                 _isAlbumsCacheLoaded.value = true
@@ -997,7 +1008,7 @@ class SmugMugRepository @Inject constructor(
         val again = IndexParentResolver(dao, clock) { id -> relistOne(nickname, id, apiKey) }
             .resolve(nickname, rootNodeId, emptyMap(), MAX_RELIST, invalidated)
         if (again.resolved > 0 || again.relisted.isNotEmpty()) {
-            _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
+            _albumIndex.value = AlbumIndexSnapshot(nickname, dao.getAlbumIndex(nickname).map { it.toCachedNode() })
         }
         return invalidated + again.relisted
     }
@@ -1148,7 +1159,7 @@ class SmugMugRepository @Inject constructor(
     }
 
     /**
-     * Upserts any Album-type nodes into the flat gallery index ([CachedAlbum] / [albumsCache]) so
+     * Upserts any Album-type nodes into the flat gallery index ([CachedAlbum] / [albumIndex]) so
      * they're searchable, and refreshes the in-memory cache. Existing metadata we don't have from a
      * node-children fetch (urlPath, galleryStyle) is preserved from the prior index entry if present.
      */
@@ -1181,7 +1192,7 @@ class SmugMugRepository @Inject constructor(
             )
         }
         dao.upsertAlbums(toUpsert)
-        _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
+        _albumIndex.value = AlbumIndexSnapshot(nickname, dao.getAlbumIndex(nickname).map { it.toCachedNode() })
     }
 
     fun getSavedPasswordForNode(node: CachedNode): String? {
@@ -1409,7 +1420,7 @@ class SmugMugRepository @Inject constructor(
 
     suspend fun getAllCachedNodes(): List<CachedNode> {
         val dbNodes = dao.getAllCachedNodes()
-        val memNodes = albumsCache.value
+        val memNodes = _albumIndex.value.nodes
         return (dbNodes + memNodes).distinctBy { it.nodeId }
     }
 
@@ -1421,7 +1432,7 @@ class SmugMugRepository @Inject constructor(
      */
     suspend fun getCachedNodesForSite(nickname: String): List<CachedNode> {
         val dbNodes = dao.getCachedNodesForNickname(nickname)
-        val memNodes = albumsCache.value
+        val memNodes = albumsCacheFor(nickname)
         return (dbNodes + memNodes).distinctBy { it.nodeId }
     }
 

@@ -77,8 +77,8 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.isIndexingSubtree)
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(false))
 
-        Mockito.`when`(mockRepository.albumsCache)
-            .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyList()))
+        Mockito.`when`(mockRepository.albumIndex)
+            .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(SmugMugRepository.AlbumIndexSnapshot("", emptyList())))
             
         Mockito.`when`(mockRepository.getSearchHistory())
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyList()))
@@ -355,9 +355,9 @@ class SmugViewModelTest {
         viewModel.setActiveNicknameForTest("testUser")
 
         val indexingFlow = MutableStateFlow(true)
-        val albumsFlow = MutableStateFlow<List<CachedNode>>(emptyList())
+        var albumsNow = emptyList<CachedNode>()
         Mockito.`when`(mockRepository.isIndexingSubtree).thenReturn(indexingFlow)
-        Mockito.`when`(mockRepository.albumsCache).thenReturn(albumsFlow)
+        Mockito.`when`(mockRepository.albumsCacheFor("testUser")).thenAnswer { albumsNow }
 
         Mockito.`when`(mockRepository.getUserRootNodeId(Mockito.anyString(), Mockito.anyString()))
             .thenReturn(flowOf(Result.success("4zqWw")))
@@ -398,7 +398,7 @@ class SmugViewModelTest {
         )
 
         // Background indexing finishes, and the gallery it was walking toward lands in the cache.
-        albumsFlow.value = listOf(
+        albumsNow = listOf(
             CachedNode(
                 nodeId = "album1", parentNodeId = "root", type = "Album", title = "Family Reunion",
                 description = null, access = "Public", passwordHint = null,
@@ -726,8 +726,8 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.getSearchResultNodes("Sunset", "site:testUser", "Folder"))
             .thenReturn(matchedFolders)
             
-        Mockito.`when`(mockRepository.albumsCache)
-            .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(matchedGalleries))
+        Mockito.`when`(mockRepository.albumsCacheFor("testUser"))
+            .thenReturn(matchedGalleries)
             
         val mockPagingSource = object : androidx.paging.PagingSource<Int, SearchResult>() {
             override fun getRefreshKey(state: androidx.paging.PagingState<Int, SearchResult>): Int? = null

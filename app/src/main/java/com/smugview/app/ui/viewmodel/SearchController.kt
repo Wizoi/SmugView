@@ -37,11 +37,15 @@ import kotlinx.coroutines.launch
  * and tab switching); it is injected read-only and remains owned by the
  * ViewModel. [getUnlockedPassword] is injected so scoped searches can unlock
  * gated galleries without this controller touching the node/album cache.
+ *
+ * [scope] is the ViewModel scope (history prefs, paging cache); [siteScope] yields the active
+ * site session's scope (design 3.1), where the search jobs run so a site switch cancels them.
  */
 class SearchController(
     private val repository: SmugMugRepository,
     private val apiKey: String,
     private val scope: CoroutineScope,
+    private val siteScope: () -> CoroutineScope,
     private val sharedPrefs: SharedPreferences,
     private val searchStatusPrefs: SharedPreferences,
     private val searchScope: StateFlow<SearchScope>,
@@ -184,7 +188,7 @@ class SearchController(
         scope.launch {
             repository.insertSearchQuery(query, activeNickname.value ?: "")
         }
-        searchJob = scope.launch {
+        searchJob = siteScope().launch {
             try {
                 val nickname = activeNickname.value
                 if (nickname.isNullOrEmpty()) {
@@ -255,7 +259,7 @@ class SearchController(
                 } else {
                     _isSearchPhotosLoading.value = true
                     backgroundSearchJob?.cancel()
-                    backgroundSearchJob = scope.launch {
+                    backgroundSearchJob = siteScope().launch {
                         try {
                             repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey, password)
                             searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
@@ -297,7 +301,7 @@ class SearchController(
 
                 // Fetch galleries from in-memory cache
                 val lowerQuery = query.lowercase()
-                val cachedGalleries = repository.albumsCache.value.filter {
+                val cachedGalleries = repository.albumsCacheFor(nickname).filter {
                     it.title.lowercase().contains(lowerQuery)
                 }
                 if (BuildConfig.DEBUG) {

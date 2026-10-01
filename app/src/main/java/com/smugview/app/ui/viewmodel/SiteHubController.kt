@@ -10,6 +10,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,11 +29,16 @@ import kotlinx.coroutines.launch
  * The hub load reaches back into ViewModel-owned state through injected lambdas:
  * [getRootNodeId], [getUnlockedPasswordSync], [getAlbumKeyFromWebUri], and
  * [setUserAlbums] (the shared album cache the ViewModel also reads).
+ *
+ * [scope] is the ViewModel scope (site discovery and preview, which are not bound to the active
+ * site); [siteScope] yields the active site session's scope (design 3.1), where the hub load runs so
+ * a site switch cancels it.
  */
 class SiteHubController(
     private val repository: SmugMugRepository,
     private val apiKey: String,
     private val scope: CoroutineScope,
+    private val siteScope: () -> CoroutineScope,
     private val getRootNodeId: () -> String?,
     private val getUnlockedPasswordSync: (String) -> String?,
     private val getAlbumKeyFromWebUri: suspend (String?) -> String?,
@@ -83,7 +90,7 @@ class SiteHubController(
             android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: starting for $nickname, rootNodeId=$rootNodeId, password=${password != null}")
         }
 
-        scope.launch {
+        siteScope().launch {
             try {
                 coroutineScope {
                     val recentImagesDeferred = async {
@@ -141,7 +148,7 @@ class SiteHubController(
                             // Offline (or any other failure): fall back to the persisted gallery
                             // index built by buildInMemoryGalleryCache, so the Home tab still shows
                             // whatever galleries were already synced instead of going blank.
-                            repository.albumsCache.value
+                            repository.albumsCacheFor(nickname)
                                 .filter { it.type == "Album" }
                                 .map { node ->
                                     HubAlbumItem(
@@ -216,7 +223,9 @@ class SiteHubController(
                     android.util.Log.e("SmugViewModel", "loadActiveSiteDetails failed outer", e)
                 }
             } finally {
-                _isActiveSiteDetailsLoading.value = false
+                // A cancelled load (the site changed) must not switch off the loading flag of the load
+                // that replaced it.
+                if (currentCoroutineContext().isActive) _isActiveSiteDetailsLoading.value = false
             }
         }
     }
@@ -284,6 +293,7 @@ class SiteHubController(
         _activeSiteTopKeywords.value = emptyList()
         _activeSiteTotalGalleries.value = null
         _activeSiteTotalPhotos.value = null
+        _isActiveSiteDetailsLoading.value = false
     }
 
     /** Resets the site-preview flows (used by disconnectSite). */

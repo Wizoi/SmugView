@@ -593,8 +593,8 @@ class SmugMugRepositoryTest {
         val api = createMockApi(mockInterceptor)
         val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
-        // Before unlock: gallery search (which filters repository.albumsCache.value by title) finds nothing.
-        assertTrue(repository.albumsCache.value.isEmpty())
+        // Before unlock: gallery search (which filters repository.albumsCacheFor(nickname) by title) finds nothing.
+        assertTrue(repository.albumsCacheFor("testUser").isEmpty())
 
         // Simulate the unlock flow's post-unlock prefetch (SmugViewModel.apiTestFetch calls
         // getNodeChildren(node.nodeId, apiKey, forceRefresh = true, password) on success).
@@ -602,7 +602,7 @@ class SmugMugRepositoryTest {
         assertTrue(result.isSuccess)
 
         // The revealed gallery must now be in the searchable in-memory index...
-        val indexed = repository.albumsCache.value.find { it.title == "Family Photos" }
+        val indexed = repository.albumsCacheFor("testUser").find { it.title == "Family Photos" }
         assertNotNull("Unlocked gallery should be merged into the searchable album index", indexed)
         assertEquals("albumX", indexed?.nodeId)
 
@@ -780,13 +780,13 @@ class SmugMugRepositoryTest {
         val api = createMockApi(mockInterceptor)
         val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
-        assertTrue(repository.albumsCache.value.isEmpty())
+        assertTrue(repository.albumsCacheFor("testUser").isEmpty())
 
         repository.unlockAndIndexSubtree("testUser", "family", "dummy_key", "gallery")
 
         // Fetching "family"'s direct children alone would only see the "school" sub-folder, not
         // the gallery underneath it. The recursive walk must have descended into "school" too.
-        val indexed = repository.albumsCache.value.find { it.title == "Graduation Day" }
+        val indexed = repository.albumsCacheFor("testUser").find { it.title == "Graduation Day" }
         assertNotNull(
             "Gallery nested two levels under the unlocked folder should be indexed for search",
             indexed

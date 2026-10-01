@@ -45,6 +45,7 @@ class TagSearchController(
     private val repository: SmugMugRepository,
     private val apiKey: String,
     private val viewModelScope: CoroutineScope,
+    private val siteScope: () -> CoroutineScope,
     private val sharedPrefs: SharedPreferences,
     private val searchScope: StateFlow<SearchScope>,
     private val isViewingDetail: StateFlow<Boolean>,
@@ -316,7 +317,7 @@ class TagSearchController(
                 // Start or resume loading
                 _isLoadingPhotos.value = true
                 _scanProgress.value = "Loading photos for selected tags..."
-                imageLoadJob = viewModelScope.launch(context = Dispatchers.IO) imageSearchLaunch@{
+                imageLoadJob = siteScope().launch(context = Dispatchers.IO) imageSearchLaunch@{
                     try {
                         val targetScopeId = scope.nodeId ?: resolvedRootId
                         if (targetScopeId != null) {
@@ -454,7 +455,7 @@ class TagSearchController(
 
     fun triggerTagScopeScan(scope: SearchScope, clearSelected: Boolean = true) {
         tagScanJob?.cancel()
-        tagScanJob = viewModelScope.launch {
+        tagScanJob = siteScope().launch {
             _isScanningTags.value = true
             _scanProgress.value = "Starting scan..."
             _allScopePhotos.value = emptyList()

@@ -155,9 +155,9 @@ class SmugViewModel @Inject constructor(
     val unlockedNodeIds: StateFlow<Set<String>> =
         kotlinx.coroutines.flow.combine(
             passwordStore.unlockedKeys,
-            repository.albumsCache
-        ) { savedKeys, nodes ->
-            computeUnlockedNodeIds(savedKeys, nodes)
+            repository.albumIndex
+        ) { savedKeys, index ->
+            computeUnlockedNodeIds(savedKeys, index.nodes)
         }
             .flowOn(defaultDispatcher)
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
@@ -212,6 +212,39 @@ class SmugViewModel @Inject constructor(
         // A parent currently on the navigation stack being unlocked also unlocks this node.
         val savedKeys = passwordStore.unlockedKeys.value
         return folderNavigationStack.any { savedKeys.contains(it.nodeId) }
+    }
+
+    /**
+     * The scope of everything bound to the active site (design 3.1). Closed at tap time by [beginSite]
+     * (a site switch) and [disconnectSite]; a fresh one is opened for the next site. Work that outlives
+     * a site (casting, collections and downloads, history prefs) stays on [viewModelScope].
+     */
+    @Volatile
+    private var session = SiteSession("", viewModelScope.coroutineContext[kotlinx.coroutines.Job])
+
+    /**
+     * The tap of "use this site" (also a launch and a retry): cancels every job of the site that was
+     * active, drops its per-site holders, and opens the session of [nickname]. Runs before the new
+     * site's profile is fetched, so a late answer from the old site cannot land on the new one (Q1).
+     */
+    private fun beginSite(nickname: String) {
+        session.close()
+        session = SiteSession(nickname, viewModelScope.coroutineContext[kotlinx.coroutines.Job])
+        treeSyncJob = null
+        unlockResyncJob = null
+        unlockSubtreeIndexJob = null
+        _userAlbums = null
+        _exifStates.clear()
+        _imageDetailsStates.clear()
+        _imageSizeDetailsStates.clear()
+        savedFolderStateBeforeSearch = null
+        passwordPromptNode = null
+        passwordError = null
+        targetNodeToUnlockAfterSuccess = null
+        _isBackgroundLoading.value = false
+        _backgroundLoadingStatus.value = null
+        siteHub.clearActiveSiteData()
+        resetPerSiteState()
     }
 
     // Casting Integration — delegated to CastController (facade decomposition).
@@ -431,6 +464,7 @@ class SmugViewModel @Inject constructor(
         repository = repository,
         apiKey = apiKey,
         scope = viewModelScope,
+        siteScope = { session.scope },
         sharedPrefs = sharedPrefs,
         searchStatusPrefs = searchStatusPrefs,
         searchScope = searchScope,
@@ -472,7 +506,6 @@ class SmugViewModel @Inject constructor(
 
     private var treeSyncJob: kotlinx.coroutines.Job? = null
     private var unlockResyncJob: kotlinx.coroutines.Job? = null
-    private var siteRootNodeId: String? = null
     private var unlockSubtreeIndexJob: kotlinx.coroutines.Job? = null
 
     fun performSearch(query: String, forceRefresh: Boolean = false) = search.performSearch(query, forceRefresh)
@@ -523,7 +556,7 @@ class SmugViewModel @Inject constructor(
 
     private fun loadSiteHeaderImage(nickname: String, rootId: String) {
         // Show whatever's cached immediately (works offline), then refresh from the network.
-        viewModelScope.launch {
+        session.scope.launch {
             repository.getNodeById(rootId)?.highlightImageUrl?.let { _siteHeaderImageUrl.value = it }
             repository.refreshSiteHeaderNode(nickname, rootId, apiKey)?.highlightImageUrl?.let {
                 _siteHeaderImageUrl.value = it
@@ -537,6 +570,7 @@ class SmugViewModel @Inject constructor(
         repository = repository,
         apiKey = apiKey,
         scope = viewModelScope,
+        siteScope = { session.scope },
         getRootNodeId = {
             _splashState.value.let { if (it is SplashUiState.Success) it.rootNodeId else null }
         },
@@ -578,6 +612,7 @@ class SmugViewModel @Inject constructor(
         repository = repository,
         apiKey = apiKey,
         viewModelScope = viewModelScope,
+        siteScope = { session.scope },
         sharedPrefs = sharedPrefs,
         searchScope = searchScope,
         isViewingDetail = isViewingDetail,
@@ -593,6 +628,12 @@ class SmugViewModel @Inject constructor(
     val keywordPhotosTotal: StateFlow<Int> get() = tag.keywordPhotosTotal
 
     private var targetNodeToUnlockAfterSuccess: CachedNode? = null
+
+    // Per-site holders, declared before init{} because beginSite() (reached from init) resets them.
+    var savedFolderStateBeforeSearch: Pair<String?, List<CachedNode>>? by mutableStateOf(null)
+        private set
+
+    private var _userAlbums: List<com.smugview.app.data.api.AlbumDetails>? = null
 
     enum class TagFilterState {
         INCLUDED,
@@ -648,8 +689,11 @@ class SmugViewModel @Inject constructor(
             return
         }
         _splashState.value = SplashUiState.Loading
-        viewModelScope.launch {
+        beginSite(nickname)
+        val mySession = session
+        mySession.scope.launch {
             repository.getUserProfile(nickname, apiKey).collect { result ->
+                if (!mySession.scope.isActive) return@collect
                 result.fold(
                     onSuccess = { userData ->
                         if (BuildConfig.DEBUG) {
@@ -694,8 +738,12 @@ class SmugViewModel @Inject constructor(
         if (normalizedNickname.isEmpty()) return
 
         _splashState.value = SplashUiState.Loading
-        viewModelScope.launch {
+        // Q1: cancel everything bound to the old site NOW, at tap time, not when the new profile arrives.
+        beginSite(normalizedNickname)
+        val mySession = session
+        mySession.scope.launch {
             repository.getUserProfile(normalizedNickname, apiKey).collect { result ->
+                if (!mySession.scope.isActive) return@collect
                 result.fold(
                     onSuccess = { userData ->
                         _activeUserProfile.value = userData
@@ -719,9 +767,6 @@ class SmugViewModel @Inject constructor(
                         _splashState.value = SplashUiState.Success(rootId)
                         currentFolderId = rootId
                         folderNavigationStack.clear()
-                        // Clear the previous site's search/tag/scope state so it doesn't leak
-                        // onto the newly selected site.
-                        resetPerSiteState()
 
                         // Unlock, gallery crawl and tree walk run as one job (startSiteSync, below).
                         
@@ -753,8 +798,7 @@ class SmugViewModel @Inject constructor(
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "disconnectSite called: activeNickname=${_activeNickname.value}")
         }
-        treeSyncJob?.cancel()
-        treeSyncJob = null
+        beginSite("")
         sharedPrefs.edit().remove("active_nickname").apply()
         _activeNickname.value = null
         repository.setActiveNickname(null)
@@ -790,7 +834,7 @@ class SmugViewModel @Inject constructor(
         }
         _browserState.value = BrowserUiState.Loading
         val nickname = _activeNickname.value.orEmpty()
-        viewModelScope.launch(com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("folder"))) {
+        session.scope.launch(com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("folder"))) {
             val password = getUnlockedPassword(nodeId)
             repository.getNodeChildren(nickname, nodeId, apiKey, forceRefresh, password).collect { result ->
                 result.fold(
@@ -849,9 +893,6 @@ class SmugViewModel @Inject constructor(
             }
         }
     }
-    var savedFolderStateBeforeSearch: Pair<String?, List<CachedNode>>? by mutableStateOf(null)
-        private set
-
     fun navigateToFolderFromSearch(node: CachedNode) {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "navigateToFolderFromSearch: folderName=${node.title}, nodeId=${node.nodeId}")
@@ -902,7 +943,7 @@ class SmugViewModel @Inject constructor(
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "navigateToChildFolder: title=${node.title}, nodeId=${node.nodeId}, access=${node.access}")
         }
-        viewModelScope.launch {
+        session.scope.launch {
             val savedPassword = getUnlockedPassword(node.nodeId)
             if ((node.access == "Password" || node.access == "Inherited") && savedPassword == null) {
                 if (BuildConfig.DEBUG) {
@@ -921,7 +962,7 @@ class SmugViewModel @Inject constructor(
     }
 
     fun markNodeAsViewed(nodeId: String) {
-        viewModelScope.launch {
+        session.scope.launch {
             try {
                 repository.markNodeAsViewed(nodeId)
             } catch (e: Exception) {
@@ -954,7 +995,7 @@ class SmugViewModel @Inject constructor(
     }
 
     fun checkAndNavigateToAlbum(node: CachedNode, onNavigate: (albumKey: String) -> Unit) {
-        viewModelScope.launch {
+        session.scope.launch {
             val albumKey = node.getAlbumKey() // Always use helper — strips !images suffixes
 
             // Layer 1: DB lookup for access state
@@ -1014,7 +1055,7 @@ class SmugViewModel @Inject constructor(
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "promptPassword called: nodeId=${node.nodeId}, title=${node.title}")
         }
-        viewModelScope.launch {
+        session.scope.launch {
             targetNodeToUnlockAfterSuccess = node
             try {
                 val resolution = repository.resolvePasswordRootNodeId(node.nodeId, apiKey)
@@ -1054,7 +1095,7 @@ class SmugViewModel @Inject constructor(
     }
 
     fun handleAlbumLoadError(albumKey: String, error: Throwable? = null) {
-        viewModelScope.launch {
+        session.scope.launch {
             val rejected = com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)
             val password = getUnlockedPassword(albumKey)
             if (!password.isNullOrEmpty() && rejected) {
@@ -1115,7 +1156,7 @@ class SmugViewModel @Inject constructor(
             .replace('”', '"')
             .replace('‘', '\'')
             .replace('’', '\'')
-        viewModelScope.launch {
+        session.scope.launch {
             try {
                 val isCorrect = apiTestFetch(promptNode, normalizedPassword)
                 if (isCorrect) {
@@ -1205,9 +1246,9 @@ class SmugViewModel @Inject constructor(
     /** A new session cookie makes more galleries visible to the index crawl, so crawl now, not at the next launch. */
     private fun resyncAfterUnlock() {
         val nickname = _activeNickname.value ?: return
-        val rootId = siteRootNodeId ?: return
+        val rootId = session.rootNodeId ?: return
         unlockResyncJob?.cancel()
-        unlockResyncJob = viewModelScope.launch(defaultDispatcher) {
+        unlockResyncJob = session.scope.launch(defaultDispatcher) {
             val invalidated = repository.resyncAfterUnlock(nickname, rootId, apiKey)
             val open = currentFolderId
             if (open != null && open in invalidated) loadFolderContents(open, forceRefresh = true)
@@ -1223,7 +1264,7 @@ class SmugViewModel @Inject constructor(
     private fun indexUnlockedSubtreeInBackground(rootNodeId: String, password: String) {
         unlockSubtreeIndexJob?.cancel()
         val nickname = _activeNickname.value.orEmpty()
-        unlockSubtreeIndexJob = viewModelScope.launch(defaultDispatcher) {
+        unlockSubtreeIndexJob = session.scope.launch(defaultDispatcher) {
             repository.unlockAndIndexSubtree(nickname, rootNodeId, apiKey, password)
         }
     }
@@ -1386,7 +1427,7 @@ class SmugViewModel @Inject constructor(
         currentAlbumTitle = ""
 
         if (!albumKey.startsWith("local_col_")) {
-            viewModelScope.launch(com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("gallery"))) {
+            session.scope.launch(com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("gallery"))) {
                 try {
                     val node = repository.getNodeByIdOrKey(albumKey)
                     if (node != null) {
@@ -1518,7 +1559,7 @@ class SmugViewModel @Inject constructor(
 
         _isBackgroundLoading.value = true
         _backgroundLoadingStatus.value = "Fetching album photos..."
-        viewModelScope.launch {
+        session.scope.launch {
             // Resolve any saved/inherited password, but bound it: the hierarchy walk can be starved
             // for several seconds under concurrent load (e.g. arriving here via "Jump to Gallery"
             // while image-detail resolution is still running). On timeout we treat it as "no saved
@@ -1690,7 +1731,7 @@ class SmugViewModel @Inject constructor(
     fun getImageExif(imageKey: String): StateFlow<Result<ExifData>?> {
         val flow = _exifStates.getOrPut(imageKey) {
             val stateFlow = MutableStateFlow<Result<ExifData>?>(null)
-            viewModelScope.launch {
+            session.scope.launch {
                 val albumKey = _currentAlbumKey.value
                 val password = getUnlockedPassword(albumKey)
                 repository.getImageExif(imageKey, apiKey, password).collect {
@@ -1705,7 +1746,7 @@ class SmugViewModel @Inject constructor(
     fun getImageSizeDetails(imageKey: String, uri: String): StateFlow<Result<ImageSizeDetailsPayload>?> {
         val flow = _imageSizeDetailsStates.getOrPut(imageKey) {
             val stateFlow = MutableStateFlow<Result<ImageSizeDetailsPayload>?>(null)
-            viewModelScope.launch {
+            session.scope.launch {
                 val albumKey = _currentAlbumKey.value
                 val password = getUnlockedPassword(albumKey)
                 repository.getImageSizeDetails(uri, apiKey, password).collect {
@@ -1720,7 +1761,7 @@ class SmugViewModel @Inject constructor(
     fun getImageDetails(imageKey: String): StateFlow<Result<AlbumImageData>?> {
         val flow = _imageDetailsStates.getOrPut(imageKey) {
             val stateFlow = MutableStateFlow<Result<AlbumImageData>?>(null)
-            viewModelScope.launch(defaultDispatcher) {
+            session.scope.launch(defaultDispatcher) {
                 val albumKey = _currentAlbumKey.value
                 val searchPhoto = searchPhotosList.find { it.imageKey == imageKey }
                 val webUri = searchPhoto?.webUri
@@ -1967,8 +2008,6 @@ class SmugViewModel @Inject constructor(
     fun removePhotoFromCollection(imageKey: String, collectionId: Long) =
         collections.removePhotoFromCollection(imageKey, collectionId)
 
-    private var _userAlbums: List<com.smugview.app.data.api.AlbumDetails>? = null
-
     suspend fun getAlbumKeyFromWebUri(webUri: String?): String? {
         val targetUri = webUri ?: return null
         if (targetUri.isEmpty()) return null
@@ -2117,9 +2156,9 @@ class SmugViewModel @Inject constructor(
      * folder on screen, it is reloaded so a new gallery is not stuck behind a manual refresh.
      */
     private fun startSiteSync(nickname: String, rootNodeId: String) {
-        siteRootNodeId = rootNodeId
+        session.rootNodeId = rootNodeId
         treeSyncJob?.cancel()
-        treeSyncJob = viewModelScope.launch {
+        treeSyncJob = session.scope.launch {
             val invalidatedParents = repository.runSiteSync(nickname, rootNodeId, apiKey)
             if (currentFolderId != null && currentFolderId in invalidatedParents.orEmpty()) {
                 loadFolderContents(currentFolderId!!, forceRefresh = true)

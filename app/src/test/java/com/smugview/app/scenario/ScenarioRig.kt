@@ -38,6 +38,7 @@ class ScenarioRig {
     val dao: CollectionDao = db.collectionDao()
     val reporter = RecordingSyncReporter()
     val passwords = FakePasswordStore()
+    val syncState = InMemorySyncStateStore()
     val savedState = SavedStateHandle()
     val app: Application = ApplicationProvider.getApplicationContext()
     private val mainThread = newSingleThreadContext("main")
@@ -48,7 +49,7 @@ class ScenarioRig {
     init {
         Dispatchers.setMain(mainThread)
         app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE).edit().clear().commit()
-        repository = SmugMugRepository(server.api(), dao, passwords, app, reporter, InMemorySyncStateStore()).also {
+        repository = SmugMugRepository(server.api(), dao, passwords, app, reporter, syncState).also {
             it.treeSyncDelayMs = 0
             it.unlockDelayMs = 0
         }
