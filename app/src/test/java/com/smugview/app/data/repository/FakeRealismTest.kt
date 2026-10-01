@@ -180,4 +180,57 @@ class FakeRealismTest {
         assertTrue(r.headers("Set-Cookie").all { it.contains("Secure") && it.contains("HttpOnly") })
         assertTrue(server.hasSession())
     }
+
+    // --- phase 5 step 5-0: the archived original (design P1, P6, P7) ---
+
+    @Test fun archived_fields_appear_only_when_filter_lists_them_and_describe_the_cdn_body() {
+        val full = response("album/FfHCms!images?count=2&_filter=ImageKey,ArchivedUri,ArchivedSize,ArchivedMD5&_verbosity=1")
+            .getAsJsonArray("AlbumImage")[0].asJsonObject
+        val key = full.get("ImageKey").asString
+        assertEquals(FakeOriginals.archivedUri(key), full.get("ArchivedUri").asString)
+        assertEquals(FakeOriginals.size(key), full.get("ArchivedSize").asLong)
+        assertEquals(FakeOriginals.md5(key), full.get("ArchivedMD5").asString)
+        assertTrue(full.get("ArchivedUri").asString.matches(Regex("""https://photos\.smugmug\.com/photos/i-$key/0/[0-9a-f]{8}/D/i-$key-D\.jpg""")))
+        // a filter without them leaves them out, like the live API (the app must ask for them)
+        val slim = response("album/FfHCms!images?count=2&_filter=ImageKey,Title&_verbosity=1").getAsJsonArray("AlbumImage")[0].asJsonObject
+        assertFalse(slim.has("ArchivedUri") || slim.has("ArchivedSize") || slim.has("ArchivedMD5"))
+        // the by-key route answers them too, and an unknown key is a 404 (P6)
+        val byKey = response("image/${key}-0?_filter=ImageKey,ArchivedUri,ArchivedSize,ArchivedMD5,Format,IsVideo").getAsJsonObject("Image")
+        assertEquals(FakeOriginals.md5(key), byKey.get("ArchivedMD5").asString)
+        assertEquals(404, get("image/nonexistent-0?_filter=ArchivedUri").code)
+    }
+
+    @Test fun a_videos_archived_original_is_a_jpeg_still_not_the_mp4() {
+        val album = FakeSmugMugServer.BIG_GALLERY_ALBUM
+        val video = response("album/$album!images?count=5&_filter=ImageKey,Format,IsVideo,ArchivedUri,ArchivedSize&_verbosity=1")
+            .getAsJsonArray("AlbumImage")[2].asJsonObject
+        assertEquals("MP4", video.get("Format").asString)
+        assertTrue(video.get("IsVideo").asBoolean)
+        assertTrue(video.get("ArchivedUri").asString.endsWith("-D.jpg"))
+        assertEquals(164_821L, video.get("ArchivedSize").asLong)
+    }
+
+    @Test fun fake_cdn_serves_the_bytes_the_api_described_with_etag_range_and_404() {
+        FakeCdn().use { cdn ->
+            val key = "FfHCmsi001"
+            val client = cdn.clientOver(okhttp3.OkHttpClient())
+            val url = FakeOriginals.archivedUri(key)
+            client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                assertEquals(200, r.code)
+                val body = r.body!!.bytes()
+                assertEquals(FakeOriginals.size(key), body.size.toLong())
+                assertEquals(FakeOriginals.md5(key), java.security.MessageDigest.getInstance("MD5").digest(body).joinToString("") { "%02x".format(it) })
+                assertEquals("\"" + FakeOriginals.md5(key) + "\"", r.header("ETag"))
+            }
+            client.newCall(Request.Builder().url(url).header("Range", "bytes=100-").build()).execute().use { r ->
+                assertEquals(206, r.code)
+                assertEquals(FakeOriginals.size(key) - 100, r.body!!.bytes().size.toLong())
+            }
+            cdn.gone += key
+            client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                assertEquals(404, r.code)
+                assertEquals("no-store", r.header("Cache-Control"))
+            }
+        }
+    }
 }

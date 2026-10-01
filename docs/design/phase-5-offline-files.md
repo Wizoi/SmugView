@@ -599,3 +599,5 @@ design, and why.)*
 
 | Step | Deviation | Why |
 |---|---|---|
+| 5-0 | The R-38/R-39/R-40 characterization runs on the old worker are **committed** as green, pinned-as-current-behaviour tests (`OldWorkerCharacterizationTest`, 7 cases), not left as uncommitted runs. | The suite has to stay green and the later steps need something to flip: 5-5/5-6 change these assertions to the fixed behaviour. |
+| 5-0 | E1 (an emulator gallery under Family, with the old worker) is **deferred to the exit check (5-11)**. | It needs the family password on the emulator; nobody types or prints it, and the debug build holds none. The emulator has 0 collections (P9), so it also has no old-worker data to observe. |

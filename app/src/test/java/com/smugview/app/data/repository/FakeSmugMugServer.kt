@@ -405,6 +405,30 @@ class FakeSmugMugServer {
             .body(body.toResponseBody("application/json".toMediaTypeOrNull())).build()
 
     /**
+     * Whether `_filter` asks for [field] (all fields when `_filter` is absent). The live API returns only
+     * the listed fields when `_filter` is given (phase 5 design P1/P6); the fake honours it for the
+     * archived-original fields only, the rest keep their fixed shape.
+     */
+    private fun wantsField(req: Request, field: String): Boolean {
+        val wanted = req.url.queryParameter("_filter")?.split(',')?.map { it.trim() }?.toSet() ?: return true
+        return field in wanted
+    }
+
+    /** `,"ArchivedUri":..,"ArchivedSize":..,"ArchivedMD5":..` for [key], as many as [req] asks for (see [FakeOriginals]). */
+    private fun archivedJson(req: Request, key: String, video: Boolean): String = buildString {
+        if (wantsField(req, "ArchivedUri")) append(""","ArchivedUri":"${FakeOriginals.archivedUri(key, video)}"""")
+        if (wantsField(req, "ArchivedSize")) append(""","ArchivedSize":${FakeOriginals.size(key, video)}""")
+        if (wantsField(req, "ArchivedMD5")) append(""","ArchivedMD5":"${FakeOriginals.md5(key, video)}"""")
+    }
+
+    /** Whether [key] is a video: the position of a `{albumKey}i###` key is in [videoPositions]. */
+    fun isVideoKey(key: String): Boolean {
+        val album = albumKeyToNodeId.keys.firstOrNull { key.startsWith(it + "i") } ?: return false
+        val pos = imageKeysOf(album).indexOf(key) + 1
+        return pos in (videoPositions[album] ?: emptySet())
+    }
+
+    /**
      * `"Uris"` entries of [all] that `_filteruri` lists (all of them when it is absent): strings with
      * `_verbosity=1`, link objects without it, as the live API does (design P2, findings #22).
      */
@@ -558,7 +582,7 @@ class FakeSmugMugServer {
                 """{"Uri":"/api/v2/album/$key/image/$ik-0","ImageKey":"$ik","Title":"","FileName":"$ik.${if (video) "mp4" else "jpg"}","Format":"${if (video) "MP4" else "JPG"}",""" +
                     """"ThumbnailUrl":"https://photos.smugmug.com/photos/$ik/0/Th/$ik-Th.jpg","WebUri":"$web/i-$ik",""" +
                     """"OriginalWidth":4000,"OriginalHeight":3000,"OriginalSize":3145728,"Date":"${daysAgo(10)}",""" +
-                    """"Uris":{${urisJson(req, all)}}}"""
+                    """"IsVideo":$video${archivedJson(req, ik, video)},"Uris":{${urisJson(req, all)}}}"""
             }.joinToString(",")
             val next = if (start - 1 + page.size < keys.size) ""","NextPage":"${nextPage(req, "album/$key!images", start + page.size)}"""" else ""
             val exp = if (expansions.isEmpty()) "" else ""","Expansions":{${expansions.joinToString(",")}}"""
@@ -685,6 +709,7 @@ class FakeSmugMugServer {
             req, 200,
             """{"Response":{"Image":{"Uri":"/api/v2/image/$key-0","ImageKey":"$key","Title":"","FileName":"$key.jpg","Format":"JPG",""" +
                 """"ThumbnailUrl":"https://photos.smugmug.com/photos/$key/0/Th/$key-Th.jpg","OriginalWidth":4000,"OriginalHeight":3000,""" +
+                """"IsVideo":${isVideoKey(key)}${archivedJson(req, key, isVideoKey(key))},""" +
                 """"Uris":{${urisJson(req, mapOf("ImageSizeDetails" to "/api/v2/image/$key-0!sizedetails"))}}}},"Code":200}"""
         )
     }

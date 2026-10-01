@@ -192,6 +192,8 @@ dependencies {
     // Robolectric so Room's real SQLite (and the recursive-CTE queries) run in JVM unit tests
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("androidx.test:core:1.5.0")
+    // WorkManager test utilities (TestListenableWorkerBuilder) for the offline worker tests (phase 5)
+    testImplementation("androidx.work:work-testing:2.9.0")
     // In-memory Room + migration testing (used by DAO and MigrationTestHelper tests)
     testImplementation("androidx.room:room-testing:$roomVersion")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
