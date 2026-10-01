@@ -927,9 +927,14 @@ class SmugMugRepository @Inject constructor(
 
     /**
      * Result of one [syncFolderTree] walk. [complete] is true only when every reachable folder was
-     * listed (locked folders with no session are skipped, not failures).
+     * listed or deliberately skipped: a locked folder with no session ([skippedLocked]) and a folder that
+     * is gone ([skippedMissing]) are not failures; a folder that answered 5xx ([skippedFailed]) is, so the
+     * walk is not [complete] and the next launch retries it.
      */
-    data class TreeSyncResult(val forced: Boolean, val complete: Boolean, val listed: Int, val skippedLocked: Int)
+    data class TreeSyncResult(
+        val forced: Boolean, val complete: Boolean, val listed: Int, val skippedLocked: Int,
+        val skippedMissing: Int = 0, val skippedFailed: Int = 0
+    )
 
     /**
      * Walks the folder tree under [rootNodeId] (BFS), listing every reachable folder so `cached_nodes`
@@ -939,8 +944,11 @@ class SmugMugRepository @Inject constructor(
      * walk finishes without error, so an offline or killed run is retried on the next launch. Later
      * walks are cache-first and only fetch what is not cached yet.
      *
-     * A 401/403 means the folder is locked and we hold no session for it: skipped, not an error. Any
-     * other failure aborts the walk (nothing is hammered offline) and leaves the flag unset.
+     * A folder we hold no session for answers **404** anonymously (live, L2; a deleted folder answers 404
+     * too), or 401/403: it is skipped and the walk continues with its siblings, counted as locked when the
+     * row (or an ancestor) says Password and as missing otherwise. A 5xx skips that folder too but leaves
+     * the walk incomplete (flag unset, retried next launch). A 429, being offline, or any other failure
+     * aborts the walk (nothing is hammered) and leaves the flag unset.
      * Recorded as a [com.smugview.app.diag.SyncKind.FolderTreeSync] run.
      */
     suspend fun syncFolderTree(nickname: String, rootNodeId: String, apiKey: String): TreeSyncResult {
@@ -953,11 +961,15 @@ class SmugMugRepository @Inject constructor(
             val run = syncReporter.begin(com.smugview.app.diag.SyncKind.FolderTreeSync, nickname, actionId)
             var listed = 0
             var skippedLocked = 0
+            var skippedMissing = 0
+            var skippedFailed = 0
             var complete = false
             var failure: String? = null
             try {
                 val visited = mutableSetOf<String>()
                 val queue = ArrayDeque<String>()
+                // Folders whose own row, or an ancestor's, says Password: a 404 on one of those is "locked".
+                val passwordish = mutableSetOf<String>()
                 queue.addLast(rootNodeId)
                 var aborted = false
                 while (queue.isNotEmpty() && !aborted) {
@@ -972,21 +984,25 @@ class SmugMugRepository @Inject constructor(
                                 .first().getOrThrow()
                         }
                         listed++
+                        children.forEach { if (id in passwordish || it.access.equals("Password", ignoreCase = true)) passwordish += it.nodeId }
                         children.filter { it.type == "Folder" }.forEach { queue.addLast(it.nodeId) }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         val code = (e as? retrofit2.HttpException)?.code()
-                        if (code == 401 || code == 403) {
-                            skippedLocked++
-                        } else {
-                            failure = e.javaClass.simpleName + (code?.let { " $it" } ?: "")
-                            aborted = true
+                        val label = e.javaClass.simpleName + (code?.let { " $it" } ?: "")
+                        when {
+                            // Offline (no network, or the synthetic only-if-cached 504) and 429: stop, do not hammer.
+                            com.smugview.app.data.api.SmugMugErrorMapper.isOffline(e) || code == 429 -> { failure = label; aborted = true }
+                            code == 401 || code == 403 -> skippedLocked++
+                            code == 404 -> if (id in passwordish) skippedLocked++ else skippedMissing++
+                            code != null && code in 500..599 -> { skippedFailed++; if (failure == null) failure = label }
+                            else -> { failure = label; aborted = true }
                         }
                     }
                     if (!aborted && queue.isNotEmpty() && treeSyncDelayMs > 0) kotlinx.coroutines.delay(treeSyncDelayMs)
                 }
-                complete = !aborted
+                complete = !aborted && skippedFailed == 0
                 if (complete && forced) syncState.putBoolean(flagKey, true)
                 run?.stop = if (complete) com.smugview.app.diag.StopReason.Completed else com.smugview.app.diag.StopReason.Error
                 run?.stopDetail = failure
@@ -994,10 +1010,10 @@ class SmugMugRepository @Inject constructor(
                 run?.stop = com.smugview.app.diag.StopReason.Cancelled
                 throw e
             } finally {
-                run?.notes = "forced=$forced complete=$complete listed=$listed skippedLocked=$skippedLocked"
+                run?.notes = "forced=$forced complete=$complete listed=$listed skippedLocked=$skippedLocked skippedMissing=$skippedMissing skippedFailed=$skippedFailed"
                 run?.let { syncReporter.finish(it) }
             }
-            TreeSyncResult(forced, complete, listed, skippedLocked)
+            TreeSyncResult(forced, complete, listed, skippedLocked, skippedMissing, skippedFailed)
         }
     }
 

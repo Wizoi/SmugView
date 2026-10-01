@@ -241,9 +241,9 @@ class FakeRealismTest {
         val memories = response("node/6KHfpq!children").getAsJsonArray("Node").map { it.asJsonObject }
         assertEquals(listOf("sNWzhX", "Tn8Vc3"), memories.map { it.get("NodeID").asString })
         assertEquals("Password", memories[0].get("SecurityType").asString)
-        assertEquals(401, get("node/sNWzhX!children").code)
-        server.lockedChildrenCode = 404
-        assertEquals("the live answer (L2)", 404, get("node/sNWzhX!children").code)
+        assertEquals("the live answer (L2) is the default", 404, get("node/sNWzhX!children").code)
+        server.lockedChildrenCode = 401
+        assertEquals("a test of the old shape can ask for 401", 401, get("node/sNWzhX!children").code)
         assertEquals(200, get("node/Tn8Vc3!children").code)
         assertTrue("the root lists Memories after listMemories()", response("node/4zqWw!children").getAsJsonArray("Node")
             .any { it.asJsonObject.get("NodeID").asString == "6KHfpq" })

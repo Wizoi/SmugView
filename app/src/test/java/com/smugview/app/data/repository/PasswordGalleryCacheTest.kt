@@ -61,8 +61,8 @@ class PasswordGalleryCacheTest {
         assertEquals("the restart reached the server instead of the cache", 2, imagesRequests())
     }
 
-    /** The same for a folder: the session is gone, so it is 401 (the prompt path), not the cached 200. */
-    @Test fun `a locked folder after a restart is 401, not its cached listing`() {
+    /** The same for a folder: the session is gone, so it is refused (404, L2), not the cached 200. */
+    @Test fun `a locked folder after a restart is refused, not its cached listing`() {
         unlock()
         Thread.sleep(1_100)
         val listed = runBlocking { loop.api().getNodeChildren("2sDN5x", "k") }
@@ -72,7 +72,7 @@ class PasswordGalleryCacheTest {
         val fresh = loop.newClient(cacheDir)
         val code = try { runBlocking { loop.api(fresh).getNodeChildren("2sDN5x", "k") }; 200 } catch (e: HttpException) { e.code() }
 
-        assertEquals(401, code)
+        assertEquals(404, code)
     }
 
     /** Accepted (Q2 (a), R-54): offline after a restart serves what was cached, for up to 7 days, from the app-private cache. */

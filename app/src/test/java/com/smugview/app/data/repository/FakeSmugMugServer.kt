@@ -108,10 +108,10 @@ class FakeSmugMugServer {
 
     /**
      * What a locked folder's `!children` answers to a caller with no session: every `cookieGate` refusal and
-     * the password folder `sNWzhX`. Default 401, what the Phase 3 tests were written against. The live
-     * answer is **404** (L2, phase 6): the 6-0 experiment runs the suite at 404, and 6-1 decides the default.
+     * the password folder `sNWzhX`. Default **404**, the live answer (L2, phase 6; the earlier fake said 401 and hid
+     * that the folder-tree walk aborted on every locked folder). A test of the old shape sets 401 explicitly.
      */
-    var lockedChildrenCode = 401
+    var lockedChildrenCode = 404
 
     /**
      * When true the session is judged from the request's real `Cookie` header (what the production

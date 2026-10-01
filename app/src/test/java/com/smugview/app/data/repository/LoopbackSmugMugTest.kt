@@ -67,7 +67,7 @@ class LoopbackSmugMugTest {
         // a new process: empty cookie jar, the server still remembers the unlock
         val fresh = loop.newClient(tmp.newFolder("cache2"))
         fresh.newCall(Request.Builder().url("${loop.baseUrl}node/2sDN5x!children?count=10").build()).execute().use {
-            assertEquals(401, it.code)
+            assertEquals("a locked folder is a 404 (L2)", 404, it.code)
         }
     }
 
