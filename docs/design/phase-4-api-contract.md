@@ -429,6 +429,10 @@ design, and why.)*
 | 4-0 | The big folder `Kp7Wq2` joins the root listing only after `listBigFolder()` | So the Phase 3 scenarios see the root they were written for |
 | 4-3 | A node listing with no `Pages` block is treated as complete (total = rows seen), and `Pages.Total` of 0 is ignored when rows came back | The `Pager` stops on `count == 0` or the total; stubbed answers in the older repository tests have no `Pages` and would otherwise repeat the same page until `PageCap`. A real answer always has `Pages` |
 | 4-3 | `fetchAlbumsInScopeRemote` now rethrows `CancellationException` instead of swallowing it with the per-folder `catch (Exception)` | It now makes several requests per folder; a cancelled scan must stop, not carry on to the next folder (design 3.2: the pager never catches cancellation) |
+| 4-4 | `Repo.getAllAlbumImages` now applies `LargestVideo` expansions to `videoUrl` on every page (it applied none, even on page 1) | The design test says `getAllAlbumImages` must give videos their `videoUrl`; without it Cast and downloads of a video used the `/X3/` thumbnail. Changes what Cast plays for a video: now the video, as the grid already did |
+| 4-4 | The grid's streaming loop uses `Pager` with `delayMs = 0` (the old loop had no pause); `getAllAlbumImages` keeps the 100 ms pause it had | Behaviour unchanged; a pause would slow every multi-page gallery the user opens |
+| 4-4 | Added `Page.nextStart(window)` and `pageOf`/`toPage` (album, search, node) to `Pager.kt`; `Pager.each` uses `nextStart` | Page 1 of a gallery is fetched outside the loop (lock detection, reauthorize), so the caller needs the same stop rule; 4-5 reuses `toPage` |
+| 4-4 | Page 2+ requests send no `X-Ignore-Errors` (page 1 does) | Same as the old `getAlbumImagesByUri` calls, so error behaviour on later pages is unchanged |
 
 ## 10. findings.md rows
 

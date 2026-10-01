@@ -5,7 +5,19 @@ import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.ensureActive
 
 /** One page as the server answered it: [count] and [total] are the server's own (`Pages.Count`, `Pages.Total`). */
-internal class Page<T>(val items: List<T>, val start: Int, val count: Int, val total: Int?)
+internal class Page<T>(val items: List<T>, val start: Int, val count: Int, val total: Int?) {
+    /**
+     * The start of the page after this one, or null when this was the last: `count == 0`, or
+     * `start + count - 1 >= total`, or (with a [window]) the next start lies past it. [Pager.each] stops on
+     * exactly this, so a caller that fetched the first page itself (lock detection, reauthorize) asks the
+     * same question before it continues with `Pager.each(first = ...)`.
+     */
+    fun nextStart(window: Int? = null): Int? {
+        val next = start + count
+        val done = count <= 0 || (total != null && next - 1 >= total) || (window != null && next > window)
+        return if (done) null else next
+    }
+}
 
 /**
  * The one pagination loop (Phase 4 design 3.2, R-27, R-31, P13). Every page is the same typed call with
@@ -54,12 +66,25 @@ internal object Pager {
             val page = fetch(start, count)
             pages++
             val keepGoing = onPage(page)
-            val next = start + page.count
-            val total = page.total
-            val done = page.count <= 0 || (total != null && next - 1 >= total) || (window != null && next > window)
-            if (done) return null
+            val next = page.nextStart(window) ?: return null
             if (!keepGoing) return next
             start = next
         }
     }
 }
+
+/**
+ * A response's `Pages` block as [Pager] wants it: the server's own `Count` and `Total` (servers clamp the
+ * requested count). No `Pages` block, or a zero `Total`, means this page is everything.
+ */
+internal fun <T> pageOf(items: List<T>, pages: PagesData?, start: Int): Page<T> = Page(
+    items, start,
+    count = pages?.count?.takeIf { it > 0 } ?: items.size,
+    total = pages?.total?.takeIf { it > 0 } ?: (start - 1 + items.size)
+)
+
+internal fun NodeListResponse.toPage(start: Int): Page<NodeData> = pageOf(response.nodes ?: emptyList(), response.pages, start)
+
+internal fun AlbumImagesResponse.toPage(start: Int): Page<AlbumImageData> = pageOf(response.images ?: emptyList(), response.pages, start)
+
+internal fun ImageSearchResponse.toPage(start: Int): Page<AlbumImageData> = pageOf(response.images ?: emptyList(), response.pages, start)

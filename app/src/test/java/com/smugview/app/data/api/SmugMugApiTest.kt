@@ -720,30 +720,24 @@ class SmugMugApiTest {
         var success = false
         var actual = "Failed"
         val endpoint = "album/${ctx.albumKey}!images?count=5"
-        val expected = "Retrieve page 1 (5 items) and page 2 (using next URL, at least 1 item)"
+        val expected = "Retrieve page 1 (5 items) and page 2 (start=6, at least 1 item)"
         try {
             val page1Response = runBlocking {
                 ctx.api.getAlbumImages(ctx.albumKey, ctx.apiKey, count = 5)
             }
             val page1Images = page1Response.response.images ?: emptyList()
-            val nextUrl = page1Response.response.pages?.next
-            
-            if (nextUrl == null) {
-                actual = "Page 1 returned ${page1Images.size} images, but no next page URL was present to test page 2"
+            val total = page1Response.response.pages?.total ?: 0
+
+            if (total <= page1Images.size) {
+                actual = "Page 1 returned ${page1Images.size} of $total images, so there is no page 2 to test"
                 success = page1Images.isNotEmpty()
             } else {
                 Thread.sleep(250)
-                val verbosityUrl = if (nextUrl.contains("_verbosity=")) {
-                    nextUrl.replace(Regex("_verbosity=\\d+"), "_verbosity=1")
-                } else {
-                    val separator = if (nextUrl.contains("?")) "&" else "?"
-                    "$nextUrl${separator}_verbosity=1"
-                }
                 val page2Response = runBlocking {
-                    ctx.api.getAlbumImagesByUri(verbosityUrl, ctx.apiKey)
+                    ctx.api.getAlbumImages(ctx.albumKey, ctx.apiKey, count = 5, start = 6)
                 }
                 val page2Images = page2Response.response.images ?: emptyList()
-                actual = "Page 1 size: ${page1Images.size}, Page 2 size: ${page2Images.size}.<br/>Next URL: $verbosityUrl"
+                actual = "Page 1 size: ${page1Images.size}, Page 2 size: ${page2Images.size} (start=6)"
                 success = page1Images.size == 5 && page2Images.isNotEmpty()
             }
         } catch (e: Exception) {
@@ -868,8 +862,7 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun getNodeParents(nodeId: String, apiKey: String, filter: String, verbosity: Int, ignoreErrors: String?) = delegate.getNodeParents(nodeId, apiKey, filter, verbosity, ignoreErrors)
     override suspend fun getNode(nodeId: String, apiKey: String, expand: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getNode(nodeId, apiKey, expand, filter, filterUri, verbosity, ignoreErrors)
     override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbum(albumKey, apiKey, password, filter, filterUri, verbosity, ignoreErrors)
-    override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbumImages(albumKey, apiKey, password, count, expand, filter, filterUri, verbosity, ignoreErrors)
-    override suspend fun getAlbumImagesByUri(url: String, apiKey: String, password: String?, ignoreErrors: String?) = delegate.getAlbumImagesByUri(url, apiKey, password, ignoreErrors)
+    override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getAlbumImages(albumKey, apiKey, password, count, start, expand, filter, filterUri, verbosity, ignoreErrors)
     override suspend fun getImageSizeDetailsByUri(url: String, apiKey: String, password: String?) = delegate.getImageSizeDetailsByUri(url, apiKey, password)
     override suspend fun searchImages(apiKey: String, scope: String?, text: String?, sortMethod: String?, sortDirection: String?, count: Int, start: Int, filter: String, filterUri: String, expand: String?, verbosity: Int) = delegate.searchImages(apiKey, scope, text, sortMethod, sortDirection, count, start, filter, filterUri, expand, verbosity)
     override suspend fun searchImagesByUri(url: String, apiKey: String) = delegate.searchImagesByUri(url, apiKey)

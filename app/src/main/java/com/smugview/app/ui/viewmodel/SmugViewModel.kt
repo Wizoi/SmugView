@@ -25,7 +25,9 @@ import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.ExifData
 import com.smugview.app.data.api.ImageSizeDetailsPayload
+import com.smugview.app.data.api.Pager
 import com.smugview.app.data.api.UserData
+import com.smugview.app.data.api.toPage
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.data.db.CollectionBookmark
@@ -1634,8 +1636,10 @@ class SmugViewModel @Inject constructor(
             s.copy(photos = merged, tags = tagsSet)
         }
 
-        var currentNextUrl: String? = firstPageResponse.response.pages?.next
-        if (currentNextUrl == null) {
+        // More pages exist when the server's own Count/Total say so (never a followed NextPage, which
+        // drops `_expand=LargestVideo`: videos on page 2+ had no videoUrl, R-27).
+        val nextStart = firstPageResponse.toPage(1).nextStart()
+        if (nextStart == null) {
             run.update { it.copy(complete = true) }
             return
         }
@@ -1662,25 +1666,34 @@ class SmugViewModel @Inject constructor(
             }
         }
 
-        while (currentNextUrl != null && pageIndex <= repository.maxPagesPerFetch) {
+        if (pageIndex <= repository.maxPagesPerFetch) {
             try {
-                run.update { it.copy(status = "Downloading page $pageIndex...") }
-                val nextPageResponse = repository.getAlbumImagesPageByUri(currentNextUrl, apiKey, password)
-                val nextPageImages = nextPageResponse.response.images ?: emptyList()
-                if (nextPageImages.isNotEmpty()) {
-                    imagesUrlUpdate(nextPageImages, nextPageResponse.expansions)
-                    pendingImages.addAll(nextPageImages)
-                    tagsSet = tagsSet + tagsOf(nextPageImages)
-                    tagsUpdated = true
-                }
-                pageIndex++
-                currentNextUrl = nextPageResponse.response.pages?.next
-                if (pageIndex % 3 == 0 || currentNextUrl == null) flush()
+                Pager.each(
+                    first = nextStart,
+                    pageSize = SmugMugRepository.ALBUM_IMAGES_PAGE,
+                    delayMs = 0,
+                    fetch = { start, _ ->
+                        run.update { it.copy(status = "Downloading page $pageIndex...") }
+                        val response = repository.getAlbumImagesPage(albumKey, apiKey, password, start = start)
+                        val images = response.response.images ?: emptyList()
+                        if (images.isNotEmpty()) {
+                            imagesUrlUpdate(images, response.expansions)
+                            pendingImages.addAll(images)
+                            tagsSet = tagsSet + tagsOf(images)
+                            tagsUpdated = true
+                        }
+                        response.toPage(start)
+                    },
+                    onPage = { page ->
+                        pageIndex++
+                        if (pageIndex % 3 == 0 || page.nextStart() == null) flush()
+                        pageIndex <= repository.maxPagesPerFetch
+                    }
+                )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 failure = e
-                break
             }
         }
         flush()

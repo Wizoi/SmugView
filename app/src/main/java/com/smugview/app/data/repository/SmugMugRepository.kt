@@ -11,6 +11,7 @@ import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.api.NodeData
 import com.smugview.app.data.api.Page
 import com.smugview.app.data.api.Pager
+import com.smugview.app.data.api.toPage
 import com.smugview.app.data.api.ParentNodeData
 import com.smugview.app.data.api.UserSearchResponse
 import com.smugview.app.data.api.UserData
@@ -369,17 +370,6 @@ class SmugMugRepository @Inject constructor(
         return album
     }
 
-    /** A node listing page as [Pager] wants it: the server's own `Count` and `Total` (no `Pages` block = this is everything). */
-    private fun com.smugview.app.data.api.NodeListResponse.toPage(start: Int): Page<NodeData> {
-        val items = response.nodes ?: emptyList()
-        val pages = response.pages
-        return Page(
-            items, start,
-            count = pages?.count?.takeIf { it > 0 } ?: items.size,
-            total = pages?.total?.takeIf { it > 0 } ?: (start - 1 + items.size)
-        )
-    }
-
     private fun overrideUrlCount(url: String, newCount: Int = 500): String {
         val countOverridden = if (url.contains("count=")) {
             url.replace(Regex("count=\\d+"), "count=$newCount")
@@ -416,20 +406,28 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
+    /**
+     * One page of a gallery, from [start] (design 3.2): every page is this same typed call, so `_expand`
+     * and the filters ride on every page (never a followed `Pages.NextPage`, R-27). Page 1 carries the
+     * password logic (reauthorize on an empty or refused first answer); later pages are plain calls.
+     */
     suspend fun getAlbumImagesPage(
         albumKey: String,
         apiKey: String,
-        password: String? = null
+        password: String? = null,
+        start: Int = 1
     ): AlbumImagesResponse {
+        // Later pages are not retried through the unlock path: the first page already proved the access.
+        if (start > 1) return api.getAlbumImages(albumKey, apiKey, password, start = start)
         return try {
-            val response = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
+            val response = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true")
             val images = response.response.images
             
             // If the response is successful but images is null or empty, and we have a password, try unlocking parent root
             if ((images == null || images.isEmpty()) && !password.isNullOrEmpty()) {
                 val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true")
                     if (retryResponse.response.images != null && retryResponse.response.images.isNotEmpty()) {
                         return retryResponse
                     }
@@ -444,7 +442,7 @@ class SmugMugRepository @Inject constructor(
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                 val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true")
                     if (retryResponse.response.images == null) {
                         throw e
                     }
@@ -458,14 +456,15 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
-    suspend fun getAlbumImagesPageByUri(
-        nextUrl: String,
-        apiKey: String,
-        password: String? = null
-    ): AlbumImagesResponse {
-        val overriddenUrl = overrideUrlCount(nextUrl, 500)
-        val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
-        return api.getAlbumImagesByUri(absoluteUrl, apiKey, password)
+    /** Gives every video of [images] its playable URL from this page's own `LargestVideo` expansions. */
+    private fun applyVideoUrls(images: List<AlbumImageData>, expansions: Map<String, com.smugview.app.data.api.ExpansionContainer>?) {
+        if (expansions == null) return
+        images.forEach { img ->
+            if (img.isVideo) {
+                val largestVideoUri = img.uris?.largestVideo
+                if (largestVideoUri != null) img.videoUrl = expansions[largestVideoUri]?.largestVideo?.url
+            }
+        }
     }
 
     suspend fun getUserTopKeywords(
@@ -528,53 +527,54 @@ class SmugMugRepository @Inject constructor(
         return response.isSuccessful
     }
 
-    // Fetch all album images recursively following pagination links
+    /**
+     * Every image of a gallery (Cast, Collections downloads). Page 1 keeps its password logic; every
+     * page after it is the same typed call with `start` through [Pager], so `_expand=LargestVideo`
+     * rides on all of them and each video gets its `videoUrl` (R-27). At most [maxPagesPerFetch] pages.
+     */
     suspend fun getAllAlbumImages(
         albumKey: String,
         apiKey: String,
         password: String? = null
     ): List<AlbumImageData> {
         val allImages = mutableListOf<AlbumImageData>()
-        try {
-            var response = try {
-                val res = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
-                if (res.response.images == null) {
-                    throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
-                }
-                res
-            } catch (e: Exception) {
-                if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                    val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
-                    if (unlocked) {
-                        val retryRes = api.getAlbumImages(albumKey, apiKey, password, ignoreErrors = "true")
-                        if (retryRes.response.images == null) {
-                            throw e
-                        }
-                        retryRes
-                    } else {
+        val first = try {
+            val res = api.getAlbumImages(albumKey, apiKey, password, start = 1, ignoreErrors = "true")
+            if (res.response.images == null) {
+                throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
+            }
+            res
+        } catch (e: Exception) {
+            if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
+                val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
+                if (unlocked) {
+                    val retryRes = api.getAlbumImages(albumKey, apiKey, password, start = 1, ignoreErrors = "true")
+                    if (retryRes.response.images == null) {
                         throw e
                     }
+                    retryRes
                 } else {
                     throw e
                 }
+            } else {
+                throw e
             }
-            response.response.images?.let { allImages.addAll(it) }
-            var nextUrl = response.response.pages?.next
-            var pageCount = 1
-            while (nextUrl != null && pageCount < maxPagesPerFetch) {
-                // Ensure nextUrl is relative to Retrofit's base URL if required, or absolute
-                // SmugMug nextUri starts with /api/v2/... Retrofit @Url supports relative/absolute paths.
-                val overriddenUrl = overrideUrlCount(nextUrl, 500)
-                val absoluteUrl = if (overriddenUrl.startsWith("http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
-                response = api.getAlbumImagesByUri(absoluteUrl, apiKey, password)
-                response.response.images?.let { allImages.addAll(it) }
-                nextUrl = response.response.pages?.next
-                pageCount++
-                kotlinx.coroutines.delay(100)
-            }
-        } catch (e: Exception) {
-            // Propagate or log
-            throw e
+        }
+        applyVideoUrls(first.response.images ?: emptyList(), first.expansions)
+        first.response.images?.let { allImages.addAll(it) }
+        val next = first.toPage(1).nextStart()
+        if (next != null && maxPagesPerFetch > 1) {
+            var fetched = 1
+            Pager.each(
+                first = next,
+                pageSize = ALBUM_IMAGES_PAGE,
+                fetch = { start, count ->
+                    val res = api.getAlbumImages(albumKey, apiKey, password, count = count, start = start)
+                    applyVideoUrls(res.response.images ?: emptyList(), res.expansions)
+                    res.toPage(start)
+                },
+                onPage = { page -> allImages.addAll(page.items); ++fetched < maxPagesPerFetch }
+            )
         }
         return allImages
     }
@@ -770,6 +770,9 @@ class SmugMugRepository @Inject constructor(
 
         /** Most folders one crawl relists. */
         const val MAX_RELIST = 30
+
+        /** What the app asks of `album!images` per page (the server's cap is 500). */
+        const val ALBUM_IMAGES_PAGE = 500
     }
 
     /** Wall clock for the crawl gate; tests move it. */

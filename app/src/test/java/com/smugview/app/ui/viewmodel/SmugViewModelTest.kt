@@ -941,7 +941,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.getAlbum(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
             .thenReturn(mockAlbum)
 
-        Mockito.`when`(mockRepository.getAlbumImagesPage(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
+        Mockito.`when`(mockRepository.getAlbumImagesPage(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.anyInt()))
             .thenReturn(com.smugview.app.data.api.AlbumImagesResponse(
                 response = com.smugview.app.data.api.AlbumImagesPayload(
                     images = emptyList()
@@ -1245,7 +1245,8 @@ class SmugViewModelTest {
                 mockRepository.getAlbumImagesPage(
                     Mockito.anyString(),
                     Mockito.anyString(),
-                    Mockito.nullable(String::class.java)
+                    Mockito.nullable(String::class.java),
+                    Mockito.anyInt()
                 )
             ).thenThrow(retrofit2.HttpException(retrofit2.Response.error<Any>(401, okhttp3.ResponseBody.create(null, ""))))
         }

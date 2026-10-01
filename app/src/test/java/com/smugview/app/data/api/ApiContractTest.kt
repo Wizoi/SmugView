@@ -37,7 +37,6 @@ class ApiContractTest(private val method: String) {
             "getNodeChildren" to setOf("Password"),
             "getAlbum" to setOf("Password"),
             "getAlbumImages" to setOf("Password"),
-            "getAlbumImagesByUri" to setOf("Password"),
             "getImageSizeDetailsByUri" to setOf("Password"),
             "searchImagesUserByUri" to setOf("Password"),
             "searchNodes" to setOf("Password"),
@@ -59,10 +58,7 @@ class ApiContractTest(private val method: String) {
             "getNode" to { getNode("4zqWw", K, expand = "HighlightImage", ignoreErrors = "true") },
             "getNodeParents" to { getNodeParents("sXQz4G", K, ignoreErrors = "true") },
             "getAlbum" to { getAlbum("N74KSK", K, password = "pw", ignoreErrors = "true") },
-            "getAlbumImages" to { getAlbumImages("N74KSK", K, password = "pw", ignoreErrors = "true") },
-            "getAlbumImagesByUri" to {
-                getAlbumImagesByUri("/api/v2/album/N74KSK!images?start=11&count=10", K, password = "pw", ignoreErrors = "true")
-            },
+            "getAlbumImages" to { getAlbumImages("N74KSK", K, password = "pw", start = 501, ignoreErrors = "true") },
             "getImageSizeDetailsByUri" to { getImageSizeDetailsByUri("/api/v2/image/N74KSKi001-0!sizedetails", K, password = "pw") },
             "searchImages" to {
                 searchImages(K, scope = "/api/v2/node/4zqWw", text = "kentridge", sortMethod = "DateAdded", sortDirection = "Descending", expand = "ImageAlbum")

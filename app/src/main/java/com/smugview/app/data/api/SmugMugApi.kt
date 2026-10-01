@@ -83,19 +83,12 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
         @Query("count") count: Int = 500,
+        // Every page is this same call with `start`; Pages.NextPage drops _expand (R-27), so it is never followed.
+        @Query("start") start: Int? = null,
         @Query("_expand") expand: String = "LargestVideo",
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris",
         @Query("_filteruri") filterUri: String = "LargestVideo,Album",
         @Query("_verbosity") verbosity: Int = 1,
-        @Header("X-Ignore-Errors") ignoreErrors: String? = null
-    ): AlbumImagesResponse
-
-    // Used by Paging 3 to fetch pages relative to base URL
-    @GET
-    suspend fun getAlbumImagesByUri(
-        @Url url: String,
-        @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
         @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): AlbumImagesResponse
 
