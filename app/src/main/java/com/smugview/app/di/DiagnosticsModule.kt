@@ -5,7 +5,11 @@ import android.util.Log
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.CollectionDao
 import com.smugview.app.data.db.DoctorDao
+import com.smugview.app.BuildConfig
+import com.smugview.app.data.security.PasswordStore
+import com.smugview.app.diag.CacheDoctor
 import com.smugview.app.diag.DiagLog
+import com.smugview.app.diag.DiagnosticsFileWriter
 import com.smugview.app.diag.FileLogSink
 import com.smugview.app.diag.HttpTelemetry
 import com.smugview.app.diag.Level
@@ -69,7 +73,8 @@ object DiagnosticsModule {
         log: DiagLog,
         doctorDao: DoctorDao,
         collectionDao: CollectionDao,
-        @DiagScope scope: CoroutineScope
+        @DiagScope scope: CoroutineScope,
+        writer: dagger.Lazy<DiagnosticsFileWriter>
     ): SyncReporter = FileSyncReporter(
         file = File(File(context.filesDir, "diagnostics"), "sync_reports.jsonl"),
         log = log,
@@ -79,6 +84,43 @@ object DiagnosticsModule {
         postSync = { run ->
             run.newInIndex30d = doctorDao.countRecentIndexAlbums(run.nickname)
             run.litDotNodes = collectionDao.getNodesWithActiveUpdates().first().size
+            // Then the doctor (first sync of the process only) and the on-device report.txt.
+            writer.get().onSyncFinished()
         }
+    )
+
+    @Provides
+    @Singleton
+    fun provideCacheDoctor(doctorDao: DoctorDao, reporter: dagger.Lazy<SyncReporter>): CacheDoctor =
+        CacheDoctor(doctorDao, syncRunning = { reporter.get().hasOpenRun() })
+
+    /**
+     * Writes `report.txt` into the app's external files dir for `adb pull` (design §0 Q2). Takes the
+     * reporter directly; the reporter reaches back through a `Lazy` in [provideSyncReporter].
+     */
+    @Provides
+    @Singleton
+    fun provideDiagnosticsFileWriter(
+        @ApplicationContext context: Context,
+        log: DiagLog,
+        redactor: Redactor,
+        reporter: SyncReporter,
+        passwordStore: PasswordStore,
+        doctor: CacheDoctor,
+        telemetry: HttpTelemetry
+    ): DiagnosticsFileWriter = DiagnosticsFileWriter(
+        dirProvider = { context.getExternalFilesDir("diagnostics") },
+        log = log,
+        redactor = redactor,
+        reporter = reporter,
+        secrets = { passwordStore.all().values + BuildConfig.SMUGMUG_API_KEY },
+        doctor = doctor,
+        header = {
+            "app: v${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE}) ${BuildConfig.BUILD_TYPE}\n" +
+                "device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} sdk=${android.os.Build.VERSION.SDK_INT}\n" +
+                "local time: ${java.time.ZonedDateTime.now()}\n" +
+                "saved password keys: ${passwordStore.all().size}"
+        },
+        httpStats = { telemetry.stats() }
     )
 }
