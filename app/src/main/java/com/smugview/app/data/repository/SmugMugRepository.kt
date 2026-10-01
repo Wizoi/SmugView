@@ -51,7 +51,8 @@ class SmugMugRepository @Inject constructor(
     private val api: SmugMugApi,
     private val dao: CollectionDao,
     private val passwordStore: com.smugview.app.data.security.PasswordStore,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val syncReporter: com.smugview.app.diag.SyncReporter = com.smugview.app.diag.SyncReporter.NOOP
 ) {
     /**
      * Upper bound on how many pages the "follow next-url" pagination loops will fetch.
@@ -624,11 +625,17 @@ class SmugMugRepository @Inject constructor(
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache starting for user=$nickname")
         }
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val actionId = com.smugview.app.diag.DiagContext.newActionId("sync")
+        return kotlinx.coroutines.withContext(
+            kotlinx.coroutines.Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
+        ) {
+            val run = syncReporter.begin(com.smugview.app.diag.SyncKind.GallerySync, nickname, actionId)
             try {
                 // 1. Instant: publish the persisted index (if any) so UI/search can proceed.
                 val persisted = dao.getAlbumIndex(nickname)
                 val isFirstSync = persisted.isEmpty()
+                run?.isFirstSync = isFirstSync
+                run?.persistedCount = persisted.size
                 if (!isFirstSync) {
                     _albumsCache.value = persisted.map { it.toCachedNode() }
                     _isAlbumsCacheLoaded.value = true
@@ -638,6 +645,7 @@ class SmugMugRepository @Inject constructor(
 
                 // 2. Incremental delta: newest-first, stop once we reach known data.
                 val latestKnown = dao.getLatestAlbumDateModified(nickname)
+                run?.stopMarker = latestKnown
                 var response = api.getUserAlbums(
                     nickname, apiKey,
                     sortMethod = "LastUpdated", sortDirection = "Descending"
@@ -645,15 +653,27 @@ class SmugMugRepository @Inject constructor(
                 var sortBase = 0
                 val changed = mutableListOf<CachedAlbum>()
                 var reachedKnown = false
+                var pagesFetched = 0
                 while (true) {
                     val albums = response.response.albums ?: emptyList()
                     val expansions = response.expansions
-                    for (album in albums) {
+                    pagesFetched++
+                    run?.let { r ->
+                        // Evidence for findings #1 (no LastUpdated), R-05 (ParentNode) and the password listing.
+                        r.pagesFetched = pagesFetched
+                        r.albumsSeen += albums.size
+                        r.albumsNullLastUpdated += albums.count { it.dateModified == null }
+                        r.albumsWithParentNode += albums.count { it.uris?.parentNode != null }
+                        r.albumsPasswordSecurity += albums.count { it.securityType == "Password" }
+                    }
+                    for ((albumIndex, album) in albums.withIndex()) {
                         val lastUpdated = album.dateModified
                         if (!isFirstSync && latestKnown != null && lastUpdated != null &&
                             lastUpdated <= latestKnown
                         ) {
                             reachedKnown = true
+                            run?.stop = com.smugview.app.diag.StopReason.ReachedKnown
+                            run?.stopDetail = "page=$pagesFetched index=$albumIndex"
                             break
                         }
                         val highlightUri = album.uris?.highlightImage
@@ -681,13 +701,18 @@ class SmugMugRepository @Inject constructor(
                         )
                     }
                     if (reachedKnown) break
-                    val nextUrl = response.response.pages?.next ?: break
+                    val nextUrl = response.response.pages?.next
+                    if (nextUrl == null) {
+                        run?.stop = com.smugview.app.diag.StopReason.NoNextPage
+                        break
+                    }
                     kotlinx.coroutines.delay(100)
                     response = api.getUserAlbumsByUri(overrideUrlCount(nextUrl, 100), apiKey)
                 }
 
                 if (changed.isNotEmpty()) {
                     dao.upsertAlbums(changed)
+                    run?.changedCount = changed.size
                     _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
                     if (com.smugview.app.BuildConfig.DEBUG) {
                         android.util.Log.d("SmugMugRepository", "album index synced: ${changed.size} new/changed, total=${_albumsCache.value.size}")
@@ -702,6 +727,7 @@ class SmugMugRepository @Inject constructor(
                         for (parentId in staleParents) {
                             dao.deleteNodesByParent(parentId)
                         }
+                        run?.invalidatedParents = staleParents.size
                         staleParents.toSet()
                     } else {
                         emptySet()
@@ -713,10 +739,19 @@ class SmugMugRepository @Inject constructor(
                     emptySet()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SmugMugRepository", "Failed to sync gallery cache", e)
+                SmugLog.e("SmugMugRepository", "Failed to sync gallery cache", e)
+                // Recorded, not rethrown: swallowing (cancellation included) is today's behaviour.
+                if (e is CancellationException) {
+                    run?.stop = com.smugview.app.diag.StopReason.Cancelled
+                } else {
+                    run?.stop = com.smugview.app.diag.StopReason.Error
+                    run?.stopDetail = e.javaClass.simpleName +
+                        ((e as? retrofit2.HttpException)?.let { " ${it.code()}" } ?: "")
+                }
                 emptySet()
             } finally {
                 _isAlbumsCacheLoaded.value = true
+                run?.let { syncReporter.finish(it) }
             }
         }
     }
@@ -733,37 +768,56 @@ class SmugMugRepository @Inject constructor(
      * background fetch.
      */
     suspend fun unlockAndIndexSubtree(rootNodeId: String, apiKey: String, password: String, maxNodes: Int = 300) {
-        if (activeSubtreeIndexJobs.incrementAndGet() == 1) {
-            _isIndexingSubtree.value = true
-        }
-        try {
-            val visited = mutableSetOf(rootNodeId)
-            val queue = mutableListOf(rootNodeId)
+        val actionId = com.smugview.app.diag.DiagContext.newActionId("subtree")
+        kotlinx.coroutines.withContext(com.smugview.app.diag.DiagContext.element(actionId)) {
+            val run = syncReporter.begin(com.smugview.app.diag.SyncKind.SubtreeIndex, activeNickname, actionId)
             var nodesFetched = 0
+            var skipped = 0
+            if (activeSubtreeIndexJobs.incrementAndGet() == 1) {
+                _isIndexingSubtree.value = true
+            }
+            try {
+                val visited = mutableSetOf(rootNodeId)
+                val queue = mutableListOf(rootNodeId)
 
-            while (queue.isNotEmpty() && nodesFetched < maxNodes) {
-                val currentNodeId = queue.removeAt(0)
-                nodesFetched++
-                try {
-                    getNodeChildren(currentNodeId, apiKey, forceRefresh = true, password = password, ignoreErrors = "true")
-                        .first()
-                        .onSuccess { children ->
-                            for (child in children) {
-                                if (child.type == "Folder" && visited.add(child.nodeId)) {
-                                    queue.add(child.nodeId)
+                while (queue.isNotEmpty() && nodesFetched < maxNodes) {
+                    val currentNodeId = queue.removeAt(0)
+                    nodesFetched++
+                    try {
+                        getNodeChildren(currentNodeId, apiKey, forceRefresh = true, password = password, ignoreErrors = "true")
+                            .first()
+                            .onSuccess { children ->
+                                for (child in children) {
+                                    if (child.type == "Folder" && visited.add(child.nodeId)) {
+                                        queue.add(child.nodeId)
+                                    }
                                 }
                             }
-                        }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // Skip this sub-folder (wrong password / other failure) and keep walking the rest.
+                            .onFailure {
+                                skipped++
+                                SmugLog.w("sync", "subtree skip $currentNodeId: ${it.javaClass.simpleName}")
+                            }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Skip this sub-folder (wrong password / other failure) and keep walking the rest.
+                        skipped++
+                        SmugLog.w("sync", "subtree skip $currentNodeId: ${e.javaClass.simpleName}")
+                    }
+                    kotlinx.coroutines.delay(200)
                 }
-                kotlinx.coroutines.delay(200)
-            }
-        } finally {
-            if (activeSubtreeIndexJobs.decrementAndGet() == 0) {
-                _isIndexingSubtree.value = false
+                run?.stop = com.smugview.app.diag.StopReason.Completed
+            } catch (e: CancellationException) {
+                run?.stop = com.smugview.app.diag.StopReason.Cancelled
+                throw e
+            } finally {
+                if (activeSubtreeIndexJobs.decrementAndGet() == 0) {
+                    _isIndexingSubtree.value = false
+                }
+                run?.let {
+                    it.notes = "nodes=$nodesFetched skipped=$skipped"
+                    syncReporter.finish(it)
+                }
             }
         }
     }
@@ -1066,30 +1120,45 @@ class SmugMugRepository @Inject constructor(
         else -> UnlockResult.Transient
     }
 
-    suspend fun unlockNodeResult(nodeId: String, apiKey: String, password: String): UnlockResult {
-        return try {
-            unlockResultOf(api.unlockNode(nodeId, apiKey, password, "true").code())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.e("SmugMugRepository", "unlockNode exception: nodeId=$nodeId", e)
-            }
-            UnlockResult.Transient
-        }
-    }
+    suspend fun unlockNodeResult(nodeId: String, apiKey: String, password: String): UnlockResult =
+        timedUnlock(nodeId, "node") { api.unlockNode(nodeId, apiKey, password, "true").code() }
 
-    suspend fun unlockAlbumResult(albumKey: String, apiKey: String, password: String): UnlockResult {
-        return try {
-            unlockResultOf(api.unlockAlbum(albumKey, apiKey, password, "true").code())
+    suspend fun unlockAlbumResult(albumKey: String, apiKey: String, password: String): UnlockResult =
+        timedUnlock(albumKey, "album") { api.unlockAlbum(albumKey, apiKey, password, "true").code() }
+
+    /**
+     * Runs one unlock call and reports it to the [syncReporter] (target, route, outcome, HTTP code or
+     * exception class, duration, action id). Every unlock path (launch, prompt, lineage, tag scan)
+     * goes through [unlockNodeResult] / [unlockAlbumResult], so all are covered. The password is never
+     * passed here, so it cannot reach the report or the log.
+     */
+    private suspend fun timedUnlock(
+        target: String,
+        via: String,
+        call: suspend () -> Int
+    ): UnlockResult {
+        val start = System.nanoTime()
+        var httpCode: Int? = null
+        var result = UnlockResult.Transient
+        var exception: String? = null
+        try {
+            httpCode = call()
+            result = unlockResultOf(httpCode)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.e("SmugMugRepository", "unlockAlbum exception: albumKey=$albumKey", e)
-            }
-            UnlockResult.Transient
+            exception = e.javaClass.simpleName
+            SmugLog.d("SmugMugRepository") { "unlock exception: via=$via target=$target ${e.javaClass.simpleName}" }
         }
+        syncReporter.recordUnlock(
+            com.smugview.app.diag.UnlockAttempt(
+                target = target, via = via, result = result.name,
+                httpCode = httpCode, exception = exception,
+                ms = (System.nanoTime() - start) / 1_000_000,
+                actionId = com.smugview.app.diag.DiagContext.currentActionId()
+            )
+        )
+        return result
     }
 
     suspend fun unlockNode(nodeId: String, apiKey: String, password: String): Boolean =
