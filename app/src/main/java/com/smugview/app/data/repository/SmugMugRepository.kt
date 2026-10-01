@@ -1525,10 +1525,6 @@ class SmugMugRepository @Inject constructor(
         return dao.createCollection(OfflineCollection(name = name, siteNickname = siteNickname))
     }
 
-    suspend fun deleteLocalCollection(collectionId: Long) {
-        dao.deleteCollection(collectionId)
-    }
-
     suspend fun getCollectionById(collectionId: Long): OfflineCollection? {
         return dao.getCollectionById(collectionId)
     }
@@ -1537,40 +1533,8 @@ class SmugMugRepository @Inject constructor(
         return dao.getPhotosInCollection(collectionId)
     }
 
-    suspend fun addPhotoToCollection(photo: CollectionPhoto) {
-        dao.addPhotoToCollection(photo)
-    }
-
-    suspend fun removePhotoFromCollection(imageKey: String, collectionId: Long) {
-        dao.removePhotoFromCollection(imageKey, collectionId)
-    }
-
-    suspend fun updateDownloadStatus(imageKey: String, collectionId: Long, localPath: String, isDownloaded: Boolean) {
-        dao.updateDownloadStatus(imageKey, collectionId, localPath, isDownloaded)
-    }
-
-    suspend fun updateDownloadStatusForAll(imageKey: String, filePath: String?, downloaded: Boolean) {
-        dao.updateDownloadStatusForAll(imageKey, filePath, downloaded)
-    }
-
-    suspend fun getPendingDownloads(): List<CollectionPhoto> {
-        return dao.getPendingDownloads()
-    }
-
     fun getBookmarksForCollection(collectionId: Long): Flow<List<CollectionBookmark>> {
         return dao.getBookmarksForCollection(collectionId)
-    }
-
-    suspend fun addBookmark(bookmark: CollectionBookmark): Long {
-        return dao.addBookmark(bookmark)
-    }
-
-    suspend fun removeBookmark(collectionId: Long, type: String, itemKey: String) {
-        dao.removeBookmark(collectionId, type, itemKey)
-    }
-
-    suspend fun removeBookmarkGlobally(itemKey: String) {
-        dao.removeBookmarkGlobally(itemKey)
     }
 
     suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean {

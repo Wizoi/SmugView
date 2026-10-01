@@ -1,60 +1,32 @@
 package com.smugview.app.ui.viewmodel
 
-import android.app.Application
-import android.content.SharedPreferences
-import android.widget.Toast
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.db.CollectionBookmark
 import com.smugview.app.data.db.CollectionPhoto
-import com.smugview.app.data.repository.AlbumLockedException
+import com.smugview.app.data.offline.OfflineCollections
 import com.smugview.app.data.repository.SmugMugRepository
-import com.smugview.app.data.worker.OfflineDownloadWorker
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
 
 /**
- * Owns saved-content operations: local collections, bookmarks, and offline
- * download/delete of photos and albums. Extracted verbatim from [SmugViewModel]
- * as part of the facade decomposition — the ViewModel keeps its public surface
- * and delegates here, so screens and tests are unaffected.
+ * Owns saved-content operations: local collections and bookmarks. Extracted from [SmugViewModel] as part of the
+ * facade decomposition; the ViewModel keeps its public surface and delegates here.
  *
- * Download and delete progress ([backgroundLoadingStatus] / [isBackgroundLoading]) is this controller's
- * own state (R-20): album loading has its own spinner in AlbumLoader, and the view model combines both. The
- * accessor lambdas expose the small pieces of ViewModel state these operations
- * still need (active site nickname, current album key, gallery passwords).
+ * Phase 5 (step 5-6): every write that adds or removes a reference to a photo goes through [OfflineCollections],
+ * the single owner of "this photo must have a file on the phone" and of deleting that file when nothing refers to it.
+ * This controller no longer downloads, deletes or names a file, and it has no download progress of its own: the
+ * old viewModelScope downloads (N7), the shared `offline_photos/{key}.jpg` (R-38) and the unconstrained workers
+ * (R-39) are gone. The accessor lambdas expose the small pieces of ViewModel state these operations still need.
  */
 class CollectionsController(
-    private val application: Application,
     private val repository: SmugMugRepository,
-    private val workManager: WorkManager,
-    private val sharedPrefs: SharedPreferences,
-    private val apiKey: String,
+    private val offline: OfflineCollections,
     private val scope: CoroutineScope,
     private val getActiveNickname: () -> String?,
-    private val getCurrentAlbumKey: () -> String,
-    private val getUnlockedPassword: suspend (String) -> String?,
-    /** Says something to the user; the default is a toast. Called on the main thread. */
-    private val onMessage: (String) -> Unit = { Toast.makeText(application, it, Toast.LENGTH_SHORT).show() }
+    private val getCurrentAlbumKey: () -> String
 ) {
-    private val backgroundLoadingStatus = MutableStateFlow<String?>(null)
-    private val isBackgroundLoading = MutableStateFlow(false)
-
-    /** What a download or delete is doing right now, or null. */
-    val status: kotlinx.coroutines.flow.StateFlow<String?> = backgroundLoadingStatus.asStateFlow()
-
-    /** True while an album download or delete runs. */
-    val busy: kotlinx.coroutines.flow.StateFlow<Boolean> = isBackgroundLoading.asStateFlow()
-
     fun createCollection(name: String) {
         scope.launch {
             val nickname = getActiveNickname() ?: ""
@@ -62,9 +34,10 @@ class CollectionsController(
         }
     }
 
+    /** Deletes the collection, its references and, once nothing else refers to them, the files (no network, R-41). */
     fun deleteCollection(collectionId: Long) {
         scope.launch {
-            repository.deleteLocalCollection(collectionId)
+            offline.deleteCollection(collectionId)
         }
     }
 
@@ -78,6 +51,12 @@ class CollectionsController(
         return repository.getBookmarksForCollection(collectionId)
     }
 
+    /**
+     * Bookmarks an item. An Image bookmark also wants the photo's file (any network, Q3); a gallery or a folder is a
+     * shortcut only (Q1 (a)) and downloads nothing. [imageUrl] is the original's URL when the caller has it: the
+     * viewers pass `archivedUri ?: thumbnailUrl`, so a URL equal to the thumbnail is the fallback, not the original,
+     * and is not kept (the pass resolves the real source with `image/{key}-0` instead).
+     */
     fun addBookmark(collectionId: Long, type: String, itemKey: String, title: String, albumKey: String = "", albumTitle: String = "", thumbnailUrl: String? = null, imageUrl: String? = null) {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "addBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey, title='$title'")
@@ -92,42 +71,26 @@ class CollectionsController(
                 albumTitle = albumTitle,
                 thumbnailUrl = thumbnailUrl
             )
-            repository.addBookmark(bookmark)
-
-            // Automatically mark as offline (download)
-            if (type == "Image" && !imageUrl.isNullOrEmpty()) {
-                downloadPhotoOffline(itemKey, imageUrl)
-            } else if (type == "Album") {
-                downloadAlbumOffline(itemKey, apiKey, getUnlockedPassword(itemKey))
-            }
+            val source = imageUrl?.takeIf { it.isNotEmpty() && it != thumbnailUrl }
+            offline.addBookmark(bookmark, nickname = getActiveNickname() ?: "", sourceUrl = source)
         }
     }
 
+    /** Unbookmarks; what only this bookmark kept on the phone is deleted, what another reference needs stays (N5). */
     fun removeBookmark(collectionId: Long, type: String, itemKey: String) {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "removeBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey")
         }
         scope.launch {
-            repository.removeBookmark(collectionId, type, itemKey)
-
-            // If not bookmarked anywhere else, clear the offline file
-            val isBookmarkedAnywhere = repository.isBookmarkedAnywhere(type, itemKey)
-            if (!isBookmarkedAnywhere) {
-                if (type == "Image") {
-                    deleteOfflinePhoto(itemKey)
-                } else if (type == "Album") {
-                    deleteOfflineAlbum(itemKey, apiKey)
-                }
-            }
+            offline.removeBookmark(collectionId, type, itemKey)
         }
     }
 
-    fun downloadPhotoOffline(imageKey: String, imageUrl: String) {
-        downloadPhotoOffline(imageKey, imageUrl, {}, {})
-    }
-
-    fun deleteOfflinePhoto(imageKey: String) {
-        deleteOfflinePhoto(imageKey, {})
+    /** A bookmark of a gallery or folder that SmugMug no longer has: gone from every collection. */
+    fun removeBookmarkGlobally(itemKey: String) {
+        scope.launch {
+            offline.removeBookmarkGlobally(itemKey)
+        }
     }
 
     suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean {
@@ -155,10 +118,7 @@ class CollectionsController(
                 keywords = photo.keywordsString,
                 isDownloaded = false
             )
-            repository.addPhotoToCollection(dbPhoto)
-
-            val syncRequest = OneTimeWorkRequestBuilder<OfflineDownloadWorker>().build()
-            workManager.enqueue(syncRequest)
+            offline.savePhoto(dbPhoto, nickname = getActiveNickname() ?: "")
         }
     }
 
@@ -166,159 +126,9 @@ class CollectionsController(
         return repository.getPhotosInCollection(collectionId)
     }
 
-    fun isAlbumDownloaded(albumKey: String): Boolean {
-        return sharedPrefs.getBoolean("offline_album_$albumKey", false)
-    }
-
-    fun downloadAlbumOffline(albumKey: String, apiKey: String, password: String? = null) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                backgroundLoadingStatus.value = "Starting album download..."
-                isBackgroundLoading.value = true
-                val photos = repository.getAllAlbumImages(albumKey, apiKey, password)
-                if (photos.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(application, "No photos to download", Toast.LENGTH_SHORT).show()
-                    }
-                    return@launch
-                }
-                val directory = File(application.filesDir, "offline_photos")
-                if (!directory.exists()) {
-                    directory.mkdirs()
-                }
-                val client = okhttp3.OkHttpClient()
-                var successCount = 0
-                photos.forEachIndexed { index, photo ->
-                    backgroundLoadingStatus.value = "Downloading ${index + 1}/${photos.size}..."
-                    val url = photo.archivedUri ?: photo.thumbnailUrl
-                    if (!url.isNullOrEmpty()) {
-                        try {
-                            val request = okhttp3.Request.Builder().url(url).build()
-                            val response = client.newCall(request).execute()
-                            if (response.isSuccessful) {
-                                val body = response.body
-                                if (body != null) {
-                                    val file = File(directory, "${photo.imageKey}.jpg")
-                                    body.byteStream().use { input ->
-                                        FileOutputStream(file).use { output ->
-                                            input.copyTo(output)
-                                        }
-                                    }
-                                    repository.updateDownloadStatusForAll(photo.imageKey, file.absolutePath, true)
-                                    successCount++
-                                }
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-                sharedPrefs.edit().putBoolean("offline_album_$albumKey", true).apply()
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(application, "Album downloaded offline ($successCount photos)", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: AlbumLockedException) {
-                // Q5 (a): a locked gallery stops with one message (R-32).
-                withContext(Dispatchers.Main) { onMessage(e.message ?: AlbumLockedException.MESSAGE) }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(application, "Album download failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                }
-            } finally {
-                backgroundLoadingStatus.value = null
-                isBackgroundLoading.value = false
-            }
-        }
-    }
-
-    fun deleteOfflineAlbum(albumKey: String, apiKey: String, password: String? = null) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                backgroundLoadingStatus.value = "Deleting offline files..."
-                isBackgroundLoading.value = true
-                val photos = repository.getAllAlbumImages(albumKey, apiKey, password)
-                val directory = File(application.filesDir, "offline_photos")
-                photos.forEach { photo ->
-                    val file = File(directory, "${photo.imageKey}.jpg")
-                    if (file.exists()) {
-                        file.delete()
-                    }
-                    repository.updateDownloadStatusForAll(photo.imageKey, null, false)
-                }
-                sharedPrefs.edit().remove("offline_album_$albumKey").apply()
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(application, "Offline files deleted", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: AlbumLockedException) {
-                // The files to delete are found by listing the gallery, which a locked one will not do.
-                withContext(Dispatchers.Main) { onMessage(e.message ?: AlbumLockedException.MESSAGE) }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                backgroundLoadingStatus.value = null
-                isBackgroundLoading.value = false
-            }
-        }
-    }
-
-    fun downloadPhotoOffline(imageKey: String, imageUrl: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val client = okhttp3.OkHttpClient()
-                val request = okhttp3.Request.Builder().url(imageUrl).build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    withContext(Dispatchers.Main) { onFailure("Download failed: HTTP ${response.code}") }
-                    return@launch
-                }
-                val body = response.body
-                if (body == null) {
-                    withContext(Dispatchers.Main) { onFailure("Empty response body") }
-                    return@launch
-                }
-                val directory = File(application.filesDir, "offline_photos")
-                if (!directory.exists()) {
-                    directory.mkdirs()
-                }
-                val file = File(directory, "$imageKey.jpg")
-                body.byteStream().use { input ->
-                    FileOutputStream(file).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                repository.updateDownloadStatusForAll(imageKey, file.absolutePath, true)
-                withContext(Dispatchers.Main) {
-                    onSuccess()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    onFailure(e.localizedMessage ?: "Unknown error")
-                }
-            }
-        }
-    }
-
-    fun deleteOfflinePhoto(imageKey: String, onSuccess: () -> Unit) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val directory = File(application.filesDir, "offline_photos")
-                val file = File(directory, "$imageKey.jpg")
-                if (file.exists()) {
-                    file.delete()
-                }
-                repository.updateDownloadStatusForAll(imageKey, null, false)
-                withContext(Dispatchers.Main) {
-                    onSuccess()
-                }
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-    }
-
     fun removePhotoFromCollection(imageKey: String, collectionId: Long) {
         scope.launch {
-            repository.removePhotoFromCollection(imageKey, collectionId)
+            offline.removePhoto(imageKey, collectionId)
         }
     }
 }

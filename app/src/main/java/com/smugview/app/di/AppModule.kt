@@ -313,6 +313,16 @@ object AppModule {
     ): com.smugview.app.data.offline.OfflineScheduler =
         com.smugview.app.data.offline.OfflineScheduler(workManager = { WorkManager.getInstance(context) }, store = store)
 
+    /** The writers of everything a collection refers to, and the offline consequence of each (phase 5, 5-6). */
+    @Provides
+    @Singleton
+    fun provideOfflineCollections(
+        database: AppDatabase,
+        store: com.smugview.app.data.offline.OfflineStore,
+        scheduler: com.smugview.app.data.offline.OfflineScheduler
+    ): com.smugview.app.data.offline.OfflineCollections =
+        com.smugview.app.data.offline.OfflineCollections(database, store, scheduler)
+
     @Provides
     @Singleton
     fun provideCastManager(impl: com.smugview.app.data.cast.DefaultCastManager): com.smugview.app.data.cast.CastManager {

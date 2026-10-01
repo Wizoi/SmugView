@@ -1,7 +1,5 @@
 package com.smugview.app.scenario
 
-import android.app.Application
-import androidx.work.WorkManager
 import com.google.gson.Gson
 import com.smugview.app.data.api.AlbumImagesResponse
 import com.smugview.app.data.api.AlbumResponse
@@ -9,7 +7,6 @@ import com.smugview.app.data.cast.CastManager
 import com.smugview.app.data.db.CollectionBookmark
 import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.ui.viewmodel.CastController
-import com.smugview.app.ui.viewmodel.CollectionsController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -264,23 +261,5 @@ class LockedAlbumTest {
         awaitUntil("the message") { messages.isNotEmpty() }
         assertEquals(listOf("This gallery needs its password. Open it once to unlock it."), messages.toList())
         Mockito.verify(castManager, Mockito.never()).castSlideshow(Mockito.anyList(), Mockito.anyInt())
-    }
-
-    @Test fun `downloading a locked gallery stops with the one message`() {
-        val app: Application = rig.app
-        val prefs = app.getSharedPreferences("locked_album_test", android.content.Context.MODE_PRIVATE)
-        val collections = CollectionsController(
-            app, rig.repository, Mockito.mock(WorkManager::class.java), prefs, "test-key",
-            CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            getActiveNickname = { "idzifamily" }, getCurrentAlbumKey = { "FfHCms" },
-            getUnlockedPassword = { null }, onMessage = { messages += it }
-        )
-
-        collections.downloadAlbumOffline("FfHCms", "test-key")
-
-        awaitUntil("the message") { messages.isNotEmpty() }
-        Thread.sleep(300)
-        assertEquals(listOf("This gallery needs its password. Open it once to unlock it."), messages.toList())
-        assertFalse("not marked downloaded", collections.isAlbumDownloaded("FfHCms"))
     }
 }

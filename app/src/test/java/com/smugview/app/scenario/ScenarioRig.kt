@@ -52,6 +52,14 @@ class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
     val app: Application = ApplicationProvider.getApplicationContext()
     private val mainThread = newSingleThreadContext("main")
 
+    /** The offline writers over this rig's database; the scheduler is a mock WorkManager (no pass runs here). */
+    val offlineFilesDir: java.io.File = java.nio.file.Files.createTempDirectory("smugview-rig-files").toFile()
+    val offlineStore = com.smugview.app.data.offline.OfflineStore(db, offlineFilesDir, freeBytes = { 50L shl 30 })
+    private fun offline() = com.smugview.app.data.offline.OfflineCollections(
+        db, offlineStore,
+        com.smugview.app.data.offline.OfflineScheduler(workManager = { Mockito.mock(WorkManager::class.java) }, store = offlineStore)
+    )
+
     val repository: SmugMugRepository
     val viewModel: SmugViewModel
 
@@ -77,7 +85,7 @@ class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
         Mockito.`when`(cast.slideshowInterval).thenReturn(MutableStateFlow(5))
         Mockito.`when`(cast.isSlideshowPlaying).thenReturn(MutableStateFlow(false))
         return SmugViewModel(
-            app, repo, Mockito.mock(WorkManager::class.java), cast, passwords,
+            app, repo, offline(), cast, passwords,
             Dispatchers.Default, reporter, handle
         )
     }
@@ -110,6 +118,7 @@ class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
         db.close()
         loopback?.close()
         cacheDir?.deleteRecursively()
+        offlineFilesDir.deleteRecursively()
     }
 }
 

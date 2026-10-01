@@ -20,7 +20,6 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.filter
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.ExifData
@@ -36,7 +35,6 @@ import com.smugview.app.data.db.OfflineCollection
 import com.smugview.app.data.db.SearchHistory
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.data.db.toAlbumImageData
-import com.smugview.app.data.worker.OfflineDownloadWorker
 import com.smugview.app.data.cast.CastDevice
 import com.smugview.app.data.cast.CastManager
 import com.smugview.app.data.cast.ConnectionState
@@ -124,7 +122,7 @@ enum class GalleryFilterType {
 class SmugViewModel @Inject constructor(
     application: Application,
     private val repository: SmugMugRepository,
-    private val workManager: WorkManager,
+    private val offline: com.smugview.app.data.offline.OfflineCollections,
     val castManager: CastManager,
     private val passwordStore: com.smugview.app.data.security.PasswordStore,
     /**
@@ -429,7 +427,7 @@ class SmugViewModel @Inject constructor(
                     return LoadFailure(BrowserUiState.Success(emptyList()), popAfter = true)
                 }
                 if (error is retrofit2.HttpException && error.code() == 404) {
-                    viewModelScope.launch { repository.removeBookmarkGlobally(nodeId) }
+                    collections.removeBookmarkGlobally(nodeId)
                 }
                 return LoadFailure(
                     BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Access Denied / Not Found")),
@@ -1173,7 +1171,7 @@ class SmugViewModel @Inject constructor(
             // A rejected saved password is NOT deleted here (design 3.4, Q5): the repository's read retry
             // already asked UnlockManager, which marked the root Invalid. Only the prompt deletes.
             if (error is retrofit2.HttpException && error.code() == 404) {
-                repository.removeBookmarkGlobally(albumKey)
+                collections.removeBookmarkGlobally(albumKey)
             }
             
             val isAccessDenied = error is retrofit2.HttpException && (error.code() == 401 || error.code() == 404)
@@ -1973,26 +1971,18 @@ class SmugViewModel @Inject constructor(
 
     // Saved content (collections, bookmarks, offline) — delegated to CollectionsController.
     private val collections = CollectionsController(
-        application = getApplication(),
         repository = repository,
-        workManager = workManager,
-        sharedPrefs = sharedPrefs,
-        apiKey = apiKey,
+        offline = offline,
         scope = viewModelScope,
         getActiveNickname = { _activeNickname.value },
-        getCurrentAlbumKey = { _currentAlbumKey.value },
-        getUnlockedPassword = { key -> getUnlockedPassword(key) }
+        getCurrentAlbumKey = { _currentAlbumKey.value }
     )
 
-    /** The spinner of the gallery screen: the current album is still loading, or a download/delete runs (R-20). */
-    val isBackgroundLoading: StateFlow<Boolean> =
-        combine(albums.loading, collections.busy) { album, busy -> album || busy }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** The spinner of the gallery screen: the current album is still loading (R-20). Saving photos has no spinner here: it runs in the worker. */
+    val isBackgroundLoading: StateFlow<Boolean> = albums.loading
 
-    /** The status line under it: a download's progress wins over the album's own. */
-    val backgroundLoadingStatus: StateFlow<String?> =
-        combine(albums.status, collections.status) { album, download -> download ?: album }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /** The status line under it: the current album's own. */
+    val backgroundLoadingStatus: StateFlow<String?> = albums.status
 
     fun createCollection(name: String) = collections.createCollection(name)
 
@@ -2008,10 +1998,6 @@ class SmugViewModel @Inject constructor(
 
     fun removeBookmark(collectionId: Long, type: String, itemKey: String) =
         collections.removeBookmark(collectionId, type, itemKey)
-
-    fun downloadPhotoOffline(imageKey: String, imageUrl: String) = collections.downloadPhotoOffline(imageKey, imageUrl)
-
-    fun deleteOfflinePhoto(imageKey: String) = collections.deleteOfflinePhoto(imageKey)
 
     suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean =
         collections.isBookmarked(collectionId, type, itemKey)
@@ -2040,20 +2026,6 @@ class SmugViewModel @Inject constructor(
             navigator.navigate(NavIntent.ToIndex(index))
         }
     }
-
-    fun isAlbumDownloaded(albumKey: String): Boolean = collections.isAlbumDownloaded(albumKey)
-
-    fun downloadAlbumOffline(albumKey: String, apiKey: String, password: String? = null) =
-        collections.downloadAlbumOffline(albumKey, apiKey, password)
-
-    fun deleteOfflineAlbum(albumKey: String, apiKey: String, password: String? = null) =
-        collections.deleteOfflineAlbum(albumKey, apiKey, password)
-
-    fun downloadPhotoOffline(imageKey: String, imageUrl: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) =
-        collections.downloadPhotoOffline(imageKey, imageUrl, onSuccess, onFailure)
-
-    fun deleteOfflinePhoto(imageKey: String, onSuccess: () -> Unit) =
-        collections.deleteOfflinePhoto(imageKey, onSuccess)
 
     fun removePhotoFromCollection(imageKey: String, collectionId: Long) =
         collections.removePhotoFromCollection(imageKey, collectionId)

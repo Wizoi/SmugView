@@ -164,7 +164,26 @@ interface CollectionDao {
     suspend fun getCollectionById(collectionId: Long): OfflineCollection?
 
     @Query("DELETE FROM offline_collections WHERE id = :collectionId")
-    suspend fun deleteCollection(collectionId: Long)
+    suspend fun deleteCollectionRow(collectionId: Long)
+
+    /**
+     * Deletes a collection and, in the same transaction, every offline reference it held (R-41): the kept galleries
+     * and their items are deleted explicitly (not left to the foreign-key CASCADE alone), next to the CASCADE of
+     * `collection_photos` and `collection_bookmarks`. No file is touched here: the files nothing refers to any more
+     * are collected by the next offline pass, which the caller kicks. No network.
+     */
+    @androidx.room.Transaction
+    suspend fun deleteCollection(collectionId: Long) {
+        deleteOfflineGalleryItemsOfCollection(collectionId)
+        deleteOfflineGalleriesOfCollection(collectionId)
+        deleteCollectionRow(collectionId)
+    }
+
+    @Query("DELETE FROM offline_gallery_items WHERE collectionId = :collectionId")
+    suspend fun deleteOfflineGalleryItemsOfCollection(collectionId: Long)
+
+    @Query("DELETE FROM offline_galleries WHERE collectionId = :collectionId")
+    suspend fun deleteOfflineGalleriesOfCollection(collectionId: Long)
 
     // Collection Photos Operations
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -179,15 +198,6 @@ interface CollectionDao {
     @Query("DELETE FROM collection_photos WHERE imageKey = :imageKey AND collectionId = :collectionId")
     suspend fun removePhotoFromCollection(imageKey: String, collectionId: Long)
 
-    @Query("UPDATE collection_photos SET localFilePath = :filePath, isDownloaded = :downloaded WHERE imageKey = :imageKey AND collectionId = :collectionId")
-    suspend fun updateDownloadStatus(imageKey: String, collectionId: Long, filePath: String, downloaded: Boolean)
-
-    @Query("UPDATE collection_photos SET localFilePath = :filePath, isDownloaded = :downloaded WHERE imageKey = :imageKey")
-    suspend fun updateDownloadStatusForAll(imageKey: String, filePath: String?, downloaded: Boolean)
-
-    @Query("SELECT * FROM collection_photos WHERE isDownloaded = 0")
-    suspend fun getPendingDownloads(): List<CollectionPhoto>
-
     // Collection Bookmarks Operations
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addBookmark(bookmark: CollectionBookmark): Long
@@ -196,10 +206,45 @@ interface CollectionDao {
     fun getBookmarksForCollection(collectionId: Long): Flow<List<CollectionBookmark>>
 
     @Query("DELETE FROM collection_bookmarks WHERE collectionId = :collectionId AND type = :type AND itemKey = :itemKey")
-    suspend fun removeBookmark(collectionId: Long, type: String, itemKey: String)
+    suspend fun deleteBookmarkRow(collectionId: Long, type: String, itemKey: String)
 
     @Query("DELETE FROM collection_bookmarks WHERE itemKey = :itemKey")
-    suspend fun removeBookmarkGlobally(itemKey: String)
+    suspend fun deleteBookmarkRowsByKey(itemKey: String)
+
+    @Query("DELETE FROM offline_gallery_items WHERE collectionId = :collectionId AND albumKey = :albumKey")
+    suspend fun deleteOfflineGalleryItems(collectionId: Long, albumKey: String)
+
+    @Query("DELETE FROM offline_galleries WHERE collectionId = :collectionId AND albumKey = :albumKey")
+    suspend fun deleteOfflineGalleryRow(collectionId: Long, albumKey: String)
+
+    @Query("DELETE FROM offline_gallery_items WHERE albumKey = :albumKey")
+    suspend fun deleteOfflineGalleryItemsByKey(albumKey: String)
+
+    @Query("DELETE FROM offline_galleries WHERE albumKey = :albumKey")
+    suspend fun deleteOfflineGalleryRowsByKey(albumKey: String)
+
+    /**
+     * Unbookmarks, and for a gallery also stops keeping it offline, in ONE transaction and with no network (R-41):
+     * the `offline_galleries` row and its items go with the bookmark, so what the gallery alone referenced becomes
+     * garbage for the next pass. An Image bookmark is itself a reference (its row), so deleting it is enough. A file
+     * another collection, a saved photo or another gallery still refers to stays (N5).
+     */
+    @androidx.room.Transaction
+    suspend fun removeBookmark(collectionId: Long, type: String, itemKey: String) {
+        deleteBookmarkRow(collectionId, type, itemKey)
+        if (type == "Album") {
+            deleteOfflineGalleryItems(collectionId, itemKey)
+            deleteOfflineGalleryRow(collectionId, itemKey)
+        }
+    }
+
+    /** [removeBookmark] for every collection (a gallery that is gone from SmugMug: `handleAlbumLoadError`). */
+    @androidx.room.Transaction
+    suspend fun removeBookmarkGlobally(itemKey: String) {
+        deleteBookmarkRowsByKey(itemKey)
+        deleteOfflineGalleryItemsByKey(itemKey)
+        deleteOfflineGalleryRowsByKey(itemKey)
+    }
 
     @Query("SELECT EXISTS(SELECT 1 FROM collection_bookmarks WHERE collectionId = :collectionId AND type = :type AND itemKey = :itemKey)")
     suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean
