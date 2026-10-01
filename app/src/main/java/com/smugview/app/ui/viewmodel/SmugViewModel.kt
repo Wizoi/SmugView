@@ -60,6 +60,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -1412,20 +1413,29 @@ class SmugViewModel @Inject constructor(
      * another album cancels this one's stream, and nothing a cancelled or stale load does can reach the
      * album on screen. A finished album you come back to is shown from memory with no request.
      */
-    fun selectAlbum(albumKey: String, targetImageKey: String? = null) {
+    fun selectAlbum(albumKey: String, targetImageKey: String? = null, force: Boolean = false) {
         val isLocal = albumKey.startsWith("local_col_")
         val diag = com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("gallery"))
         _currentAlbumKey.value = albumKey
+        // Step 4-6: the load decides "is this gallery lit?" (and so whether it goes to the network) BEFORE
+        // the viewed mark below clears the dot. The mark waits for that answer.
+        val litDecision = CompletableDeferred<Boolean>()
         val selection = albums.select(
             albumKey = albumKey,
             target = targetImageKey,
+            force = force,
             scope = if (isLocal) viewModelScope else session.scope,
             context = diag,
             initialStatus = if (isLocal) "Loading offline collection..." else "Fetching album photos..."
         ) { run ->
-            if (isLocal) loadLocalCollection(run) else loadAlbum(run, targetImageKey)
+            try {
+                if (isLocal) loadLocalCollection(run) else loadAlbum(run, targetImageKey, force, litDecision)
+            } finally {
+                litDecision.complete(false) // a load that never got as far as the check
+            }
         }
         if (selection == AlbumSelection.Same) return
+        if (selection != AlbumSelection.Started) litDecision.complete(false) // restored from memory: no load runs
         _includedTags.value = emptySet()
         _excludedTags.value = emptySet()
         if (isLocal) return
@@ -1433,6 +1443,8 @@ class SmugViewModel @Inject constructor(
         // Not part of the album's load: switching to another album must not cancel the "viewed" mark.
         session.scope.launch(diag) {
             try {
+                // Bounded: a load cancelled before it started never answers.
+                withTimeoutOrNull(5000) { litDecision.await() }
                 val node = repository.getNodeByIdOrKey(albumKey)
                 if (node != null) {
                     repository.markNodeAsViewed(node.nodeId)
@@ -1476,9 +1488,14 @@ class SmugViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadAlbum(run: AlbumRun, targetImageKey: String?) = coroutineScope {
+    private suspend fun loadAlbum(
+        run: AlbumRun,
+        targetImageKey: String?,
+        force: Boolean,
+        litDecision: CompletableDeferred<Boolean>
+    ) = coroutineScope {
         if (targetImageKey != null) launch { loadTargetImage(run, targetImageKey) }
-        loadAlbumPages(run, targetImageKey)
+        loadAlbumPages(run, targetImageKey, force, litDecision)
     }
 
     /** The image the detail screen was opened on: a placeholder from the local DB, then the API's copy. */
@@ -1548,8 +1565,18 @@ class SmugViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadAlbumPages(run: AlbumRun, targetImageKey: String?) {
+    private suspend fun loadAlbumPages(
+        run: AlbumRun,
+        targetImageKey: String?,
+        force: Boolean,
+        litDecision: CompletableDeferred<Boolean>
+    ) {
         val albumKey = run.albumKey
+        // Step 4-6: a lit gallery (the dot says something new is in it) and Retry open from the network;
+        // anything else follows the cache policy (reuse for 5 minutes, never across a session change).
+        val lit = repository.isGalleryLit(albumKey, _activeNickname.value.orEmpty())
+        litDecision.complete(lit)
+        val cacheControl = if (force || lit) "no-cache" else null
         // Resolve any saved/inherited password, but bound it: the hierarchy walk can be starved
         // for several seconds under concurrent load (e.g. arriving here via "Jump to Gallery"
         // while image-detail resolution is still running). On timeout we treat it as "no saved
@@ -1560,7 +1587,7 @@ class SmugViewModel @Inject constructor(
         }
         var albumDetails: com.smugview.app.data.api.AlbumDetails? = null
         try {
-            val details = repository.getAlbum(albumKey, apiKey, password)
+            val details = repository.getAlbum(albumKey, apiKey, password, cacheControl)
             albumDetails = details
             run.update {
                 it.copy(
@@ -1610,7 +1637,7 @@ class SmugViewModel @Inject constructor(
         }
 
         val firstPageResponse = try {
-            repository.getAlbumImagesPage(albumKey, apiKey, password)
+            repository.getAlbumImagesPage(albumKey, apiKey, password, cacheControl = cacheControl)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1674,7 +1701,7 @@ class SmugViewModel @Inject constructor(
                     delayMs = 0,
                     fetch = { start, _ ->
                         run.update { it.copy(status = "Downloading page $pageIndex...") }
-                        val response = repository.getAlbumImagesPage(albumKey, apiKey, password, start = start)
+                        val response = repository.getAlbumImagesPage(albumKey, apiKey, password, start = start, cacheControl = cacheControl)
                         val images = response.response.images ?: emptyList()
                         if (images.isNotEmpty()) {
                             imagesUrlUpdate(images, response.expansions)

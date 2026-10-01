@@ -336,16 +336,17 @@ class SmugMugRepository @Inject constructor(
     suspend fun getAlbum(
         albumKey: String,
         apiKey: String,
-        password: String? = null
+        password: String? = null,
+        cacheControl: String? = null
     ): AlbumDetails? {
         val album = try {
             try {
-                api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true").response.album
+                api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true", cacheControl = cacheControl).response.album
             } catch (e: Exception) {
                 if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                     val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                     if (unlocked) {
-                        api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true").response.album
+                        api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true", cacheControl = cacheControl).response.album
                     } else {
                         throw e
                     }
@@ -379,19 +380,20 @@ class SmugMugRepository @Inject constructor(
         albumKey: String,
         apiKey: String,
         password: String? = null,
-        start: Int = 1
+        start: Int = 1,
+        cacheControl: String? = null
     ): AlbumImagesResponse {
         // Later pages are not retried through the unlock path: the first page already proved the access.
-        if (start > 1) return api.getAlbumImages(albumKey, apiKey, password, start = start)
+        if (start > 1) return api.getAlbumImages(albumKey, apiKey, password, start = start, cacheControl = cacheControl)
         return try {
-            val response = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true")
+            val response = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true", cacheControl = cacheControl)
             val images = response.response.images
             
             // If the response is successful but images is null or empty, and we have a password, try unlocking parent root
             if ((images == null || images.isEmpty()) && !password.isNullOrEmpty()) {
                 val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true")
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true", cacheControl = cacheControl)
                     if (retryResponse.response.images != null && retryResponse.response.images.isNotEmpty()) {
                         return retryResponse
                     }
@@ -406,7 +408,7 @@ class SmugMugRepository @Inject constructor(
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                 val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true")
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true", cacheControl = cacheControl)
                     if (retryResponse.response.images == null) {
                         throw e
                     }
@@ -1904,6 +1906,25 @@ class SmugMugRepository @Inject constructor(
     /** NodeIDs that carry a dot on [nickname]'s site: one DAO query owns it (design 3.5). */
     fun getNodesWithActiveUpdates(nickname: String): Flow<List<String>> {
         return dao.getNodesWithActiveUpdates(nickname)
+    }
+
+    /**
+     * Is the gallery [albumKey] (an AlbumKey, or a NodeID) lit right now? Answered by the SAME query that
+     * draws the dot ([getNodesWithActiveUpdates]), so there is one owner of "is something new here?".
+     * A gallery that is lit opens from the network (step 4-6: the dot says the cached copy is behind).
+     * Any failure reads as "not lit": the cache policy still never reuses a pre-unlock response.
+     */
+    suspend fun isGalleryLit(albumKey: String, nickname: String): Boolean {
+        if (nickname.isEmpty()) return false
+        return try {
+            val nodeId = dao.getAlbumByKey(albumKey)?.nodeId
+            val lit = dao.getNodesWithActiveUpdates(nickname).first()
+            lit.contains(albumKey) || (nodeId != null && lit.contains(nodeId))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
     }
 
     /**

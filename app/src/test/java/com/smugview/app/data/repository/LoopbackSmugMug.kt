@@ -1,8 +1,9 @@
 package com.smugview.app.data.repository
 
+import com.smugview.app.data.api.CredentialEpoch
 import com.smugview.app.data.api.RetryingCallFactory
+import com.smugview.app.data.api.SessionCookieJar
 import com.smugview.app.data.api.SmugMugApi
-import com.smugview.app.di.HostCookieJar
 import com.smugview.app.di.buildSmugMugClient
 import okhttp3.Dns
 import okhttp3.Headers.Companion.toHeaders
@@ -44,16 +45,28 @@ class LoopbackSmugMug(val fake: FakeSmugMugServer, cacheDir: File) : AutoCloseab
     /** Flip to false for the offline rule (`only-if-cached, max-stale=7d`) of the production client. */
     @Volatile var online = true
 
+    /**
+     * The credential epoch (step 4-6) of [client]. It starts 10 minutes in the past: a session that settled
+     * long ago, so a plain second GET is a cache hit; a cookie change (an unlock) bumps it to now. Use
+     * `CredentialEpoch()` with [newClient] for a process that just started.
+     */
+    val epoch = CredentialEpoch(startedAtMs = System.currentTimeMillis() - 10 * 60_000L)
+
     /** The cookie jar in front of the fake. Replace it, with a new client, to simulate a new process. */
-    val cookieJar: okhttp3.CookieJar = HostCookieJar()
+    val cookieJar: okhttp3.CookieJar = SessionCookieJar(epoch)
 
-    val client: OkHttpClient = newClient(cacheDir, cookieJar)
+    val client: OkHttpClient = newClient(cacheDir, epoch, cookieJar)
 
-    /** A production client over the same loopback, e.g. a new process over the same [cacheDir]. */
-    fun newClient(cacheDir: File, jar: okhttp3.CookieJar = HostCookieJar()): OkHttpClient = buildSmugMugClient(
+    /** A production client over the same loopback, e.g. a new process over the same [cacheDir]: a fresh epoch and jar. */
+    fun newClient(
+        cacheDir: File,
+        epoch: CredentialEpoch = CredentialEpoch(),
+        jar: okhttp3.CookieJar = SessionCookieJar(epoch)
+    ): OkHttpClient = buildSmugMugClient(
         cacheDir = cacheDir,
         isOnline = { online },
         cookieJar = jar,
+        epoch = epoch,
         loggingInterceptor = Interceptor { it.proceed(it.request()) },
         dns = object : Dns {
             override fun lookup(hostname: String): List<InetAddress> =

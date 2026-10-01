@@ -932,10 +932,12 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.resolveAndCacheAlbumLineage(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
             .thenReturn(emptyList())
 
-        Mockito.`when`(mockRepository.getAlbum(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
+        Mockito.`when`(mockRepository.getAlbum(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
             .thenReturn(mockAlbum)
 
-        Mockito.`when`(mockRepository.getAlbumImagesPage(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.anyInt()))
+        Mockito.`when`(mockRepository.isGalleryLit(Mockito.anyString(), Mockito.anyString())).thenReturn(false)
+
+        Mockito.`when`(mockRepository.getAlbumImagesPage(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.anyInt(), Mockito.nullable(String::class.java)))
             .thenReturn(com.smugview.app.data.api.AlbumImagesResponse(
                 response = com.smugview.app.data.api.AlbumImagesPayload(
                     images = emptyList()
@@ -1231,16 +1233,20 @@ class SmugViewModelTest {
                 mockRepository.getAlbum(
                     Mockito.anyString(),
                     Mockito.anyString(),
+                    Mockito.nullable(String::class.java),
                     Mockito.nullable(String::class.java)
                 )
             ).thenThrow(retrofit2.HttpException(retrofit2.Response.error<Any>(401, okhttp3.ResponseBody.create(null, ""))))
+
+            Mockito.`when`(mockRepository.isGalleryLit(Mockito.anyString(), Mockito.anyString())).thenReturn(false)
 
             Mockito.`when`<com.smugview.app.data.api.AlbumImagesResponse>(
                 mockRepository.getAlbumImagesPage(
                     Mockito.anyString(),
                     Mockito.anyString(),
                     Mockito.nullable(String::class.java),
-                    Mockito.anyInt()
+                    Mockito.anyInt(),
+                    Mockito.nullable(String::class.java)
                 )
             ).thenThrow(retrofit2.HttpException(retrofit2.Response.error<Any>(401, okhttp3.ResponseBody.create(null, ""))))
         }

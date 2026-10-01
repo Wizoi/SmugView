@@ -273,7 +273,7 @@ fun PhotoGridScreen(
                             }
                             Spacer(modifier = Modifier.width(16.dp))
                             Button(
-                                onClick = { viewModel.selectAlbum(albumKey) },
+                                onClick = { viewModel.selectAlbum(albumKey, force = true) },
                                 colors = ButtonDefaults.buttonColors(containerColor = NeonBlue)
                             ) {
                                 Text("Retry")

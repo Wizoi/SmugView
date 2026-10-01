@@ -74,7 +74,9 @@ interface SmugMugApi {
         @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated,ImagesLastUpdated",
         @Query("_filteruri") filterUri: String = "HighlightImage",
         @Query("_verbosity") verbosity: Int = 1,
-        @Header("X-Ignore-Errors") ignoreErrors: String? = null
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null,
+        // "no-cache" = go to the network (a lit gallery, Retry). Null = the cache policy decides (step 4-6).
+        @Header("Cache-Control") cacheControl: String? = null
     ): AlbumResponse
 
     @GET("album/{album_key}!images")
@@ -89,7 +91,8 @@ interface SmugMugApi {
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris",
         @Query("_filteruri") filterUri: String = "LargestVideo,Album",
         @Query("_verbosity") verbosity: Int = 1,
-        @Header("X-Ignore-Errors") ignoreErrors: String? = null
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null,
+        @Header("Cache-Control") cacheControl: String? = null
     ): AlbumImagesResponse
 
     @GET

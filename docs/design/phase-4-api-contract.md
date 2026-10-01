@@ -439,6 +439,11 @@ design, and why.)*
 | 4-5 | A finished Tags load is not re-requested on re-entry (the old code made one extra empty request) | `nextStartToLoad == null` means done; one request fewer |
 | 4-5 | `GalleryCrawl.fetchAll` advances by the server's `Count` (it added a fixed 100) | `Pager` principle; the live API returns 100 for a full page, so nothing changes there. `SyncReportTest` fixtures were made to say so (full page = `Count` 100) |
 | 4-5 | Photo search pauses 100 ms between pages (`Pager`'s default; the old loop 200 ms) | Same order of magnitude; one rule for every loop |
+| 4-6 | The first second after ANY session-cookie change (and after process start) never reuses the cache online | OkHttp's age is whole seconds, so `max-age=0` is all that is safe; it is the cost of "never reuse a response sent before the change" |
+| 4-6 | More requests right after an unlock and at launch (the Hub, the crawl and the tree walk used to be partly served from the cache) | The 5-minute reuse resumes for responses fetched after the change; `RetryingCallFactory` absorbs a 429 |
+| 4-6 | `HostCookieJar` (in `AppModule.kt`) is replaced by `SessionCookieJar` (in `CachePolicy.kt`), which also owns the epoch; `buildSmugMugClient` takes the `epoch` | The epoch has to come from the jar (the only place that sees `Set-Cookie`), not `UnlockManager`, so a cookie set by any path counts |
+| 4-6 | A lit gallery opens from the network (`no-cache` on the details and each images page); the Retry button forces the network (`selectAlbum(force = true)`) | Q1 (a). `isGalleryLit` reuses `getNodesWithActiveUpdates`; the viewed mark in `selectAlbum` awaits the decision (bounded 5 s) so the dot is read before it is cleared |
+| 4-6 | The offline rule wins over a caller's `no-cache` and the lit rule | Unchanged behaviour (it was first in the chain); offline Refresh shows the cached copy instead of an error |
 
 ## 10. findings.md rows
 
