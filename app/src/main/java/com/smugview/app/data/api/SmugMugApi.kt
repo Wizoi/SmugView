@@ -34,7 +34,6 @@ interface SmugMugApi {
     suspend fun getNodeChildren(
         @Path("node_id") nodeId: String,
         @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
         @Query("count") count: Int = 100,
         @Query("start") start: Int? = null,
         @Query("_expand") expand: String = "HighlightImage",
@@ -70,7 +69,6 @@ interface SmugMugApi {
     suspend fun getAlbum(
         @Path("album_key") albumKey: String,
         @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
         @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated,ImagesLastUpdated",
         @Query("_filteruri") filterUri: String = "HighlightImage",
         @Query("_verbosity") verbosity: Int = 1,
@@ -83,7 +81,6 @@ interface SmugMugApi {
     suspend fun getAlbumImages(
         @Path("album_key") albumKey: String,
         @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
         @Query("count") count: Int = 500,
         // Every page is this same call with `start`; Pages.NextPage drops _expand (R-27), so it is never followed.
         @Query("start") start: Int? = null,
@@ -98,8 +95,7 @@ interface SmugMugApi {
     @GET
     suspend fun getImageSizeDetailsByUri(
         @Url url: String,
-        @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null
+        @Query("APIKey") apiKey: String
     ): ImageSizeDetailsResponse
 
     @GET("image!search")
@@ -131,8 +127,7 @@ interface SmugMugApi {
         @Query("count") count: Int = 4,
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,Uris",
         @Query("_filteruri") filterUri: String = "ImageAlbum",
-        @Query("_verbosity") verbosity: Int = 1,
-        @Query("Password") password: String? = null
+        @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 
     @GET("node!search")
@@ -140,7 +135,6 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("Scope") scope: String,
         @Query("Text") text: String,
-        @Query("Password") password: String? = null,
         @Query("_expand") expand: String = "HighlightImage",
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl,DateModified",
         @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage",
@@ -151,7 +145,6 @@ interface SmugMugApi {
     suspend fun getImage(
         @Path("image_key") imageKey: String,
         @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
         @Query("_expand") expand: String = "LargestVideo",
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris,WebUri",
         @Query("_filteruri") filterUri: String = "LargestVideo,ImageAlbum",
@@ -162,7 +155,6 @@ interface SmugMugApi {
     suspend fun getImageExif(
         @Path("image_key") imageKey: String,
         @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
         @Query("_verbosity") verbosity: Int = 1
     ): ExifResponse
 
@@ -197,7 +189,6 @@ interface SmugMugApi {
         @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated,ImagesLastUpdated",
         @Query("_filteruri") filterUri: String = "HighlightImage,Folder",
         @Query("_verbosity") verbosity: Int = 1,
-        @Query("Password") password: String? = null,
         @Header("Cache-Control") cacheControl: String? = null
     ): UserAlbumsResponse
 
@@ -206,8 +197,7 @@ interface SmugMugApi {
         @Path("nickname") nickname: String,
         @Query("APIKey") apiKey: String,
         @Query("NodeURI") nodeUri: String? = null,
-        @Query("_verbosity") verbosity: Int = 1,
-        @Query("Password") password: String? = null
+        @Query("_verbosity") verbosity: Int = 1
     ): TopKeywordsResponse
 
     @GET("image!search")

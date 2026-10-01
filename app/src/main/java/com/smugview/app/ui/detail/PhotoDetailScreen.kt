@@ -1015,21 +1015,22 @@ fun formatToLocalTime(dateStr: String?): String {
     return trimmed.replace("T", "\n").replace("Z", "")
 }
 
-fun getAuthenticatedMediaUrl(url: String?, albumKey: String, viewModel: SmugViewModel): String {
+/**
+ * A media URL with the API key added. It never carries the gallery password: no endpoint honours a
+ * `Password=` query parameter, and a password in a URL leaks into logs and caches (Phase 4 step 4-7,
+ * R-23). Password galleries' CDN media URLs need no session at all (R-53).
+ */
+fun getAuthenticatedMediaUrl(url: String?): String {
     if (url.isNullOrEmpty()) return ""
     val apiKey = com.smugview.app.BuildConfig.SMUGMUG_API_KEY
-    val password = viewModel.getUnlockedPasswordSync(albumKey)
-    
+
     val uri = android.net.Uri.parse(url)
     val builder = uri.buildUpon()
     
     if (uri.getQueryParameter("APIKey") == null) {
         builder.appendQueryParameter("APIKey", apiKey)
     }
-    if (password != null && uri.getQueryParameter("Password") == null) {
-        builder.appendQueryParameter("Password", password)
-    }
-    
+
     return builder.build().toString()
 }
 

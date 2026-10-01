@@ -314,7 +314,7 @@ class SmugMugApiTest {
         val imageKey = targetImage.imageKey
 
         val tahomaImagesResponse = runBlocking {
-            api.getAlbumImages(tahomaAlbumKey, apiKey, password = tahomaPassword, count = 1)
+            api.getAlbumImages(tahomaAlbumKey, apiKey, count = 1)
         }
         val tahomaImage = tahomaImagesResponse.response.images?.firstOrNull()
             ?: throw Exception("No images found in tahoma album. Cannot run tests.")
@@ -858,23 +858,23 @@ class SmugMugApiTest {
 class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun getUserProfile(nickname: String, apiKey: String, expand: String, verbosity: Int, ignoreErrors: String?) = delegate.getUserProfile(nickname, apiKey, expand, verbosity, ignoreErrors)
     override suspend fun getUserBioImage(nickname: String, apiKey: String, verbosity: Int) = delegate.getUserBioImage(nickname, apiKey, verbosity)
-    override suspend fun getNodeChildren(nodeId: String, apiKey: String, password: String?, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?, cacheControl: String?) = delegate.getNodeChildren(nodeId, apiKey, password, count, start, expand, filter, filterUri, verbosity, ignoreErrors, cacheControl)
+    override suspend fun getNodeChildren(nodeId: String, apiKey: String, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?, cacheControl: String?) = delegate.getNodeChildren(nodeId, apiKey, count, start, expand, filter, filterUri, verbosity, ignoreErrors, cacheControl)
     override suspend fun getNodeParents(nodeId: String, apiKey: String, filter: String, verbosity: Int, ignoreErrors: String?) = delegate.getNodeParents(nodeId, apiKey, filter, verbosity, ignoreErrors)
     override suspend fun getNode(nodeId: String, apiKey: String, expand: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?) = delegate.getNode(nodeId, apiKey, expand, filter, filterUri, verbosity, ignoreErrors)
-    override suspend fun getAlbum(albumKey: String, apiKey: String, password: String?, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?, cacheControl: String?) = delegate.getAlbum(albumKey, apiKey, password, filter, filterUri, verbosity, ignoreErrors, cacheControl)
-    override suspend fun getAlbumImages(albumKey: String, apiKey: String, password: String?, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?, cacheControl: String?) = delegate.getAlbumImages(albumKey, apiKey, password, count, start, expand, filter, filterUri, verbosity, ignoreErrors, cacheControl)
-    override suspend fun getImageSizeDetailsByUri(url: String, apiKey: String, password: String?) = delegate.getImageSizeDetailsByUri(url, apiKey, password)
+    override suspend fun getAlbum(albumKey: String, apiKey: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?, cacheControl: String?) = delegate.getAlbum(albumKey, apiKey, filter, filterUri, verbosity, ignoreErrors, cacheControl)
+    override suspend fun getAlbumImages(albumKey: String, apiKey: String, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, ignoreErrors: String?, cacheControl: String?) = delegate.getAlbumImages(albumKey, apiKey, count, start, expand, filter, filterUri, verbosity, ignoreErrors, cacheControl)
+    override suspend fun getImageSizeDetailsByUri(url: String, apiKey: String) = delegate.getImageSizeDetailsByUri(url, apiKey)
     override suspend fun searchImages(apiKey: String, scope: String?, text: String?, sortMethod: String?, sortDirection: String?, count: Int, start: Int, filter: String, filterUri: String, expand: String?, verbosity: Int) = delegate.searchImages(apiKey, scope, text, sortMethod, sortDirection, count, start, filter, filterUri, expand, verbosity)
     override suspend fun searchUsers(apiKey: String, query: String, verbosity: Int) = delegate.searchUsers(apiKey, query, verbosity)
-    override suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int, filter: String, filterUri: String, verbosity: Int, password: String?) = delegate.getUserRecentImages(nickname, apiKey, count, filter, filterUri, verbosity, password)
+    override suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int, filter: String, filterUri: String, verbosity: Int) = delegate.getUserRecentImages(nickname, apiKey, count, filter, filterUri, verbosity)
     
-    override suspend fun searchNodes(apiKey: String, scope: String, text: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.searchNodes(apiKey, scope, text, password, expand, filter, filterUri, verbosity)
-    override suspend fun getImage(imageKey: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getImage(imageKey, apiKey, password, expand, filter, filterUri, verbosity)
-    override suspend fun getImageExif(imageKey: String, apiKey: String, password: String?, verbosity: Int) = delegate.getImageExif(imageKey, apiKey, password, verbosity)
+    override suspend fun searchNodes(apiKey: String, scope: String, text: String, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.searchNodes(apiKey, scope, text, expand, filter, filterUri, verbosity)
+    override suspend fun getImage(imageKey: String, apiKey: String, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getImage(imageKey, apiKey, expand, filter, filterUri, verbosity)
+    override suspend fun getImageExif(imageKey: String, apiKey: String, verbosity: Int) = delegate.getImageExif(imageKey, apiKey, verbosity)
     override suspend fun unlockNode(nodeId: String, apiKey: String, password: String, ignoreErrors: String?) = delegate.unlockNode(nodeId, apiKey, password, ignoreErrors)
     override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String, ignoreErrors: String?) = delegate.unlockAlbum(albumKey, apiKey, password, ignoreErrors)
     override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest) = delegate.updateImageMetadata(imageKey, apiKey, body)
-    override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, password: String?, cacheControl: String?) = delegate.getUserAlbums(nickname, apiKey, count, start, expand, filter, filterUri, verbosity, password, cacheControl)
-    override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeUri: String?, verbosity: Int, password: String?) = delegate.getUserTopKeywords(nickname, apiKey, nodeUri, verbosity, password)
+    override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, cacheControl: String?) = delegate.getUserAlbums(nickname, apiKey, count, start, expand, filter, filterUri, verbosity, cacheControl)
+    override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeUri: String?, verbosity: Int) = delegate.getUserTopKeywords(nickname, apiKey, nodeUri, verbosity)
     override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, filterUri: String, verbosity: Int) = delegate.getImagesByKeyword(apiKey, scope, text, count, start, filter, filterUri, verbosity)
 }

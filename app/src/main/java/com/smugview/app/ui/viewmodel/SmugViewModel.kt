@@ -710,7 +710,6 @@ class SmugViewModel @Inject constructor(
         getRootNodeId = {
             _splashState.value.let { if (it is SplashUiState.Success) it.rootNodeId else null }
         },
-        getUnlockedPasswordSync = { nodeId -> getUnlockedPasswordSync(nodeId) },
         getAlbumKeyFromWebUri = { webUri -> getAlbumKeyFromWebUri(webUri) },
         setUserAlbums = { albums -> _userAlbums = albums }
     )
@@ -1543,8 +1542,7 @@ class SmugViewModel @Inject constructor(
                 run.update { it.copy(photos = listOf(placeholder)) }
             }
 
-            val password = getUnlockedPassword(run.albumKey)
-            repository.getImage(targetImageKey, apiKey, password).collect { result ->
+            repository.getImage(targetImageKey, apiKey).collect { result ->
                 result.getOrNull()?.let { apiImg ->
                     run.update { s ->
                         val updated = s.photos.toMutableList()
@@ -1778,9 +1776,7 @@ class SmugViewModel @Inject constructor(
         val flow = _exifStates.getOrPut(imageKey) {
             val stateFlow = MutableStateFlow<Result<ExifData>?>(null)
             session.scope.launch {
-                val albumKey = _currentAlbumKey.value
-                val password = getUnlockedPassword(albumKey)
-                repository.getImageExif(imageKey, apiKey, password).collect {
+                repository.getImageExif(imageKey, apiKey).collect {
                     stateFlow.value = it
                 }
             }
@@ -1793,9 +1789,7 @@ class SmugViewModel @Inject constructor(
         val flow = _imageSizeDetailsStates.getOrPut(imageKey) {
             val stateFlow = MutableStateFlow<Result<ImageSizeDetailsPayload>?>(null)
             session.scope.launch {
-                val albumKey = _currentAlbumKey.value
-                val password = getUnlockedPassword(albumKey)
-                repository.getImageSizeDetails(uri, apiKey, password).collect {
+                repository.getImageSizeDetails(uri, apiKey).collect {
                     stateFlow.value = it
                 }
             }
@@ -1812,12 +1806,9 @@ class SmugViewModel @Inject constructor(
                 val searchPhoto = searchPhotosList.find { it.imageKey == imageKey }
                 val webUri = searchPhoto?.webUri
                 val thumbnailUrl = searchPhoto?.thumbnailUrl ?: ""
-                
-                val resolvedPassword = getPasswordForPhotoUrl(webUri) ?: getPasswordForPhotoUrl(thumbnailUrl)
-                val password = resolvedPassword ?: getUnlockedPassword(albumKey)
-                
+
                 var finalResult: Result<AlbumImageData>? = null
-                repository.getImage(imageKey, apiKey, password).collect { result ->
+                repository.getImage(imageKey, apiKey).collect { result ->
                     finalResult = result
                 }
 
@@ -1864,7 +1855,7 @@ class SmugViewModel @Inject constructor(
                         if (accessType != "Password") {
                             // Public category: if initial fetch failed, retry it now
                             if (detailedImage == null) {
-                                repository.getImage(imageKey, apiKey, null).collect { result ->
+                                repository.getImage(imageKey, apiKey).collect { result ->
                                     finalResult = result
                                 }
                                 detailedImage = finalResult?.getOrNull()
@@ -1896,7 +1887,7 @@ class SmugViewModel @Inject constructor(
                                 val unlocked = repository.unlocks.ensureSession(resolvedKey, apiKey, candidatePw) == com.smugview.app.data.repository.SmugMugRepository.UnlockResult.Success
                                 if (unlocked) {
                                     var tempResult: Result<AlbumImageData>? = null
-                                    repository.getImage(imageKey, apiKey, candidatePw).collect { result ->
+                                    repository.getImage(imageKey, apiKey).collect { result ->
                                         tempResult = result
                                     }
                                     val tempImg = tempResult?.getOrNull()
@@ -2091,43 +2082,6 @@ class SmugViewModel @Inject constructor(
         }
 
         return matchedAlbum?.albumKey
-    }
-
-    suspend fun getPasswordForPhotoUrl(photoUrl: String?): String? {
-        if (photoUrl.isNullOrEmpty()) return null
-        
-        val path = try {
-            val cleanedUriStr = photoUrl.substringBefore("?")
-            val pathStr = if (cleanedUriStr.contains("://")) {
-                cleanedUriStr.substringAfter("://").substringAfter("/")
-            } else {
-                cleanedUriStr
-            }
-            val pathBeforeImage = if (pathStr.contains("/i-")) {
-                pathStr.substringBefore("/i-")
-            } else {
-                pathStr
-            }
-            java.net.URLDecoder.decode(pathBeforeImage, "UTF-8")
-        } catch (e: Exception) {
-            null
-        } ?: return null
-
-        val segments = path.trim('/').split('/')
-        val allNodes = repository.getCachedNodesForSite(_activeNickname.value.orEmpty())
-        
-        for (i in segments.indices.reversed()) {
-            val parentPath = segments.subList(0, i + 1).joinToString("/").lowercase()
-            val matchedNode = allNodes.find { node ->
-                val nodePath = node.webUri?.substringAfter("://")?.substringAfter("/")?.trim('/')?.lowercase() ?: ""
-                nodePath == parentPath
-            }
-            if (matchedNode != null) {
-                val pw = getUnlockedPasswordForNode(matchedNode)
-                if (!pw.isNullOrEmpty()) return pw
-            }
-        }
-        return null
     }
 
     suspend fun getNearestCachedAncestorNode(photoUrl: String?): com.smugview.app.data.db.CachedNode? {

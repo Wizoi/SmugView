@@ -44,7 +44,7 @@ class TagSearchReentryTest {
 
     @Before fun setUp() {
         runBlocking {
-            `when`(repo.getUserTopKeywords(anyString(), anyString(), anyString(), isNull()))
+            `when`(repo.getUserTopKeywords(anyString(), anyString(), anyString()))
                 .thenReturn(TopKeywordsResponse(TopKeywordsPayload(UserTopKeywordsContainer(listOf("sunset", "dog")))))
             `when`(repo.getImagesByKeywordPage(anyString(), anyString(), anyString(), anyInt(), anyInt()))
                 .thenReturn(ImageSearchResponse(ImageSearchPayload(photos, PagesData(1, photos.size, photos.size))))

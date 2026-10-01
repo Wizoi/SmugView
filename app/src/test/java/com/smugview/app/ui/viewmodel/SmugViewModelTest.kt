@@ -222,13 +222,13 @@ class SmugViewModelTest {
             )
         )
         kotlinx.coroutines.runBlocking {
-            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString()))
                 .thenReturn(albums)
-            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt()))
                 .thenReturn(com.smugview.app.data.api.ImageSearchResponse(
                     response = com.smugview.app.data.api.ImageSearchPayload(images = emptyList())
                 ))
-            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
                 .thenReturn(com.smugview.app.data.api.TopKeywordsResponse(
                     response = com.smugview.app.data.api.TopKeywordsPayload(
                         userTopKeywords = com.smugview.app.data.api.UserTopKeywordsContainer(keywords = emptyList())
@@ -296,7 +296,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.hasSearchPhotosInDb("Sunset", "site:testUser"))
             .thenReturn(false)
             
-        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
+        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY))
             .thenReturn(flowOf(Result.success(emptyList())))
             
         // Mock getPagedSearchPhotos to return a dummy PagingSource
@@ -363,7 +363,7 @@ class SmugViewModelTest {
         Mockito.`when`(
             mockRepository.searchNodesRemote(
                 Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString(),
-                Mockito.anyString(), Mockito.nullable(String::class.java)
+                Mockito.anyString()
             )
         ).thenReturn(flowOf(Result.success(emptyList())))
         val mockPagingSource = object : androidx.paging.PagingSource<Int, SearchResult>() {
@@ -463,8 +463,7 @@ class SmugViewModelTest {
             null,
             "site:testUser",
             "Sunset",
-            BuildConfig.SMUGMUG_API_KEY,
-            null
+            BuildConfig.SMUGMUG_API_KEY
         )
     }
 
@@ -490,7 +489,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockPrefs.getLong("site:testUser_Sunset_ts", 0L))
             .thenReturn(0L)
             
-        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
+        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY))
             .thenReturn(flowOf(Result.success(emptyList())))
             
         // Mock getPagedSearchPhotos to return a dummy PagingSource
@@ -518,8 +517,7 @@ class SmugViewModelTest {
             "/api/v2/node/4zqWw",
             "site:testUser",
             "Sunset",
-            BuildConfig.SMUGMUG_API_KEY,
-            null
+            BuildConfig.SMUGMUG_API_KEY
         )
     }
 
@@ -776,9 +774,15 @@ class SmugViewModelTest {
 
         // The unlock goes through repository.unlocks (UnlockManager over the repository's UnlockIo).
         Mockito.`when`(mockRepository.getNodeById(testAlbumKey)).thenReturn(albumNode)
+        // The session cookie is the only thing that unlocks (R-23): the server answers the same URL
+        // differently before and after `!unlock`, so the fake flips on the unlock call, not on a password.
+        val sessionOpen = java.util.concurrent.atomic.AtomicBoolean(false)
         Mockito.`when`(mockRepository.unlockAlbumResult(testAlbumKey, BuildConfig.SMUGMUG_API_KEY, "gallery"))
-            .thenReturn(com.smugview.app.data.repository.SmugMugRepository.UnlockResult.Success)
-            
+            .thenAnswer {
+                sessionOpen.set(true)
+                com.smugview.app.data.repository.SmugMugRepository.UnlockResult.Success
+            }
+
         val anonymousImg = AlbumImageData(
             imageKey = testImageKey,
             title = "Locked Title",
@@ -793,11 +797,8 @@ class SmugViewModelTest {
             uris = AlbumImageUris(imageAlbum = "/api/v2/album/$testAlbumKey")
         )
         
-        Mockito.`when`(mockRepository.getImage(testImageKey, BuildConfig.SMUGMUG_API_KEY, null))
-            .thenReturn(flowOf(Result.success(anonymousImg)))
-            
-        Mockito.`when`(mockRepository.getImage(testImageKey, BuildConfig.SMUGMUG_API_KEY, "gallery"))
-            .thenReturn(flowOf(Result.success(unlockedImg)))
+        Mockito.`when`(mockRepository.getImage(testImageKey, BuildConfig.SMUGMUG_API_KEY))
+            .thenAnswer { flowOf(Result.success(if (sessionOpen.get()) unlockedImg else anonymousImg)) }
             
         val flow = viewModel.getImageDetails(testImageKey)
         val result = flow.first { it != null }
@@ -851,7 +852,7 @@ class SmugViewModelTest {
             thumbnailUrl = "https://photos.smugmug.com/Family/School/2026-06-13--Laurel-Graduation-Day/i-$testImageKey/0/Th/th.jpg",
             uris = null
         )
-        Mockito.`when`(mockRepository.getImage(testImageKey, BuildConfig.SMUGMUG_API_KEY, null))
+        Mockito.`when`(mockRepository.getImage(testImageKey, BuildConfig.SMUGMUG_API_KEY))
             .thenReturn(flowOf(Result.success(anonymousImg)))
 
         val result = viewModel.getImageDetails(testImageKey).first { it != null }
@@ -1003,11 +1004,11 @@ class SmugViewModelTest {
         )
         
         kotlinx.coroutines.runBlocking {
-            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString()))
                 .thenReturn(mockAlbums)
-            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt()))
                 .thenReturn(mockRecentImagesResponse)
-            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
                 .thenReturn(mockTopKeywords)
         }
             
@@ -1080,11 +1081,11 @@ class SmugViewModelTest {
                 .thenReturn("selectRootId")
             Mockito.`when`(mockRepository.getUserProfile(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
                 .thenReturn(flowOf(Result.success(mockUser)))
-            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString()))
                 .thenReturn(mockAlbums)
-            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt()))
                 .thenReturn(mockRecentImagesResponse)
-            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
                 .thenReturn(mockTopKeywords)
             Mockito.`when`(mockRepository.getNodeChildren(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyBoolean(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
                 .thenReturn(flowOf(Result.success(emptyList())))
@@ -1129,11 +1130,11 @@ class SmugViewModelTest {
                 .thenReturn("syncRootId")
             Mockito.`when`(mockRepository.getUserProfile(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
                 .thenReturn(flowOf(Result.success(mockUser)))
-            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString()))
                 .thenReturn(com.smugview.app.data.api.UserAlbumsResponse(com.smugview.app.data.api.UserAlbumsPayload(emptyList()), emptyMap()))
-            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt()))
                 .thenReturn(com.smugview.app.data.api.ImageSearchResponse(com.smugview.app.data.api.ImageSearchPayload(emptyList())))
-            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
                 .thenReturn(com.smugview.app.data.api.TopKeywordsResponse(com.smugview.app.data.api.TopKeywordsPayload(com.smugview.app.data.api.UserTopKeywordsContainer(emptyList()))))
             
             Mockito.`when`<Flow<Result<List<CachedNode>>>>(
@@ -1204,11 +1205,11 @@ class SmugViewModelTest {
                 .thenReturn("fallbackRootId")
             Mockito.`when`(mockRepository.getUserProfile(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
                 .thenReturn(flowOf(Result.success(mockUser)))
-            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString()))
                 .thenReturn(mockAlbums)
-            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt()))
                 .thenReturn(com.smugview.app.data.api.ImageSearchResponse(com.smugview.app.data.api.ImageSearchPayload(emptyList())))
-            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
                 .thenReturn(com.smugview.app.data.api.TopKeywordsResponse(com.smugview.app.data.api.TopKeywordsPayload(com.smugview.app.data.api.UserTopKeywordsContainer(emptyList()))))
             Mockito.`when`<Flow<Result<List<CachedNode>>>>(
                 mockRepository.getNodeChildren(

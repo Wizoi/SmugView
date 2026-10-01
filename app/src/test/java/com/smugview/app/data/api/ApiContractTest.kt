@@ -33,18 +33,7 @@ class ApiContractTest(private val method: String) {
         private const val K = "test-key"
 
         /** Method name to the parameter names it sends that its endpoint does not accept. */
-        val EXPECTED_VIOLATIONS: Map<String, Set<String>> = mapOf(
-            "getNodeChildren" to setOf("Password"),
-            "getAlbum" to setOf("Password"),
-            "getAlbumImages" to setOf("Password"),
-            "getImageSizeDetailsByUri" to setOf("Password"),
-            "searchNodes" to setOf("Password"),
-            "getUserRecentImages" to setOf("Password"),
-            "getImage" to setOf("Password"),
-            "getImageExif" to setOf("Password"),
-            "getUserAlbums" to setOf("Password"),
-            "getUserTopKeywords" to setOf("Password")
-        )
+        val EXPECTED_VIOLATIONS: Map<String, Set<String>> = emptyMap()
 
         /** POST and PATCH calls: their form and body fields are not query parameters; the query is `APIKey` only. */
         private val NOT_QUERY_CONTRACT = setOf("unlockNode", "unlockAlbum", "updateImageMetadata")
@@ -53,24 +42,24 @@ class ApiContractTest(private val method: String) {
         val CASES: Map<String, suspend SmugMugApi.() -> Any?> = linkedMapOf(
             "getUserProfile" to { getUserProfile("idzifamily", K, ignoreErrors = "true") },
             "getUserBioImage" to { getUserBioImage("idzifamily", K) },
-            "getNodeChildren" to { getNodeChildren("4zqWw", K, password = "pw", start = 101, ignoreErrors = "true", cacheControl = "no-cache") },
+            "getNodeChildren" to { getNodeChildren("4zqWw", K, start = 101, ignoreErrors = "true", cacheControl = "no-cache") },
             "getNode" to { getNode("4zqWw", K, expand = "HighlightImage", ignoreErrors = "true") },
             "getNodeParents" to { getNodeParents("sXQz4G", K, ignoreErrors = "true") },
-            "getAlbum" to { getAlbum("N74KSK", K, password = "pw", ignoreErrors = "true") },
-            "getAlbumImages" to { getAlbumImages("N74KSK", K, password = "pw", start = 501, ignoreErrors = "true") },
-            "getImageSizeDetailsByUri" to { getImageSizeDetailsByUri("/api/v2/image/N74KSKi001-0!sizedetails", K, password = "pw") },
+            "getAlbum" to { getAlbum("N74KSK", K, ignoreErrors = "true") },
+            "getAlbumImages" to { getAlbumImages("N74KSK", K, start = 501, ignoreErrors = "true") },
+            "getImageSizeDetailsByUri" to { getImageSizeDetailsByUri("/api/v2/image/N74KSKi001-0!sizedetails", K) },
             "searchImages" to {
                 searchImages(K, scope = "/api/v2/node/4zqWw", text = "kentridge", sortMethod = "DateAdded", sortDirection = "Descending", start = 101, expand = "ImageAlbum")
             },
             "searchUsers" to { searchUsers(K, "idzi") },
-            "getUserRecentImages" to { getUserRecentImages("idzifamily", K, password = "pw") },
-            "searchNodes" to { searchNodes(K, scope = "/api/v2/node/4zqWw", text = "meet", password = "pw") },
-            "getImage" to { getImage("N74KSKi001-0", K, password = "pw") },
-            "getImageExif" to { getImageExif("N74KSKi001-0", K, password = "pw") },
+            "getUserRecentImages" to { getUserRecentImages("idzifamily", K) },
+            "searchNodes" to { searchNodes(K, scope = "/api/v2/node/4zqWw", text = "meet") },
+            "getImage" to { getImage("N74KSKi001-0", K) },
+            "getImageExif" to { getImageExif("N74KSKi001-0", K) },
             "unlockNode" to { unlockNode("2sDN5x", K, "pw", "true") },
             "unlockAlbum" to { unlockAlbum("FfHCms", K, "pw", "true") },
-            "getUserAlbums" to { getUserAlbums("idzifamily", K, start = 1, password = "pw", cacheControl = "no-cache") },
-            "getUserTopKeywords" to { getUserTopKeywords("idzifamily", K, nodeUri = "/api/v2/node/P4BKB", password = "pw") },
+            "getUserAlbums" to { getUserAlbums("idzifamily", K, start = 1, cacheControl = "no-cache") },
+            "getUserTopKeywords" to { getUserTopKeywords("idzifamily", K, nodeUri = "/api/v2/node/P4BKB") },
             "getImagesByKeyword" to { getImagesByKeyword(K, scope = "/api/v2/node/4zqWw", text = "kentridge") },
             "updateImageMetadata" to { updateImageMetadata("N74KSKi001-0", K, UpdateImageMetadataRequest(keywords = "a;b")) }
         )

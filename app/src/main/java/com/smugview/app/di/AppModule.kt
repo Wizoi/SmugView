@@ -45,7 +45,7 @@ internal fun debugHttpLogger(
 /**
  * Cache Interceptor (a NETWORK interceptor): force OkHttp to cache GET responses by replacing
  * 'no-cache/no-store' with a 5-minute cache header. SmugMug itself sends `private, no-store, no-cache,
- * max-age=0` (findings V11). Search/unlock/Password/Text requests are excluded: they must always hit
+ * max-age=0` (findings V11). Search/unlock/Text requests are excluded: they must always hit
  * the network. A request that itself says `Cache-Control: no-cache` skips the cache lookup in OkHttp
  * (R-35), which is how a forced listing gets fresh data inside the 5-minute window.
  * Top-level and internal so a loopback test can run the exact production rewrite.
@@ -58,8 +58,7 @@ internal fun smugMugCacheRewriteInterceptor(): Interceptor = Interceptor { chain
         urlPath.contains("image!search") ||
         urlPath.contains("node!search") ||
         urlPath.contains("unlock") ||
-        request.url.queryParameter("Text") != null ||
-        request.url.queryParameter("Password") != null
+        request.url.queryParameter("Text") != null
     if (request.method == "GET" && response.isSuccessful && !isBypassedEndpoint) {
         val cacheControl = response.header("Cache-Control")
         if (cacheControl == null || cacheControl.contains("no-store") || cacheControl.contains("no-cache") || cacheControl.contains("max-age=0")) {

@@ -263,12 +263,12 @@ class SmugMugRepository @Inject constructor(
                 fetch = { start, count ->
                     val response = if (start == 1) {
                         try {
-                            api.getNodeChildren(nodeId, apiKey, password, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+                            api.getNodeChildren(nodeId, apiKey, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                         } catch (e: Exception) {
                             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                                 val unlocked = unlocks.reauthorize(nodeId, apiKey, password) == UnlockResult.Success
                                 if (unlocked) {
-                                    api.getNodeChildren(nodeId, apiKey, password, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+                                    api.getNodeChildren(nodeId, apiKey, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                                 } else {
                                     throw e
                                 }
@@ -282,7 +282,7 @@ class SmugMugRepository @Inject constructor(
                         if (com.smugview.app.BuildConfig.DEBUG) {
                             android.util.Log.d("SmugMugRepository", "getNodeChildren: fetching start=$start for nodeId=$nodeId")
                         }
-                        api.getNodeChildren(nodeId, apiKey, password, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+                        api.getNodeChildren(nodeId, apiKey, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                     }
                     response.expansions?.let { allExpansions.putAll(it) }
                     response.toPage(start)
@@ -341,12 +341,12 @@ class SmugMugRepository @Inject constructor(
     ): AlbumDetails? {
         val album = try {
             try {
-                api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true", cacheControl = cacheControl).response.album
+                api.getAlbum(albumKey, apiKey, ignoreErrors = "true", cacheControl = cacheControl).response.album
             } catch (e: Exception) {
                 if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                     val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                     if (unlocked) {
-                        api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true", cacheControl = cacheControl).response.album
+                        api.getAlbum(albumKey, apiKey, ignoreErrors = "true", cacheControl = cacheControl).response.album
                     } else {
                         throw e
                     }
@@ -384,16 +384,16 @@ class SmugMugRepository @Inject constructor(
         cacheControl: String? = null
     ): AlbumImagesResponse {
         // Later pages are not retried through the unlock path: the first page already proved the access.
-        if (start > 1) return api.getAlbumImages(albumKey, apiKey, password, start = start, cacheControl = cacheControl)
+        if (start > 1) return api.getAlbumImages(albumKey, apiKey, start = start, cacheControl = cacheControl)
         return try {
-            val response = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true", cacheControl = cacheControl)
+            val response = api.getAlbumImages(albumKey, apiKey, start = start, ignoreErrors = "true", cacheControl = cacheControl)
             val images = response.response.images
             
             // If the response is successful but images is null or empty, and we have a password, try unlocking parent root
             if ((images == null || images.isEmpty()) && !password.isNullOrEmpty()) {
                 val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true", cacheControl = cacheControl)
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, start = start, ignoreErrors = "true", cacheControl = cacheControl)
                     if (retryResponse.response.images != null && retryResponse.response.images.isNotEmpty()) {
                         return retryResponse
                     }
@@ -408,7 +408,7 @@ class SmugMugRepository @Inject constructor(
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                 val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, password, start = start, ignoreErrors = "true", cacheControl = cacheControl)
+                    val retryResponse = api.getAlbumImages(albumKey, apiKey, start = start, ignoreErrors = "true", cacheControl = cacheControl)
                     if (retryResponse.response.images == null) {
                         throw e
                     }
@@ -436,20 +436,18 @@ class SmugMugRepository @Inject constructor(
     suspend fun getUserTopKeywords(
         nickname: String,
         apiKey: String,
-        nodeId: String? = null,
-        password: String? = null
+        nodeId: String? = null
     ): com.smugview.app.data.api.TopKeywordsResponse {
         // user!topkeywords is scoped by NodeURI; it silently ignores NodeID (Phase 4, Q6, R-28).
-        return api.getUserTopKeywords(nickname, apiKey, nodeUri = nodeId?.let { "/api/v2/node/$it" }, password = password)
+        return api.getUserTopKeywords(nickname, apiKey, nodeUri = nodeId?.let { "/api/v2/node/$it" })
     }
 
     suspend fun getUserRecentImagesResponse(
         nickname: String,
         apiKey: String,
-        count: Int = 10,
-        password: String? = null
+        count: Int = 10
     ): com.smugview.app.data.api.ImageSearchResponse {
-        return api.getUserRecentImages(nickname, apiKey, count = count, password = password)
+        return api.getUserRecentImages(nickname, apiKey, count = count)
     }
 
     /**
@@ -490,7 +488,7 @@ class SmugMugRepository @Inject constructor(
     ): List<AlbumImageData> {
         val allImages = mutableListOf<AlbumImageData>()
         val first = try {
-            val res = api.getAlbumImages(albumKey, apiKey, password, start = 1, ignoreErrors = "true")
+            val res = api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true")
             if (res.response.images == null) {
                 throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
             }
@@ -499,7 +497,7 @@ class SmugMugRepository @Inject constructor(
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
                 val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                 if (unlocked) {
-                    val retryRes = api.getAlbumImages(albumKey, apiKey, password, start = 1, ignoreErrors = "true")
+                    val retryRes = api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true")
                     if (retryRes.response.images == null) {
                         throw e
                     }
@@ -520,7 +518,7 @@ class SmugMugRepository @Inject constructor(
                 first = next,
                 pageSize = ALBUM_IMAGES_PAGE,
                 fetch = { start, count ->
-                    val res = api.getAlbumImages(albumKey, apiKey, password, count = count, start = start)
+                    val res = api.getAlbumImages(albumKey, apiKey, count = count, start = start)
                     applyVideoUrls(res.response.images ?: emptyList(), res.expansions)
                     res.toPage(start)
                 },
@@ -1107,8 +1105,7 @@ class SmugMugRepository @Inject constructor(
         scopeUri: String?,
         scopeKey: String,
         query: String,
-        apiKey: String,
-        password: String? = null
+        apiKey: String
     ) {
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages starting: user=$nickname, scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query")
@@ -1227,7 +1224,7 @@ class SmugMugRepository @Inject constructor(
                 Pager.each(
                     pageSize = 100,
                     fetch = { start, count ->
-                        val response = api.getNodeChildren(currentNodeId, apiKey, effectivePassword, count = count, start = start, ignoreErrors = "true")
+                        val response = api.getNodeChildren(currentNodeId, apiKey, count = count, start = start, ignoreErrors = "true")
                         response.expansions?.let { expansions.putAll(it) }
                         response.toPage(start)
                     },
@@ -1355,9 +1352,9 @@ class SmugMugRepository @Inject constructor(
     }
 
     // Fetches EXIF details
-    fun getImageExif(imageKey: String, apiKey: String, password: String?): Flow<Result<ExifData>> = flow {
+    fun getImageExif(imageKey: String, apiKey: String): Flow<Result<ExifData>> = flow {
         try {
-            val response = api.getImageExif(imageKey, apiKey, password)
+            val response = api.getImageExif(imageKey, apiKey)
             emit(Result.success(response.response.exif))
         } catch (e: CancellationException) {
             throw e
@@ -1369,11 +1366,10 @@ class SmugMugRepository @Inject constructor(
     // Fetches single image details
     fun getImage(
         imageKey: String,
-        apiKey: String,
-        password: String? = null
+        apiKey: String
     ): Flow<Result<AlbumImageData>> = flow {
         try {
-            val response = api.getImage(imageKey, apiKey, password)
+            val response = api.getImage(imageKey, apiKey)
             val img = response.response.image
             if (img.isVideo) {
                 val largestVideoUri = img.uris?.largestVideo
@@ -1393,12 +1389,11 @@ class SmugMugRepository @Inject constructor(
     // Fetches the real generated sizes/urls/dimensions for a single image, used by pinch-to-zoom
     fun getImageSizeDetails(
         uri: String,
-        apiKey: String,
-        password: String? = null
+        apiKey: String
     ): Flow<Result<com.smugview.app.data.api.ImageSizeDetailsPayload>> = flow {
         try {
             val absoluteUrl = if (uri.startsWith("http")) uri else "https://api.smugmug.com$uri"
-            val response = api.getImageSizeDetailsByUri(absoluteUrl, apiKey, password)
+            val response = api.getImageSizeDetailsByUri(absoluteUrl, apiKey)
             emit(Result.success(response.response.details))
         } catch (e: CancellationException) {
             throw e
@@ -1617,8 +1612,8 @@ class SmugMugRepository @Inject constructor(
         return api.getUserAlbums(nickname, apiKey).response.albums ?: emptyList()
     }
 
-    suspend fun getUserAlbumsResponse(nickname: String, apiKey: String, password: String? = null): com.smugview.app.data.api.UserAlbumsResponse {
-        return api.getUserAlbums(nickname, apiKey, password = password)
+    suspend fun getUserAlbumsResponse(nickname: String, apiKey: String): com.smugview.app.data.api.UserAlbumsResponse {
+        return api.getUserAlbums(nickname, apiKey)
     }
 
     suspend fun getUserAlbumsPreview(nickname: String, apiKey: String): List<com.smugview.app.data.api.AlbumPreview> {
@@ -1764,12 +1759,11 @@ class SmugMugRepository @Inject constructor(
         scopeUri: String,
         scopeKey: String,
         query: String,
-        apiKey: String,
-        password: String? = null
+        apiKey: String
     ): Flow<Result<List<CachedNode>>> = flow {
         try {
             SmugLog.d("SmugMugRepository") { "searchNodesRemote starting: scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query" }
-            val response = api.searchNodes(apiKey, scopeUri, query, password)
+            val response = api.searchNodes(apiKey, scopeUri, query)
             val apiNodes = response.response.nodes ?: emptyList()
             val existingIds = HashSet<String>()
             SmugLog.d("SmugMugRepository") { "searchNodesRemote API returned ${apiNodes.size} nodes" }

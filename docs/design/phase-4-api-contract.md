@@ -444,6 +444,10 @@ design, and why.)*
 | 4-6 | `HostCookieJar` (in `AppModule.kt`) is replaced by `SessionCookieJar` (in `CachePolicy.kt`), which also owns the epoch; `buildSmugMugClient` takes the `epoch` | The epoch has to come from the jar (the only place that sees `Set-Cookie`), not `UnlockManager`, so a cookie set by any path counts |
 | 4-6 | A lit gallery opens from the network (`no-cache` on the details and each images page); the Retry button forces the network (`selectAlbum(force = true)`) | Q1 (a). `isGalleryLit` reuses `getNodesWithActiveUpdates`; the viewed mark in `selectAlbum` awaits the decision (bounded 5 s) so the dot is read before it is cleared |
 | 4-6 | The offline rule wins over a caller's `no-cache` and the lit rule | Unchanged behaviour (it was first in the chain); offline Refresh shows the cached copy instead of an error |
+| 4-7 | `getAuthenticatedMediaUrl` (video player URLs) no longer appends the saved gallery password; it takes only the URL | It put the password into a CDN URL that ignores it (R-53) and into logs and caches. Changes nothing the user sees |
+| 4-7 | The `getImageDetails` first call no longer looks a password up from the photo URL; `SmugViewModel.getPasswordForPhotoUrl` is deleted | Its only job was to fill the removed `Password=` parameter; the unlock still goes through `unlocks.ensureSession` |
+| 4-7 | Password-gallery JSON now enters the HTTP cache (the rewrite interceptor no longer bypasses `Password=` requests) | Q2 (a): 5 minutes online under the epoch rule, 7 days offline, app-private cache excluded from backup (R-54). If the server ends a session while the cookie jar is unchanged, a cached page is reused for at most 5 minutes |
+| 4-7 | `SiteHubController` lost its `getUnlockedPasswordSync` injection and `SearchController` its password lookup | Dead once the parameter went; no behaviour change |
 
 ## 10. findings.md rows
 

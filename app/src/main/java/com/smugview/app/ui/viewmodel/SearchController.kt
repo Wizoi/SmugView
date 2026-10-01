@@ -213,7 +213,6 @@ class SearchController(
                 val scopeUri = activeScope.nodeUri
                 val scopeKey = activeScope.nodeId ?: "site:$nickname"
                 val apiScopeUri = scopeUri ?: resolvedRootId?.let { "/api/v2/node/$it" }
-                val password = getUnlockedPassword(scopeKey)
 
                 val lastSearchedAt = searchStatusPrefs.getLong("${scopeKey}_${query}_ts", 0L)
                 val cacheAgeMs = System.currentTimeMillis() - lastSearchedAt
@@ -266,7 +265,7 @@ class SearchController(
                     backgroundSearchJob?.cancel()
                     backgroundSearchJob = siteScope().launch {
                         try {
-                            repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey, password)
+                            repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey)
                             searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
                         } finally {
                             _isSearchPhotosLoading.value = false
@@ -334,7 +333,7 @@ class SearchController(
                     try {
                         // Note: searchNodesRemote still fetches folders if available from SmugMug search API.
                         // Galleries are exclusively handled by the in-memory cache.
-                        repository.searchNodesRemote(nickname, apiScopeUri, scopeKey, query, apiKey, password).collect {}
+                        repository.searchNodesRemote(nickname, apiScopeUri, scopeKey, query, apiKey).collect {}
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }

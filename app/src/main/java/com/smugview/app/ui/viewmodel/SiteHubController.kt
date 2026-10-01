@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
  * nickname, splash/browser/folder state, and the recent-sites list) stays in the
  * ViewModel; those methods call [loadActiveSiteDetails] and the clear* helpers here.
  * The hub load reaches back into ViewModel-owned state through injected lambdas:
- * [getRootNodeId], [getUnlockedPasswordSync], [getAlbumKeyFromWebUri], and
+ * [getRootNodeId], [getAlbumKeyFromWebUri], and
  * [setUserAlbums] (the shared album cache the ViewModel also reads).
  *
  * [scope] is the ViewModel scope (site discovery and preview, which are not bound to the active
@@ -40,7 +40,6 @@ class SiteHubController(
     private val scope: CoroutineScope,
     private val siteScope: () -> CoroutineScope,
     private val getRootNodeId: () -> String?,
-    private val getUnlockedPasswordSync: (String) -> String?,
     private val getAlbumKeyFromWebUri: suspend (String?) -> String?,
     private val setUserAlbums: (List<AlbumDetails>) -> Unit
 ) {
@@ -85,9 +84,8 @@ class SiteHubController(
         _activeSiteTotalPhotos.value = null
 
         val rootNodeId = getRootNodeId()
-        val password = rootNodeId?.let { getUnlockedPasswordSync(it) }
         if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: starting for $nickname, rootNodeId=$rootNodeId, password=${password != null}")
+            android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: starting for $nickname, rootNodeId=$rootNodeId")
         }
 
         siteScope().launch {
@@ -98,7 +96,7 @@ class SiteHubController(
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching recent images")
                             }
-                            val res = repository.getUserRecentImagesResponse(nickname, apiKey, count = 10, password = password)
+                            val res = repository.getUserRecentImagesResponse(nickname, apiKey, count = 10)
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: recent images response: ${res.response.images?.size} items")
                             }
@@ -115,7 +113,7 @@ class SiteHubController(
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching albums")
                             }
-                            val res = repository.getUserAlbumsResponse(nickname, apiKey, password = password)
+                            val res = repository.getUserAlbumsResponse(nickname, apiKey)
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: albums response: ${res.response.albums?.size} items")
                             }
@@ -169,7 +167,7 @@ class SiteHubController(
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching top keywords")
                             }
-                            val res = repository.getUserTopKeywords(nickname, apiKey, nodeId = rootNodeId, password = password)
+                            val res = repository.getUserTopKeywords(nickname, apiKey, nodeId = rootNodeId)
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: top keywords response: ${res.response.userTopKeywords?.keywords?.size} items")
                             }
