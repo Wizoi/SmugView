@@ -23,6 +23,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun collectionDao(): CollectionDao
+    abstract fun doctorDao(): DoctorDao
 
     companion object {
         /**
