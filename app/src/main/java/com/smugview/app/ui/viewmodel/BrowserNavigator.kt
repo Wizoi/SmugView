@@ -105,6 +105,11 @@ class BrowserNavigator(
             if (intent is NavIntent.Refresh && intent.background && job?.isActive == true && pending !is NavIntent.Refresh) {
                 return // a sync relisted the folder while the owner is moving: the move will list fresh rows anyway
             }
+            if (intent is NavIntent.Child) {
+                // A double tap is one push: the node is already on top, or this very tap is in flight.
+                if (_state.value.stack.lastOrNull()?.nodeId == intent.node.nodeId) return
+                if (job?.isActive == true && pending == intent) return
+            }
             job?.cancel()
             pending = intent
             val mine = scope.launch(DiagContext.element(DiagContext.newActionId("folder")), start = CoroutineStart.LAZY) {

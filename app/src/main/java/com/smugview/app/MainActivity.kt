@@ -89,7 +89,7 @@ fun SmugViewNavigation() {
                     viewModel = viewModel,
                     onNavigateToAlbum = { albumKey, albumTitle ->
                         viewModel.cancelSearchJob()
-                        navController.navigate("photo_grid/$albumKey/${Uri.encode(albumTitle)}")
+                        navController.navigate("photo_grid/$albumKey/${Uri.encode(albumTitle)}") { launchSingleTop = true }
                     },
                     onNavigateToExplorer = {},
                     onNavigateToSearchPhotoDetail = { imageKey, index ->
@@ -149,7 +149,7 @@ fun SmugViewNavigation() {
                                 // password-protected, PhotoGridScreen's selectAlbum path renders the
                                 // password prompt (the detail screen has no prompt dialog).
                                 val title = viewModel.getAlbumName(key)
-                                navController.navigate("photo_grid/$key/${Uri.encode(title)}")
+                                navController.navigate("photo_grid/$key/${Uri.encode(title)}") { launchSingleTop = true }
                             }
                         }
                     }
@@ -247,7 +247,7 @@ fun SmugViewNavigation() {
                                 // Navigate straight to the gallery grid; PhotoGridScreen prompts
                                 // for a password if the album is locked (see handleAlbumLoadError).
                                 val title = viewModel.getAlbumName(albumKey)
-                                navController.navigate("photo_grid/$albumKey/${Uri.encode(title)}")
+                                navController.navigate("photo_grid/$albumKey/${Uri.encode(title)}") { launchSingleTop = true }
                             }
                         }
                     },

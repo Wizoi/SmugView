@@ -968,9 +968,14 @@ class SmugViewModel @Inject constructor(
         return true
     }
 
+    /** Gallery taps whose pre-flight is still running, by album key: a second tap on one is dropped. */
+    private val pendingAlbumTaps: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     fun checkAndNavigateToAlbum(node: CachedNode, onNavigate: (albumKey: String) -> Unit) {
-        session.scope.launch {
-            val albumKey = node.getAlbumKey() // Always use helper — strips !images suffixes
+        val tapKey = node.getAlbumKey() // Always use helper — strips !images suffixes
+        if (!pendingAlbumTaps.add(tapKey)) return
+        val tap = session.scope.launch {
+            val albumKey = tapKey
 
             // Layer 1: DB lookup for access state
             val resolvedNode = repository.getNodeByIdOrKey(albumKey) ?: node
@@ -1023,6 +1028,7 @@ class SmugViewModel @Inject constructor(
                 withContext(Dispatchers.Main) { onNavigate(albumKey) }
             }
         }
+        tap.invokeOnCompletion { pendingAlbumTaps.remove(tapKey) }
     }
 
     fun promptPassword(node: CachedNode) {
