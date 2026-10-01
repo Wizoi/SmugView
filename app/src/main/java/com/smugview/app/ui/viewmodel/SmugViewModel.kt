@@ -334,14 +334,6 @@ class SmugViewModel @Inject constructor(
     private val _browserState = MutableStateFlow<BrowserUiState>(BrowserUiState.Loading)
     val browserState: StateFlow<BrowserUiState> = _browserState.asStateFlow()
 
-    val activeUpdateNodeIds: StateFlow<Set<String>> = repository.getNodesWithActiveUpdates()
-        .map { it.toSet() }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptySet()
-        )
-
     var currentFolderId by mutableStateOf<String?>(null)
         private set
 
@@ -396,6 +388,22 @@ class SmugViewModel @Inject constructor(
     // --- Dynamic Explorer & Validation States ---
     private val _activeNickname = MutableStateFlow<String?>(null)
     val activeNickname: StateFlow<String?> = _activeNickname.asStateFlow()
+
+    /**
+     * NodeIDs that carry a dot, for the active site only (design 3.5). Declared after
+     * [_activeNickname]: a property initializer runs in declaration order.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activeUpdateNodeIds: StateFlow<Set<String>> = _activeNickname
+        .flatMapLatest { nick ->
+            if (nick.isNullOrEmpty()) flowOf(emptyList()) else repository.getNodesWithActiveUpdates(nick)
+        }
+        .map { it.toSet() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptySet()
+        )
 
     // Active search/browsing scope — shared with the tag engine and tab switching.
     private val _searchScope = MutableStateFlow(SearchScope("Entire Site"))

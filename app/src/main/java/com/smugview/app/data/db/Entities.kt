@@ -43,6 +43,9 @@ data class ViewedGalleryUpdate(
     val lastViewedDateModified: String
 )
 
+/** A gallery's NodeID and its index `ImagesLastUpdated`: what "viewed" is written from (design 3.5). */
+data class GalleryIlu(val nodeId: String, val imagesLastUpdated: String)
+
 /**
  * Persisted flat index of ALL of a user's galleries (metadata only — no photos). Separate from
  * [CachedNode] because these are a flat list (not part of the browsable folder tree), used for

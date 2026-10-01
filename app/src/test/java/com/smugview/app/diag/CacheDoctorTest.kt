@@ -51,7 +51,8 @@ class CacheDoctorTest {
     ) = CachedAlbum(
         albumKey = key, nodeId = nodeId, name = "n-$key", securityType = "Public", passwordHint = null,
         uri = "/api/v2/album/$key", webUri = null, urlPath = urlPath, imageCount = 3, dateModified = date,
-        galleryStyle = null, highlightImageUrl = null, nickname = nickname, parentNodeId = parent
+        galleryStyle = null, highlightImageUrl = null, nickname = nickname, parentNodeId = parent,
+        imagesLastUpdated = date
     )
 
     private suspend fun seedRealShape() {
@@ -127,6 +128,24 @@ class CacheDoctorTest {
         assertEquals(Severity.WARN, r.severity("orphan_rows"))
         assertEquals(Severity.OK, r.severity("bang_parent_index"))
         assertEquals(before, totalChanges())
+    }
+
+    @Test
+    fun recentIndexInvisibleToDot_meansNoParentToBubbleThrough_notNoNodeRow() = runBlocking {
+        // Phase 2 (design 3.5): the dot seeds from the index alone, so a gallery without a cached_nodes
+        // row is visible when the index knows its parent. Old definition: "no node row" (counted both).
+        dao.insertNodes(listOf(node("P4BKB", "2sDN5x"), node("NODEPAR", "P4BKB", "Album", daysAgo(2))))
+        dao.upsertAlbums(
+            listOf(
+                album("IdxPar", "NDPAR1", daysAgo(2), parent = "P4BKB"),      // no node row, parent known: visible
+                album("NodePar", "NODEPAR", daysAgo(2)),                      // parent from its node row: visible
+                album("NoPar", "NDNOPAR", daysAgo(2)),                        // no parent anywhere: invisible
+                album("Viewed", "NDVIEW1", daysAgo(2))                        // no parent, but already viewed
+            )
+        )
+        dao.insertViewedUpdates(listOf(com.smugview.app.data.db.ViewedGalleryUpdate("NDVIEW1", daysAgo(2))))
+
+        assertEquals(1, CacheDoctor(db.doctorDao()).run(null).count("recent_index_invisible_to_dot"))
     }
 
     @Test

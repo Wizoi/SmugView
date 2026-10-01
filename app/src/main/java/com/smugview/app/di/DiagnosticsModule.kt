@@ -83,9 +83,9 @@ object DiagnosticsModule {
         // dot. A gap between the two is findings #1/#4, measured.
         postSync = { run ->
             run.newInIndex30d = doctorDao.countRecentIndexAlbums(run.nickname)
-            run.litDotNodes = collectionDao.getNodesWithActiveUpdates().first().size
+            run.litDotNodes = collectionDao.getNodesWithActiveUpdates(run.nickname).first().size
             // Then the doctor (first sync of the process only) and the on-device report.txt.
-            writer.get().onSyncFinished()
+            writer.get().onSyncFinished(run.rootNodeId)
         }
     )
 

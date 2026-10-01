@@ -429,86 +429,8 @@ class SmugMugRepositoryTest {
         assertEquals(0, lineage.size)
     }
 
-    @Test
-    fun testActiveUpdatesDetectionBubblingAndClearing() = runBlocking {
-        val mockInterceptor = Interceptor { chain ->
-            Response.Builder()
-                .request(chain.request())
-                .protocol(Protocol.HTTP_1_1)
-                .code(404)
-                .message("Not Found")
-                .body("".toResponseBody("application/json".toMediaTypeOrNull()))
-                .build()
-        }
-        val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
-
-        // Insert hierarchy:
-        // root (parentNodeId = null)
-        // -> folder1 (parentNodeId = "root", type = "Folder")
-        //    -> album1 (parentNodeId = "folder1", type = "Album")
-        val now = java.time.Instant.now()
-        val recentDate = now.toString() // within 30 days (current time)
-
-        val nodeFolder = CachedNode(
-            nodeId = "folder1",
-            parentNodeId = "root",
-            type = "Folder",
-            title = "Folder 1",
-            description = null,
-            access = "Public",
-            passwordHint = null,
-            uri = "/node/folder1",
-            childNodesUri = null,
-            albumUri = null
-        )
-        val nodeAlbum = CachedNode(
-            nodeId = "album1",
-            parentNodeId = "folder1",
-            type = "Album",
-            title = "Album 1",
-            description = null,
-            access = "Public",
-            passwordHint = null,
-            uri = "/node/album1",
-            childNodesUri = null,
-            albumUri = "/api/v2/album/album1",
-            dateModified = recentDate
-        )
-
-        dao.insertNodes(listOf(nodeFolder, nodeAlbum))
-
-        // Check active updates: album1 is updated recently and not viewed, folder1 should bubble it up
-        val initialUpdates = repository.getNodesWithActiveUpdates().first()
-        println("DEBUG initialUpdates: $initialUpdates")
-        assertTrue("Album should have active update", initialUpdates.contains("album1"))
-        assertTrue("Folder should bubble up update from album", initialUpdates.contains("folder1"))
-
-        // Satisfy / Mark album1 as viewed
-        repository.markNodeAsViewed("album1")
-
-        // Active updates should now be empty
-        val postViewUpdates = repository.getNodesWithActiveUpdates().first()
-        assertFalse("Album should no longer have active update", postViewUpdates.contains("album1"))
-        assertFalse("Folder should no longer bubble up update", postViewUpdates.contains("folder1"))
-
-        // Add a new update to album1 (date modified is newer than viewed date)
-        val newerDate = now.plus(java.time.Duration.ofHours(2)).toString()
-        val nodeAlbumUpdated = nodeAlbum.copy(dateModified = newerDate)
-        dao.clearAllCachedNodes()
-        dao.insertNodes(listOf(nodeFolder, nodeAlbumUpdated))
-
-        // Active updates should reappear
-        val updatedUpdates = repository.getNodesWithActiveUpdates().first()
-        assertTrue("Album should show active update again after date changes", updatedUpdates.contains("album1"))
-        assertTrue("Folder should bubble up update again", updatedUpdates.contains("folder1"))
-
-        // Long press mark parent folder as viewed, which recursively satisfies album1
-        repository.markNodeAsViewed("folder1")
-        val finalUpdates = repository.getNodesWithActiveUpdates().first()
-        assertFalse("Album should be recursively satisfied", finalUpdates.contains("album1"))
-        assertFalse("Folder should be satisfied", finalUpdates.contains("folder1"))
-    }
+    // testActiveUpdatesDetectionBubblingAndClearing seeded cached_nodes.dateModified; the dot reads the
+    // gallery index now (phase 2 step 2-10). Replaced by DotFlowTest and CollectionDaoTest.
 
     @Test
     fun testSearchPublicSites() = runBlocking {

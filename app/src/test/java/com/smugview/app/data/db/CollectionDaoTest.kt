@@ -63,106 +63,173 @@ class CollectionDaoTest {
     private fun recent() = java.time.OffsetDateTime.now().minusDays(2).toString()
     private fun old() = java.time.OffsetDateTime.now().minusDays(60).toString()
 
-    @Test
-    fun activeUpdate_bubblesFromAlbumUpToAllAncestors() = runBlocking {
-        // root -> folderA -> album1 (recently modified)
+    // --- The dot (design 3.5, step 2-10) on fixture F -------------------------------------------
+    // root 4zqWw -> 2sDN5x Family (Password) -> P4BKB School -> gallery NodeID LCdk7F / AlbumKey FfHCms
+    // Public control: 4zqWw -> 3BxbFF Kentridge -> sXQz4G / N74KSK. The dot reads cached_albums
+    // (ImagesLastUpdated) and bubbles through cached_nodes; the gallery needs no cached_nodes row.
+    // These replace the five old dot tests that seeded from cached_nodes.dateModified:
+    // activeUpdate_bubblesFromAlbumUpToAllAncestors, oldModification_isNotActive,
+    // markingViewed_clearsActiveState_andReTriggersOnNewerModification,
+    // folderWithOwnRecentModification_clearsWhenItsOnlyGalleryIsViewed, folderBulkBump_withNoRecentGallery_isNotActive.
+
+    private val nick = "idzifamily"
+    private fun daysAgo(d: Long, secs: Long = 0) =
+        java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).minusDays(d).plusSeconds(secs)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx"))
+
+    private fun seedTree() = runBlocking {
         dao.insertNodes(
             listOf(
-                node("root", null, "Folder"),
-                node("folderA", "root", "Folder"),
-                node("album1", "folderA", "Album", dateModified = recent())
+                node("2sDN5x", "4zqWw", "Folder"),
+                node("P4BKB", "2sDN5x", "Folder"),
+                node("3BxbFF", "4zqWw", "Folder")
             )
-        )
-
-        val active = dao.getNodesWithActiveUpdates().first().toSet()
-        // The album AND every ancestor folder bubble up.
-        assertTrue(active.contains("album1"))
-        assertTrue(active.contains("folderA"))
-        assertTrue(active.contains("root"))
-    }
-
-    @Test
-    fun oldModification_isNotActive() = runBlocking {
-        dao.insertNodes(
-            listOf(
-                node("root", null, "Folder"),
-                node("albumOld", "root", "Album", dateModified = old())
-            )
-        )
-        val active = dao.getNodesWithActiveUpdates().first().toSet()
-        assertFalse(active.contains("albumOld"))
-        assertFalse(active.contains("root"))
-    }
-
-    @Test
-    fun markingViewed_clearsActiveState_andReTriggersOnNewerModification() = runBlocking {
-        val modified = recent()
-        dao.insertNodes(
-            listOf(
-                node("root", null, "Folder"),
-                node("album2", "root", "Album", dateModified = modified)
-            )
-        )
-        assertTrue(dao.getNodesWithActiveUpdates().first().contains("album2"))
-
-        // User views it: record the modification date they saw.
-        dao.insertViewedUpdates(listOf(ViewedGalleryUpdate("album2", modified)))
-        assertFalse(
-            "Viewing the current modification should clear the active flag",
-            dao.getNodesWithActiveUpdates().first().contains("album2")
-        )
-
-        // A NEWER modification arrives -> becomes active again.
-        val newer = java.time.OffsetDateTime.now().minusDays(1).toString()
-        dao.insertNodes(listOf(node("album2", "root", "Album", dateModified = newer)))
-        assertTrue(
-            "A newer modification than last-viewed should re-trigger",
-            dao.getNodesWithActiveUpdates().first().contains("album2")
         )
     }
 
-    @Test
-    fun folderWithOwnRecentModification_clearsWhenItsOnlyGalleryIsViewed() = runBlocking {
-        val modified = recent()
-        // A folder whose own dateModified is recent (its contents changed) containing one album.
-        dao.insertNodes(
-            listOf(
-                node("root", null, "Folder", dateModified = recent()),
-                node("folderB", "root", "Folder", dateModified = modified),
-                node("albumX", "folderB", "Album", dateModified = modified)
-            )
-        )
-        assertTrue(dao.getNodesWithActiveUpdates().first().contains("folderB"))
+    private fun gallery(
+        key: String, nodeId: String, parent: String?, ilu: String?, nickname: String = nick, lastUpdated: String? = ilu
+    ) = album(key, lastUpdated, nickname).copy(nodeId = nodeId, parentNodeId = parent, imagesLastUpdated = ilu)
 
-        // Viewing only the gallery must also clear the folder — the folder's own recent
-        // dateModified must NOT keep a dot on it forever.
-        dao.insertViewedUpdates(listOf(ViewedGalleryUpdate("albumX", modified)))
-        val active = dao.getNodesWithActiveUpdates().first().toSet()
-        assertFalse("folder should clear once its only updated gallery is viewed", active.contains("folderB"))
-        assertFalse(active.contains("albumX"))
-        assertFalse(active.contains("root"))
+    private fun fGallery(ilu: String? = daysAgo(2)) = gallery("FfHCms", "LCdk7F", "P4BKB", ilu, lastUpdated = daysAgo(6))
+    private fun lit(nickname: String = nick) = runBlocking { dao.getNodesWithActiveUpdates(nickname).first().toSet() }
+
+    @Test
+    fun recentIlu_lightsTheGalleryAndEveryAncestor_withNoNodeRowForTheGallery() = runBlocking {
+        seedTree()
+        dao.upsertAlbums(listOf(fGallery()))
+        assertEquals(null, dao.getNodeById("LCdk7F"))
+
+        val active = lit()
+
+        assertTrue("the gallery lights by NodeID, not AlbumKey", "LCdk7F" in active)
+        assertFalse("FfHCms is an API handle, not a node", "FfHCms" in active)
+        assertTrue("School", "P4BKB" in active)
+        assertTrue("Family", "2sDN5x" in active)
+        assertTrue("the site root (no row of its own) lights too", "4zqWw" in active)
+        assertFalse("the public folder holds nothing new", "3BxbFF" in active)
     }
 
     @Test
-    fun folderBulkBump_withNoRecentGallery_isNotActive() = runBlocking {
-        // Real data (idzifamily, 2026-09-29): a site-wide SmugMug event stamped nearly every
-        // folder AND gallery with the same DateModified (2026-08-24T05:48:10). A folder's own
-        // DateModified is therefore not a reliable "something new inside" signal — if folders
-        // could light up on their own, one bulk bump would dot every folder on the site at once.
-        // Only a genuinely recent, unviewed gallery may light a folder (by bubbling up).
-        val bulk = recent()
-        dao.insertNodes(
+    fun parentFallsBackToTheCachedNodesParent_whenTheIndexHasNone() = runBlocking {
+        seedTree()
+        dao.insertNodes(listOf(node("LCdk7F", "P4BKB", "Album")))
+        dao.upsertAlbums(listOf(fGallery().copy(parentNodeId = null)))
+
+        val active = lit()
+
+        assertTrue("P4BKB" in active && "2sDN5x" in active && "4zqWw" in active)
+    }
+
+    @Test
+    fun oldIlu_isNotActive() = runBlocking {
+        seedTree()
+        dao.upsertAlbums(listOf(fGallery(ilu = daysAgo(60))))
+
+        assertEquals(emptySet<String>(), lit())
+    }
+
+    @Test
+    fun viewedEqualToIlu_clearsTheWholeChain_andANewerIluRelightsIt() = runBlocking {
+        seedTree()
+        dao.upsertAlbums(listOf(fGallery(daysAgo(2))))
+        assertTrue("LCdk7F" in lit())
+
+        dao.markViewedAtOrBelow("LCdk7F")
+        assertEquals("viewing the gallery clears it and every folder above", emptySet<String>(), lit())
+
+        // The owner adds photos: ILU moves forward past the viewed mark.
+        dao.upsertAlbums(listOf(fGallery(daysAgo(1))))
+        val active = lit()
+        assertTrue("LCdk7F" in active && "P4BKB" in active && "2sDN5x" in active)
+    }
+
+    @Test
+    fun folderMarkedViewed_clearsEveryGalleryBelow_butNotASiblingFolder() = runBlocking {
+        seedTree()
+        dao.upsertAlbums(
             listOf(
-                node("root", null, "Folder"),
-                node("folderA", "root", "Folder", dateModified = bulk),
-                node("folderB", "root", "Folder", dateModified = bulk),
-                node("oldAlbum", "folderA", "Album", dateModified = old())
+                fGallery(),
+                gallery("AkSecond", "NdSecond", "P4BKB", daysAgo(3)),
+                gallery("N74KSK", "sXQz4G", "3BxbFF", daysAgo(1))
             )
         )
-        val active = dao.getNodesWithActiveUpdates().first().toSet()
-        assertFalse("a bulk-bumped folder must not light up on its own", active.contains("folderA"))
-        assertFalse("an empty bulk-bumped folder must not light up either", active.contains("folderB"))
-        assertFalse(active.contains("root"))
+        assertTrue("2sDN5x" in lit() && "3BxbFF" in lit())
+
+        val marked = dao.markViewedAtOrBelow("2sDN5x")
+
+        assertEquals("both School galleries, over index edges only (no node rows)", 2, marked)
+        val active = lit()
+        assertFalse("LCdk7F" in active || "NdSecond" in active || "P4BKB" in active || "2sDN5x" in active)
+        assertTrue("the public gallery was never viewed", "sXQz4G" in active && "3BxbFF" in active)
+    }
+
+    @Test
+    fun oneGalleryViewed_keepsTheFolderLit_whileASiblingIsStillNew() = runBlocking {
+        seedTree()
+        dao.upsertAlbums(listOf(fGallery(), gallery("AkSecond", "NdSecond", "P4BKB", daysAgo(3))))
+
+        dao.markViewedAtOrBelow("LCdk7F")
+
+        val active = lit()
+        assertFalse("LCdk7F" in active)
+        assertTrue("NdSecond" in active && "P4BKB" in active && "2sDN5x" in active)
+    }
+
+    @Test
+    fun folderBulkBumpedDateModified_andANodeRowDateModified_lightNothing() = runBlocking {
+        // Real data (idzifamily): a site-wide SmugMug event stamped nearly every folder and gallery
+        // node with one recent DateModified (findings #2, #17). Only the index ILU may light a dot.
+        val bulk = daysAgo(2)
+        dao.insertNodes(
+            listOf(
+                node("2sDN5x", "4zqWw", "Folder", dateModified = bulk),
+                node("P4BKB", "2sDN5x", "Folder", dateModified = bulk),
+                node("3BxbFF", "4zqWw", "Folder", dateModified = bulk),
+                node("LCdk7F", "P4BKB", "Album", dateModified = bulk)
+            )
+        )
+        dao.upsertAlbums(listOf(fGallery(ilu = daysAgo(60))))
+
+        assertEquals(emptySet<String>(), lit())
+    }
+
+    @Test
+    fun anotherSitesGallery_lightsNothingOnThisSite_andItsOwnSiteStillSeesIt() = runBlocking {
+        seedTree()
+        dao.upsertAlbums(listOf(gallery("AkOther1", "NdOther1", "P4BKB", daysAgo(1), nickname = "someoneelse")))
+
+        assertEquals(emptySet<String>(), lit(nick))
+        assertTrue("NdOther1" in lit("someoneelse"))
+    }
+
+    @Test
+    fun raiseAlbumImagesLastUpdated_movesForwardOnly() = runBlocking {
+        val original = daysAgo(2)
+        val newer = daysAgo(1)
+        val older = daysAgo(5)
+        dao.upsertAlbums(listOf(fGallery(original)))
+
+        dao.raiseAlbumImagesLastUpdated("FfHCms", older)
+        assertEquals("an older date never lowers the index", original, dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated)
+
+        dao.raiseAlbumImagesLastUpdated("FfHCms", newer)
+        assertEquals(newer, dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated)
+    }
+
+    @Test(timeout = 15_000)
+    fun aParentCycle_doesNotHangTheDotQuery() = runBlocking {
+        dao.insertNodes(listOf(node("loopA", "loopB", "Folder"), node("loopB", "loopA", "Folder"), node("self1", "self1", "Folder")))
+        dao.upsertAlbums(
+            listOf(
+                fGallery().copy(parentNodeId = "loopA"),
+                gallery("AkSelf", "NdSelf", "self1", daysAgo(1))
+            )
+        )
+
+        val active = lit()
+        assertTrue("LCdk7F" in active && "NdSelf" in active)
+        assertTrue("walking down a cycle terminates", dao.markViewedAtOrBelow("loopA") >= 1)
     }
 
     @Test

@@ -61,7 +61,7 @@ class CacheDoctor(
             Severity.INFO, dao::countIndexAlbumNoNode
         )
         check(
-            "recent_index_invisible_to_dot", "Index albums from the last 30 days the dot cannot see",
+            "recent_index_invisible_to_dot", "Recent unviewed index albums with no parent the dot can bubble through",
             Severity.WARN, dao::countRecentIndexInvisibleToDot
         )
         check(

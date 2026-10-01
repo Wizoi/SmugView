@@ -240,30 +240,80 @@ interface CollectionDao {
     @Query("DELETE FROM viewed_gallery_updates")
     suspend fun clearViewedUpdates()
 
+    /**
+     * The dot (design 3.5): the ONE place that owns "is something new here?". Seeds come only from the
+     * gallery index (`cached_albums`, so no `cached_nodes` row is needed for the gallery itself):
+     * ImagesLastUpdated within 30 days and later than the viewed mark. A folder's DateModified is
+     * never read (findings #2, #17). The seed's parent is the index's `parentNodeId`, else the cached
+     * node's. The chain then bubbles up through `cached_nodes` parents, and the final parent id (the
+     * site root, which has no row of its own) is included too. Results are NodeIDs, scoped to one
+     * site so another site's gallery lights nothing here.
+     */
     @Query("""
-        WITH RECURSIVE active_nodes(nodeId, parentNodeId) AS (
-            -- Base case: only galleries (Albums) are "updated" on their own; folders light up
-            -- only by bubbling from a gallery inside them. A folder's own DateModified is NOT a
-            -- usable signal: it bumps on content changes AND on site-wide SmugMug events (real
-            -- data, 2026-08-24: nearly every node on the site got the same stamp at once), so
-            -- seeding from folders would dot every folder simultaneously. See
-            -- CollectionDaoTest.folderBulkBump_withNoRecentGallery_isNotActive.
-            SELECT n.nodeId, n.parentNodeId
-            FROM cached_nodes n
-            LEFT JOIN viewed_gallery_updates v ON n.nodeId = v.nodeId
-            WHERE n.type = 'Album'
-              AND n.dateModified IS NOT NULL
-              AND datetime(n.dateModified) >= datetime('now', '-30 days')
-              AND (v.lastViewedDateModified IS NULL OR n.dateModified > v.lastViewedDateModified)
+        WITH RECURSIVE active(nodeId, parentNodeId, d) AS (
+            SELECT a.nodeId, COALESCE(a.parentNodeId, n.parentNodeId), 0
+            FROM cached_albums a
+            LEFT JOIN cached_nodes n ON n.nodeId = a.nodeId
+            LEFT JOIN viewed_gallery_updates v ON v.nodeId = a.nodeId
+            WHERE (a.nickname = :nickname OR a.nickname = '')
+              AND a.imagesLastUpdated IS NOT NULL
+              AND datetime(a.imagesLastUpdated) >= datetime('now', '-30 days')
+              AND (v.lastViewedDateModified IS NULL
+                   OR datetime(a.imagesLastUpdated) > datetime(v.lastViewedDateModified))
 
             UNION
 
-            -- Bubble the indicator up to ancestor folders.
-            SELECT p.nodeId, p.parentNodeId
-            FROM cached_nodes p
-            JOIN active_nodes a ON p.nodeId = a.parentNodeId
+            SELECT p.nodeId, p.parentNodeId, a.d + 1
+            FROM cached_nodes p JOIN active a ON p.nodeId = a.parentNodeId
+            WHERE a.d < 32
         )
-        SELECT DISTINCT nodeId FROM active_nodes
+        SELECT nodeId FROM active
+        UNION
+        SELECT parentNodeId FROM active WHERE parentNodeId IS NOT NULL AND parentNodeId <> 'root'
     """)
-    fun getNodesWithActiveUpdates(): Flow<List<String>>
+    fun getNodesWithActiveUpdates(nickname: String): Flow<List<String>>
+
+    @Query("SELECT * FROM cached_albums WHERE nodeId = :nodeId LIMIT 1")
+    suspend fun getAlbumByNodeId(nodeId: String): CachedAlbum?
+
+    @Query("SELECT * FROM cached_albums WHERE albumKey = :albumKey LIMIT 1")
+    suspend fun getAlbumByKey(albumKey: String): CachedAlbum?
+
+    /** Moves an index row's ImagesLastUpdated forward only (a fresh read beats the crawl, never the reverse). */
+    @Query("""
+        UPDATE cached_albums SET imagesLastUpdated = :ilu
+        WHERE albumKey = :albumKey
+          AND (imagesLastUpdated IS NULL OR datetime(:ilu) > datetime(imagesLastUpdated))
+    """)
+    suspend fun raiseAlbumImagesLastUpdated(albumKey: String, ilu: String)
+
+    /**
+     * Every index gallery at or below [nodeId] with a known ImagesLastUpdated. The walk goes down over
+     * both edges (cached folder children, and index galleries by their parent), because a gallery may
+     * have no `cached_nodes` row. One recursive term, over a non-recursive `edges` CTE (older SQLite).
+     */
+    @Query("""
+        WITH RECURSIVE edges(parentId, childId) AS (
+            SELECT parentNodeId, nodeId FROM cached_nodes WHERE parentNodeId IS NOT NULL
+            UNION
+            SELECT parentNodeId, nodeId FROM cached_albums WHERE parentNodeId IS NOT NULL
+        ),
+        below(id, d) AS (
+            SELECT :nodeId, 0
+            UNION
+            SELECT e.childId, b.d + 1 FROM edges e JOIN below b ON e.parentId = b.id WHERE b.d < 32
+        )
+        SELECT DISTINCT a.nodeId AS nodeId, a.imagesLastUpdated AS imagesLastUpdated
+        FROM cached_albums a JOIN below b ON a.nodeId = b.id
+        WHERE a.imagesLastUpdated IS NOT NULL
+    """)
+    suspend fun getGalleryIlusAtOrBelow(nodeId: String): List<GalleryIlu>
+
+    /** "Viewed" for a gallery, or for every gallery below a folder: viewed = the index ImagesLastUpdated. */
+    @androidx.room.Transaction
+    suspend fun markViewedAtOrBelow(nodeId: String): Int {
+        val rows = getGalleryIlusAtOrBelow(nodeId)
+        if (rows.isNotEmpty()) insertViewedUpdates(rows.map { ViewedGalleryUpdate(it.nodeId, it.imagesLastUpdated) })
+        return rows.size
+    }
 }

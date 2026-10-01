@@ -83,7 +83,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.getSearchHistory())
             .thenReturn(kotlinx.coroutines.flow.MutableStateFlow(emptyList()))
             
-        Mockito.`when`(mockRepository.getNodesWithActiveUpdates())
+        Mockito.`when`(mockRepository.getNodesWithActiveUpdates(Mockito.anyString()))
             .thenReturn(flowOf(emptyList()))
             
         Mockito.`when`(mockRepository.getLocalCollections(Mockito.anyString()))
@@ -187,6 +187,27 @@ class SmugViewModelTest {
         advanceUntilIdle()
 
         Mockito.verify(mockRepository, Mockito.never()).markNodeAsViewed(Mockito.anyString())
+    }
+
+    // Phase 2 step 2-10 (design 3.5): the dot set is per site, by NodeID. A Home screen for one site
+    // must not show another site's dots (the old query read every cached node).
+    @Test
+    fun activeUpdateNodeIds_followsTheActiveSiteOnly_andIsEmptyBeforeOneIsChosen() = runTest {
+        Mockito.`when`(mockRepository.getNodesWithActiveUpdates("idzifamily"))
+            .thenReturn(flowOf(listOf("LCdk7F", "P4BKB", "2sDN5x", "4zqWw")))
+        Mockito.`when`(mockRepository.getNodesWithActiveUpdates("someoneelse"))
+            .thenReturn(flowOf(emptyList()))
+        val job = launch(testDispatcher) { viewModel.activeUpdateNodeIds.collect {} }
+
+        assertEquals("no active site yet: nothing lit", emptySet<String>(), viewModel.activeUpdateNodeIds.value)
+        Mockito.verify(mockRepository, Mockito.never()).getNodesWithActiveUpdates(Mockito.anyString())
+
+        viewModel.setActiveNicknameForTest("idzifamily")
+        assertEquals(setOf("LCdk7F", "P4BKB", "2sDN5x", "4zqWw"), viewModel.activeUpdateNodeIds.value)
+
+        viewModel.setActiveNicknameForTest("someoneelse")
+        assertEquals("switching site switches the dot set", emptySet<String>(), viewModel.activeUpdateNodeIds.value)
+        job.cancel()
     }
 
     // R-03: a self-parented cached row (SmugMug's ParentNode is the node's own !parent link) made the

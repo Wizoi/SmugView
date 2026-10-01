@@ -239,9 +239,14 @@ class FakeSmugMugServer {
         if (path.startsWith("album/") && !path.contains("!")) {
             val key = path.removePrefix("album/")
             val nodeId = albumKeyToNodeId[key] ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
+            // A gallery that is in `albums` also reports its dates (the 2-10 getAlbum filter asks for them).
+            val dates = albums.firstOrNull { it.albumKey == key }?.let {
+                val ilu = it.imagesLastUpdated?.let { v -> ""","ImagesLastUpdated":"$v"""" } ?: ""
+                ""","LastUpdated":"${it.lastUpdated}"$ilu"""
+            } ?: ""
             return json(
                 req, 200,
-                """{"Response":{"Album":{"Uri":"/api/v2/album/$key","AlbumKey":"$key","NodeID":"$nodeId","Name":"g"}},"Code":200}"""
+                """{"Response":{"Album":{"Uri":"/api/v2/album/$key","AlbumKey":"$key","NodeID":"$nodeId","Name":"g"$dates}},"Code":200}"""
             )
         }
         if (path == "node!search") {

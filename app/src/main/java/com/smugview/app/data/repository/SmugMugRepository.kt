@@ -342,7 +342,7 @@ class SmugMugRepository @Inject constructor(
         apiKey: String,
         password: String? = null
     ): AlbumDetails? {
-        return try {
+        val album = try {
             try {
                 api.getAlbum(albumKey, apiKey, password, ignoreErrors = "true").response.album
             } catch (e: Exception) {
@@ -360,6 +360,18 @@ class SmugMugRepository @Inject constructor(
         } catch (e: Exception) {
             null
         }
+        // Fresh truth beats a crawl up to 15 minutes old (design 3.5): move the index's
+        // ImagesLastUpdated forward (never back) so the "viewed" mark written next matches it.
+        album?.imagesLastUpdated?.let { ilu ->
+            try {
+                dao.raiseAlbumImagesLastUpdated(album.albumKey, ilu)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SmugLog.w("SmugMugRepository", "index ILU raise failed: ${e.javaClass.simpleName}")
+            }
+        }
+        return album
     }
 
     private fun overrideUrlCount(url: String, newCount: Int = 500): String {
@@ -669,6 +681,7 @@ class SmugMugRepository @Inject constructor(
             kotlinx.coroutines.Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
         ) {
             val run = syncReporter.begin(com.smugview.app.diag.SyncKind.GallerySync, nickname, actionId)
+            run?.rootNodeId = rootNodeId
             var complete = false
             var pruned = 0
             var pruneSkipped = 0
@@ -2044,31 +2057,17 @@ class SmugMugRepository @Inject constructor(
         return highestPasswordNode
     }
 
-    fun getNodesWithActiveUpdates(): Flow<List<String>> {
-        return dao.getNodesWithActiveUpdates()
+    /** NodeIDs that carry a dot on [nickname]'s site: one DAO query owns it (design 3.5). */
+    fun getNodesWithActiveUpdates(nickname: String): Flow<List<String>> {
+        return dao.getNodesWithActiveUpdates(nickname)
     }
 
+    /**
+     * Marks a gallery, or every gallery below a folder, as viewed: the viewed mark becomes the index
+     * `ImagesLastUpdated` (the same date the dot compares), not a node DateModified (design 3.5).
+     */
     suspend fun markNodeAsViewed(nodeId: String) {
-        val node = dao.getNodeById(nodeId) ?: return
-
-        val updates = mutableListOf<ViewedGalleryUpdate>()
-        val dateModified = node.dateModified
-        if (!dateModified.isNullOrEmpty()) {
-            updates.add(ViewedGalleryUpdate(nodeId, dateModified))
-        }
-
-        // Also get all descendants to recursively satisfy child updates
-        val descendants = dao.getAllDescendants(nodeId)
-        for (desc in descendants) {
-            val descDate = desc.dateModified
-            if (!descDate.isNullOrEmpty()) {
-                updates.add(ViewedGalleryUpdate(desc.nodeId, descDate))
-            }
-        }
-
-        if (updates.isNotEmpty()) {
-            dao.insertViewedUpdates(updates)
-        }
+        dao.markViewedAtOrBelow(nodeId)
     }
 
     fun searchPublicSites(query: String, apiKey: String): Flow<Result<List<DiscoveredSite>>> = flow {

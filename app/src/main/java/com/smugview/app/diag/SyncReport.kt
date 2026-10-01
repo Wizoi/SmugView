@@ -72,6 +72,8 @@ class SyncRun(
     @Volatile var notes: String? = null
     @Volatile var newInIndex30d: Int? = null
     @Volatile var litDotNodes: Int? = null
+    /** The site root's NodeID when the caller knew it; handed to the doctor, never serialized. */
+    @Volatile var rootNodeId: String? = null
     val unlocks: MutableList<UnlockAttempt> = CopyOnWriteArrayList()
 
     fun toJson(): JSONObject = JSONObject().apply {

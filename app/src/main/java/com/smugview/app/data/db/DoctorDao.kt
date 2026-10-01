@@ -75,18 +75,28 @@ interface DoctorDao {
     @Query("SELECT COUNT(*) FROM cached_albums WHERE nodeId NOT IN (SELECT nodeId FROM cached_nodes)")
     suspend fun countIndexAlbumNoNode(): Int
 
+    /**
+     * Phase 2 (design 3.5): the dot seeds from the index alone, so a recent (ImagesLastUpdated within
+     * 30 days) unviewed gallery is invisible to it only when no parent can be found for it, neither
+     * the index's own nor a cached node's.
+     */
     @Query(
-        """SELECT COUNT(*) FROM cached_albums
-           WHERE dateModified IS NOT NULL AND datetime(dateModified) >= datetime('now', '-30 days')
-             AND nodeId NOT IN (SELECT nodeId FROM cached_nodes)"""
+        """SELECT COUNT(*) FROM cached_albums a
+           LEFT JOIN cached_nodes n ON n.nodeId = a.nodeId
+           LEFT JOIN viewed_gallery_updates v ON v.nodeId = a.nodeId
+           WHERE a.imagesLastUpdated IS NOT NULL
+             AND datetime(a.imagesLastUpdated) >= datetime('now', '-30 days')
+             AND (v.lastViewedDateModified IS NULL
+                  OR datetime(a.imagesLastUpdated) > datetime(v.lastViewedDateModified))
+             AND COALESCE(a.parentNodeId, n.parentNodeId) IS NULL"""
     )
     suspend fun countRecentIndexInvisibleToDot(): Int
 
     /** Recent galleries in the anonymous index for one site (the sync report's `newInIndex30d`). */
     @Query(
         """SELECT COUNT(*) FROM cached_albums
-           WHERE nickname = :nickname AND dateModified IS NOT NULL
-             AND datetime(dateModified) >= datetime('now', '-30 days')"""
+           WHERE nickname = :nickname AND imagesLastUpdated IS NOT NULL
+             AND datetime(imagesLastUpdated) >= datetime('now', '-30 days')"""
     )
     suspend fun countRecentIndexAlbums(nickname: String): Int
 

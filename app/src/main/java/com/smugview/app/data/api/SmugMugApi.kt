@@ -78,7 +78,7 @@ interface SmugMugApi {
         @Path("album_key") albumKey: String,
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
-        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated",
+        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated,ImagesLastUpdated",
         @Query("_filteruri") filterUri: String = "HighlightImage",
         @Query("_verbosity") verbosity: Int = 1,
         @Header("X-Ignore-Errors") ignoreErrors: String? = null
