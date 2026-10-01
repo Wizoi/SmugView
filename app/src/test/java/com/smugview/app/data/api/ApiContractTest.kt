@@ -35,7 +35,6 @@ class ApiContractTest(private val method: String) {
         /** Method name to the parameter names it sends that its endpoint does not accept. */
         val EXPECTED_VIOLATIONS: Map<String, Set<String>> = mapOf(
             "getNodeChildren" to setOf("Password"),
-            "getNodeChildrenByUri" to setOf("Password"),
             "getAlbum" to setOf("Password"),
             "getAlbumImages" to setOf("Password"),
             "getAlbumImagesByUri" to setOf("Password"),
@@ -56,10 +55,7 @@ class ApiContractTest(private val method: String) {
         val CASES: Map<String, suspend SmugMugApi.() -> Any?> = linkedMapOf(
             "getUserProfile" to { getUserProfile("idzifamily", K, ignoreErrors = "true") },
             "getUserBioImage" to { getUserBioImage("idzifamily", K) },
-            "getNodeChildren" to { getNodeChildren("4zqWw", K, password = "pw", ignoreErrors = "true", cacheControl = "no-cache") },
-            "getNodeChildrenByUri" to {
-                getNodeChildrenByUri("/api/v2/node/4zqWw!children?count=100&start=101", K, password = "pw", ignoreErrors = "true", cacheControl = "no-cache")
-            },
+            "getNodeChildren" to { getNodeChildren("4zqWw", K, password = "pw", start = 101, ignoreErrors = "true", cacheControl = "no-cache") },
             "getNode" to { getNode("4zqWw", K, expand = "HighlightImage", ignoreErrors = "true") },
             "getNodeParents" to { getNodeParents("sXQz4G", K, ignoreErrors = "true") },
             "getAlbum" to { getAlbum("N74KSK", K, password = "pw", ignoreErrors = "true") },

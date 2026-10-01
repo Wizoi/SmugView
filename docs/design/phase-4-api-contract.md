@@ -427,6 +427,8 @@ design, and why.)*
 | 4-0 | `FfHCms` keeps a 100-per-page image cap in the fake (`imageCaps`); every other gallery gets the live 500 | The Phase 3 scenarios pin its two-page shape (150 images) and must stay unchanged |
 | 4-0 | Fake `cookieGate` answers 401 for a locked folder; the real anonymous `!children` of one is 404 | Observed, left as is: Phase 3 tests depend on the 401 and no Phase 4 step does |
 | 4-0 | The big folder `Kp7Wq2` joins the root listing only after `listBigFolder()` | So the Phase 3 scenarios see the root they were written for |
+| 4-3 | A node listing with no `Pages` block is treated as complete (total = rows seen), and `Pages.Total` of 0 is ignored when rows came back | The `Pager` stops on `count == 0` or the total; stubbed answers in the older repository tests have no `Pages` and would otherwise repeat the same page until `PageCap`. A real answer always has `Pages` |
+| 4-3 | `fetchAlbumsInScopeRemote` now rethrows `CancellationException` instead of swallowing it with the per-folder `catch (Exception)` | It now makes several requests per folder; a cancelled scan must stop, not carry on to the next folder (design 3.2: the pager never catches cancellation) |
 
 ## 10. findings.md rows
 

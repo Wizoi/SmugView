@@ -9,6 +9,8 @@ import com.smugview.app.data.api.ImageSearchResponse
 import com.smugview.app.data.api.ExifData
 import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.api.NodeData
+import com.smugview.app.data.api.Page
+import com.smugview.app.data.api.Pager
 import com.smugview.app.data.api.ParentNodeData
 import com.smugview.app.data.api.UserSearchResponse
 import com.smugview.app.data.api.UserData
@@ -251,44 +253,41 @@ class SmugMugRepository @Inject constructor(
         val allApiNodes = mutableListOf<com.smugview.app.data.api.NodeData>()
         val allExpansions = mutableMapOf<String, com.smugview.app.data.api.ExpansionContainer>()
 
-        val response = try {
-            if (nodeId.startsWith("virtual:")) {
-                com.smugview.app.data.api.NodeListResponse(
-                    com.smugview.app.data.api.NodeListPayload(emptyList())
-                )
-            } else {
-                api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
-            }
-        } catch (e: Exception) {
-            if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                val unlocked = unlocks.reauthorize(nodeId, apiKey, password) == UnlockResult.Success
-                if (unlocked) {
-                    api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
-                } else {
-                    throw e
-                }
-            } else {
-                // For real nodes, 401 or 404 without a password often means it's password protected or private.
-                // Throw the error so the UI can catch it and prompt for a password.
-                throw e
-            }
-        }
-        response.response.nodes?.let { allApiNodes.addAll(it) }
-        response.expansions?.let { allExpansions.putAll(it) }
-
-        var nextUrl = response.response.pages?.next
-        var pageNum = 1
-        while (nextUrl != null && !nodeId.startsWith("virtual:")) {
-            pageNum++
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "getNodeChildren: fetching page $pageNum for nodeId=$nodeId via nextUrl=$nextUrl")
-            }
-            kotlinx.coroutines.delay(100)
-            val overriddenUrl = overrideUrlCount(nextUrl, 100)
-            val nextResponse = api.getNodeChildrenByUri(overriddenUrl, apiKey, password, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
-            nextResponse.response.nodes?.let { allApiNodes.addAll(it) }
-            nextResponse.expansions?.let { allExpansions.putAll(it) }
-            nextUrl = nextResponse.response.pages?.next
+        // Every page is the same typed call with `start`, never a followed `NextPage`: that link drops
+        // `_expand`, so rows 101+ used to come back without covers (design 3.2, R-27). A failure on any
+        // page throws and nothing is written (the caller keeps the cache).
+        if (!nodeId.startsWith("virtual:")) {
+            Pager.each(
+                pageSize = 100,
+                fetch = { start, count ->
+                    val response = if (start == 1) {
+                        try {
+                            api.getNodeChildren(nodeId, apiKey, password, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+                        } catch (e: Exception) {
+                            if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
+                                val unlocked = unlocks.reauthorize(nodeId, apiKey, password) == UnlockResult.Success
+                                if (unlocked) {
+                                    api.getNodeChildren(nodeId, apiKey, password, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+                                } else {
+                                    throw e
+                                }
+                            } else {
+                                // For real nodes, 401 or 404 without a password often means it's password protected or private.
+                                // Throw the error so the UI can catch it and prompt for a password.
+                                throw e
+                            }
+                        }
+                    } else {
+                        if (com.smugview.app.BuildConfig.DEBUG) {
+                            android.util.Log.d("SmugMugRepository", "getNodeChildren: fetching start=$start for nodeId=$nodeId")
+                        }
+                        api.getNodeChildren(nodeId, apiKey, password, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+                    }
+                    response.expansions?.let { allExpansions.putAll(it) }
+                    response.toPage(start)
+                },
+                onPage = { page -> allApiNodes.addAll(page.items); true }
+            )
         }
 
         if (com.smugview.app.BuildConfig.DEBUG) {
@@ -368,6 +367,17 @@ class SmugMugRepository @Inject constructor(
             }
         }
         return album
+    }
+
+    /** A node listing page as [Pager] wants it: the server's own `Count` and `Total` (no `Pages` block = this is everything). */
+    private fun com.smugview.app.data.api.NodeListResponse.toPage(start: Int): Page<NodeData> {
+        val items = response.nodes ?: emptyList()
+        val pages = response.pages
+        return Page(
+            items, start,
+            count = pages?.count?.takeIf { it > 0 } ?: items.size,
+            total = pages?.total?.takeIf { it > 0 } ?: (start - 1 + items.size)
+        )
     }
 
     private fun overrideUrlCount(url: String, newCount: Int = 500): String {
@@ -1302,12 +1312,23 @@ class SmugMugRepository @Inject constructor(
             }
             
             try {
-                val response = api.getNodeChildren(currentNodeId, apiKey, effectivePassword, ignoreErrors = "true")
-                val nodes = response.response.nodes ?: emptyList<NodeData>()
+                // Every page (a folder can hold more than one), each a typed call: a gallery on page 2 used
+                // to be missed here (design 3.2, R-27).
+                val nodes = mutableListOf<NodeData>()
+                val expansions = mutableMapOf<String, com.smugview.app.data.api.ExpansionContainer>()
+                Pager.each(
+                    pageSize = 100,
+                    fetch = { start, count ->
+                        val response = api.getNodeChildren(currentNodeId, apiKey, effectivePassword, count = count, start = start, ignoreErrors = "true")
+                        response.expansions?.let { expansions.putAll(it) }
+                        response.toPage(start)
+                    },
+                    onPage = { page -> nodes.addAll(page.items); true }
+                )
                 val dbNodes = nodes.mapIndexed { index, node ->
                     val highlightUri = node.uris.highlightImage
                     val highlightUrl = if (highlightUri != null) {
-                        response.expansions?.get(highlightUri)?.image?.thumbnailUrl
+                        expansions[highlightUri]?.image?.thumbnailUrl
                     } else null
                     
                     CachedNode(
@@ -1341,6 +1362,8 @@ class SmugMugRepository @Inject constructor(
                         albums.add(node)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Ignore and proceed to next node
             }

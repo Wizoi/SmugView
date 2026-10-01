@@ -30,24 +30,17 @@ interface SmugMugApi {
         @Query("_verbosity") verbosity: Int = 1
     ): BioImageResponse
 
-    @GET("node/{node_id}!children?_expand=HighlightImage")
+    @GET("node/{node_id}!children")
     suspend fun getNodeChildren(
         @Path("node_id") nodeId: String,
         @Query("APIKey") apiKey: String,
         @Query("Password") password: String? = null,
         @Query("count") count: Int = 100,
+        @Query("start") start: Int? = null,
+        @Query("_expand") expand: String = "HighlightImage",
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl,DateModified",
         @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage",
         @Query("_verbosity") verbosity: Int = 1,
-        @Header("X-Ignore-Errors") ignoreErrors: String? = null,
-        @Header("Cache-Control") cacheControl: String? = null
-    ): NodeListResponse
-
-    @GET
-    suspend fun getNodeChildrenByUri(
-        @Url url: String,
-        @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
         @Header("X-Ignore-Errors") ignoreErrors: String? = null,
         @Header("Cache-Control") cacheControl: String? = null
     ): NodeListResponse
