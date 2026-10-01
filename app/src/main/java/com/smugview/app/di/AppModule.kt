@@ -265,6 +265,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideSyncStateStore(@ApplicationContext context: Context): com.smugview.app.data.repository.SyncStateStore =
+        com.smugview.app.data.repository.PrefsSyncStateStore(context)
+
+    @Provides
+    @Singleton
     fun provideCollectionDao(database: AppDatabase): CollectionDao {
         return database.collectionDao()
     }

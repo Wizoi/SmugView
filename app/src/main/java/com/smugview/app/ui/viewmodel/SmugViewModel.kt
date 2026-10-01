@@ -780,7 +780,7 @@ class SmugViewModel @Inject constructor(
                         }
 
                         loadFolderContents(rootId)
-                        startFolderTreeSync(rootId)
+                        startFolderTreeSync(nickname, rootId)
                         loadSiteHeaderImage(rootId)
 
                         // Fetch active site recent images and top keywords in parallel
@@ -852,7 +852,7 @@ class SmugViewModel @Inject constructor(
                             android.util.Log.d("SmugViewModel", "selectSite success: resolved rootId=$rootId")
                         }
                         loadFolderContents(rootId)
-                        startFolderTreeSync(rootId)
+                        startFolderTreeSync(normalizedNickname, rootId)
                         loadSiteHeaderImage(rootId)
 
                         // Fetch active site details for the hub dashboard in parallel
@@ -2219,50 +2219,12 @@ class SmugViewModel @Inject constructor(
         return stateFlow.asStateFlow()
     }
 
-    private fun startFolderTreeSync(rootNodeId: String) {
+    private fun startFolderTreeSync(nickname: String, rootNodeId: String) {
         treeSyncJob?.cancel()
-        treeSyncJob = viewModelScope.launch(com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("tree"))) {
-            val visited = mutableSetOf<String>()
-            val queue = mutableListOf<String>()
-            queue.add(rootNodeId)
-
-            while (queue.isNotEmpty() && isActive) {
-                val currentNodeId = queue.removeAt(0)
-                if (visited.contains(currentNodeId)) continue
-                visited.add(currentNodeId)
-
-                val node = repository.getNodeById(currentNodeId)
-                if (node != null && (node.access == "Password" || node.access == "Inherited") && !isNodeUnlocked(currentNodeId)) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "startFolderTreeSync: skipping locked node $currentNodeId")
-                    }
-                    continue
-                }
-
-                try {
-                    val password = getUnlockedPassword(currentNodeId)
-                    // Load children nodes, using cache if available (forceRefresh = false)
-                    repository.getNodeChildren(currentNodeId, apiKey, forceRefresh = false, password = password, ignoreErrors = "true")
-                        .first()
-                        .fold(
-                            onSuccess = { children ->
-                                for (child in children) {
-                                    if (child.type == "Folder") {
-                                        queue.add(child.nodeId)
-                                    }
-                                }
-                            },
-                            onFailure = {
-                                // Ignore password failures
-                            }
-                        )
-                } catch (e: Exception) {
-                    com.smugview.app.util.SmugLog.w("sync", "tree sync skip $currentNodeId: ${e.javaClass.simpleName}")
-                }
-
-                // Stagger requests to yield threads and respect rate limits
-                delay(200)
-            }
+        treeSyncJob = viewModelScope.launch {
+            // The repository walks the tree (forced once per site after the v16 upgrade, design 3.6)
+            // and records a FolderTreeSync run; cancellation propagates.
+            repository.syncFolderTree(nickname, rootNodeId, apiKey)
         }
     }
 }

@@ -37,14 +37,40 @@ class FakeSmugMugServer {
     /** NodeIDs that `node!search` answers with (any query). */
     var searchResultIds: List<String> = emptyList()
 
-    private data class N(val id: String, val type: String, val name: String, val sec: String, val eff: String)
+    /** Every request in full (headers included), for assertions such as Cache-Control. */
+    val requestLog = java.util.Collections.synchronizedList(mutableListOf<Request>())
 
-    private val root = N("4zqWw", "Folder", "Home", "None", "None")
-    private val family = N("2sDN5x", "Folder", "Family", "Password", "Password")
-    private val school = N("P4BKB", "Folder", "School", "None", "Password")
-    private val gallery = N("LCdk7F", "Album", "New School Year", "None", "Password")
-    private val publicFolder = N("3BxbFF", "Folder", "Kentridge", "None", "None")
-    private val publicGallery = N("sXQz4G", "Album", "Public Gallery", "None", "None")
+    /**
+     * Replaces the answer to a `node/{id}!children` request: return a Response, throw an IOException,
+     * or return null to fall through to the normal answer.
+     */
+    var childrenOverride: ((nodeId: String, req: Request) -> Response?)? = null
+
+    /** Cache-Control header values of the `!children` requests for [nodeId], in order. */
+    fun childrenCacheControls(nodeId: String): List<String?> = synchronized(requestLog) {
+        requestLog.filter { it.url.encodedPath.endsWith("node/$nodeId!children") }.map { it.header("Cache-Control") }
+    }
+
+    private data class N(
+        val id: String, val type: String, val name: String, val sec: String, val eff: String, val web: String
+    )
+
+    private val root = N("4zqWw", "Folder", "Home", "None", "None", "https://gallery.idzifamily.com")
+    private val family = N("2sDN5x", "Folder", "Family", "Password", "Password", "https://gallery.idzifamily.com/Family")
+    private val school = N("P4BKB", "Folder", "School", "None", "Password", "https://gallery.idzifamily.com/Family/School")
+    private val gallery = N(
+        "LCdk7F", "Album", "New School Year", "None", "Password",
+        "https://gallery.idzifamily.com/Family/School/2026-09-01--New-School-Year"
+    )
+    private val publicFolder = N("3BxbFF", "Folder", "Kentridge", "None", "None", "https://gallery.idzifamily.com/Kentridge")
+    private val publicGallery = N("sXQz4G", "Album", "Public Gallery", "None", "None", "https://gallery.idzifamily.com/Kentridge/Public")
+
+    private val childrenOf: Map<String, List<N>> = mapOf(
+        root.id to listOf(family, publicFolder),
+        family.id to listOf(school),
+        school.id to listOf(gallery),
+        publicFolder.id to listOf(publicGallery)
+    )
 
     /** Lineage of each node, self first. */
     private val lineages: Map<String, List<N>> = mapOf(
@@ -80,6 +106,19 @@ class FakeSmugMugServer {
     private fun handle(req: Request): Response {
         val path = req.url.encodedPath.removePrefix("/api/v2/")
         requests += "${req.method} $path"
+        requestLog += req
+        if (path.startsWith("node/") && path.endsWith("!children")) {
+            val id = path.removePrefix("node/").removeSuffix("!children")
+            childrenOverride?.invoke(id, req)?.let { return it }
+            val kids = childrenOf[id] ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
+            val nodes = kids.joinToString(",") {
+                val uris = if (it.type == "Folder") """"ChildNodes":"/api/v2/node/${it.id}!children""""
+                else """"Album":"/api/v2/album/${albumKeyToNodeId.entries.first { e -> e.value == it.id }.key}""""
+                """{"Uri":"/api/v2/node/${it.id}","NodeID":"${it.id}","Type":"${it.type}","Name":"${it.name}",""" +
+                    """"SecurityType":"${it.sec}","WebUri":"${it.web}","Uris":{$uris}}"""
+            }
+            return json(req, 200, """{"Response":{"Node":[$nodes]},"Code":200}""")
+        }
         if (req.method == "POST" && path.endsWith("!unlock")) return json(req, unlockCode, "{}")
         if (path.startsWith("node/") && path.endsWith("!parents")) {
             parentsOverride?.let { return it(req) }

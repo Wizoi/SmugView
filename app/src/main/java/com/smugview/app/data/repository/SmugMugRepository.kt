@@ -53,7 +53,8 @@ class SmugMugRepository @Inject constructor(
     private val dao: CollectionDao,
     private val passwordStore: com.smugview.app.data.security.PasswordStore,
     @ApplicationContext private val context: Context,
-    private val syncReporter: com.smugview.app.diag.SyncReporter = com.smugview.app.diag.SyncReporter.NOOP
+    private val syncReporter: com.smugview.app.diag.SyncReporter = com.smugview.app.diag.SyncReporter.NOOP,
+    private val syncState: SyncStateStore = InMemorySyncStateStore()
 ) {
     /**
      * Upper bound on how many pages the "follow next-url" pagination loops will fetch.
@@ -206,8 +207,6 @@ class SmugMugRepository @Inject constructor(
             return@flow
         }
 
-        // R-35: a forced listing must reach the server, not the 5-minute HTTP cache rewrite.
-        val cacheControl = if (forceRefresh) "no-cache" else null
         val lock = nodeLocks.getOrPut(nodeId) { Mutex() }
         lock.withLock {
             // Re-check cache after acquiring the lock in case another coroutine populated it
@@ -224,87 +223,7 @@ class SmugMugRepository @Inject constructor(
             }
 
             try {
-                val allApiNodes = mutableListOf<com.smugview.app.data.api.NodeData>()
-                val allExpansions = mutableMapOf<String, com.smugview.app.data.api.ExpansionContainer>()
-
-                val response = try {
-                    if (nodeId.startsWith("virtual:")) {
-                        com.smugview.app.data.api.NodeListResponse(
-                            com.smugview.app.data.api.NodeListPayload(emptyList())
-                        )
-                    } else {
-                        api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
-                    }
-                } catch (e: Exception) {
-                    if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                        val unlocked = unlockInheritedPasswordRoot(nodeId, apiKey, password)
-                        if (unlocked) {
-                            api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
-                        } else {
-                            throw e
-                        }
-                    } else {
-                        // For real nodes, 401 or 404 without a password often means it's password protected or private.
-                        // Throw the error so the UI can catch it and prompt for a password.
-                        throw e
-                    }
-                }
-                response.response.nodes?.let { allApiNodes.addAll(it) }
-                response.expansions?.let { allExpansions.putAll(it) }
-
-                var nextUrl = response.response.pages?.next
-                var pageNum = 1
-                while (nextUrl != null && !nodeId.startsWith("virtual:")) {
-                    pageNum++
-                    if (com.smugview.app.BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugMugRepository", "getNodeChildren: fetching page $pageNum for nodeId=$nodeId via nextUrl=$nextUrl")
-                    }
-                    kotlinx.coroutines.delay(100)
-                    val overriddenUrl = overrideUrlCount(nextUrl, 100)
-                    val nextResponse = api.getNodeChildrenByUri(overriddenUrl, apiKey, password, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
-                    nextResponse.response.nodes?.let { allApiNodes.addAll(it) }
-                    nextResponse.expansions?.let { allExpansions.putAll(it) }
-                    nextUrl = nextResponse.response.pages?.next
-                }
-
-                if (com.smugview.app.BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugMugRepository", "getNodeChildren: completed fetching all pages for nodeId=$nodeId. Total children fetched = ${allApiNodes.size}")
-                }
-                
-                val dbNodes = allApiNodes.mapIndexed { index, node ->
-                    val highlightUri = node.uris.highlightImage
-                    val highlightUrl = if (highlightUri != null) {
-                        val expansion = allExpansions[highlightUri]
-                        val thumb = expansion?.image?.thumbnailUrl
-                        thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
-                    } else null
-
-                    CachedNode(
-                        nodeId = node.nodeId,
-                        parentNodeId = nodeId,
-                        type = node.type,
-                        title = node.name ?: "Untitled",
-                        description = node.description,
-                        access = node.securityType,
-                        passwordHint = node.passwordHint,
-                        uri = node.uri,
-                        childNodesUri = node.uris.childNodes,
-                        albumUri = node.uris.album,
-                        highlightImageUrl = highlightUrl,
-                        sortIndex = index,
-                        webUri = node.webUri,
-                        dateModified = node.dateModified
-                    )
-                }
-
-                // Save to database. The listing is the truth for this parent: children it no longer has go (R-07).
-                if (nodeId.startsWith("virtual:")) insertNodesScoped(dbNodes) else replaceChildrenScoped(nodeId, dbNodes)
-                dao.updateChildCount(nodeId, dbNodes.size)
-                // Any Album-type children (e.g. galleries revealed by unlocking a password-protected
-                // parent folder) also need to land in the flat gallery index, since search matches
-                // galleries exclusively against it (see buildInMemoryGalleryCache) — otherwise a
-                // freshly-unlocked folder's galleries are cached here but stay invisible to search.
-                mergeAlbumsIntoIndex(dbNodes)
+                val dbNodes = fetchAndStoreChildren(nodeId, apiKey, forceRefresh, password, ignoreErrors)
                 emit(Result.success(dbNodes))
             } catch (e: CancellationException) {
                 throw e
@@ -319,6 +238,103 @@ class SmugMugRepository @Inject constructor(
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * Fetches every page of [nodeId]'s children from the API and writes them (replacing the parent's
+     * listing, R-07). Throws on any failure; callers decide whether to fall back to the cache.
+     * [forceRefresh] adds `Cache-Control: no-cache` so a forced listing reaches the server (R-35).
+     */
+    private suspend fun fetchAndStoreChildren(
+        nodeId: String,
+        apiKey: String,
+        forceRefresh: Boolean,
+        password: String?,
+        ignoreErrors: String?
+    ): List<CachedNode> {
+        val cacheControl = if (forceRefresh) "no-cache" else null
+        val allApiNodes = mutableListOf<com.smugview.app.data.api.NodeData>()
+        val allExpansions = mutableMapOf<String, com.smugview.app.data.api.ExpansionContainer>()
+
+        val response = try {
+            if (nodeId.startsWith("virtual:")) {
+                com.smugview.app.data.api.NodeListResponse(
+                    com.smugview.app.data.api.NodeListPayload(emptyList())
+                )
+            } else {
+                api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+            }
+        } catch (e: Exception) {
+            if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
+                val unlocked = unlockInheritedPasswordRoot(nodeId, apiKey, password)
+                if (unlocked) {
+                    api.getNodeChildren(nodeId, apiKey, password, count = 100, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+                } else {
+                    throw e
+                }
+            } else {
+                // For real nodes, 401 or 404 without a password often means it's password protected or private.
+                // Throw the error so the UI can catch it and prompt for a password.
+                throw e
+            }
+        }
+        response.response.nodes?.let { allApiNodes.addAll(it) }
+        response.expansions?.let { allExpansions.putAll(it) }
+
+        var nextUrl = response.response.pages?.next
+        var pageNum = 1
+        while (nextUrl != null && !nodeId.startsWith("virtual:")) {
+            pageNum++
+            if (com.smugview.app.BuildConfig.DEBUG) {
+                android.util.Log.d("SmugMugRepository", "getNodeChildren: fetching page $pageNum for nodeId=$nodeId via nextUrl=$nextUrl")
+            }
+            kotlinx.coroutines.delay(100)
+            val overriddenUrl = overrideUrlCount(nextUrl, 100)
+            val nextResponse = api.getNodeChildrenByUri(overriddenUrl, apiKey, password, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
+            nextResponse.response.nodes?.let { allApiNodes.addAll(it) }
+            nextResponse.expansions?.let { allExpansions.putAll(it) }
+            nextUrl = nextResponse.response.pages?.next
+        }
+
+        if (com.smugview.app.BuildConfig.DEBUG) {
+            android.util.Log.d("SmugMugRepository", "getNodeChildren: completed fetching all pages for nodeId=$nodeId. Total children fetched = ${allApiNodes.size}")
+        }
+        
+        val dbNodes = allApiNodes.mapIndexed { index, node ->
+            val highlightUri = node.uris.highlightImage
+            val highlightUrl = if (highlightUri != null) {
+                val expansion = allExpansions[highlightUri]
+                val thumb = expansion?.image?.thumbnailUrl
+                thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
+            } else null
+
+            CachedNode(
+                nodeId = node.nodeId,
+                parentNodeId = nodeId,
+                type = node.type,
+                title = node.name ?: "Untitled",
+                description = node.description,
+                access = node.securityType,
+                passwordHint = node.passwordHint,
+                uri = node.uri,
+                childNodesUri = node.uris.childNodes,
+                albumUri = node.uris.album,
+                highlightImageUrl = highlightUrl,
+                sortIndex = index,
+                webUri = node.webUri,
+                dateModified = node.dateModified
+            )
+        }
+
+        // Save to database. The listing is the truth for this parent: children it no longer has go (R-07).
+        if (nodeId.startsWith("virtual:")) insertNodesScoped(dbNodes) else replaceChildrenScoped(nodeId, dbNodes)
+        dao.updateChildCount(nodeId, dbNodes.size)
+        // Any Album-type children (e.g. galleries revealed by unlocking a password-protected
+        // parent folder) also need to land in the flat gallery index, since search matches
+        // galleries exclusively against it (see buildInMemoryGalleryCache) — otherwise a
+        // freshly-unlocked folder's galleries are cached here but stay invisible to search.
+        mergeAlbumsIntoIndex(dbNodes)
+        return dbNodes
+    }
 
     // Fetch album details
     suspend fun getAlbum(
@@ -764,6 +780,85 @@ class SmugMugRepository @Inject constructor(
                 _isAlbumsCacheLoaded.value = true
                 run?.let { syncReporter.finish(it) }
             }
+        }
+    }
+
+    /** Pause between folder listings in [syncFolderTree]; tests set it to 0. */
+    internal var treeSyncDelayMs: Long = 200L
+
+    /**
+     * Result of one [syncFolderTree] walk. [complete] is true only when every reachable folder was
+     * listed (locked folders with no session are skipped, not failures).
+     */
+    data class TreeSyncResult(val forced: Boolean, val complete: Boolean, val listed: Int, val skippedLocked: Int)
+
+    /**
+     * Walks the folder tree under [rootNodeId] (BFS), listing every reachable folder so `cached_nodes`
+     * has its real parent links (design 3.6). The first walk on a v16 database for a site is *forced*
+     * (`Cache-Control: no-cache`, `replaceChildren`): listings written by earlier versions can hold
+     * wrong rows we cannot find locally (R-04). The flag `treeRepairDone.<nick>` is set only when the
+     * walk finishes without error, so an offline or killed run is retried on the next launch. Later
+     * walks are cache-first and only fetch what is not cached yet.
+     *
+     * A 401/403 means the folder is locked and we hold no session for it: skipped, not an error. Any
+     * other failure aborts the walk (nothing is hammered offline) and leaves the flag unset.
+     * Recorded as a [com.smugview.app.diag.SyncKind.FolderTreeSync] run.
+     */
+    suspend fun syncFolderTree(nickname: String, rootNodeId: String, apiKey: String): TreeSyncResult {
+        val flagKey = "treeRepairDone.$nickname"
+        val forced = !syncState.getBoolean(flagKey)
+        val actionId = com.smugview.app.diag.DiagContext.newActionId("tree")
+        return kotlinx.coroutines.withContext(
+            Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
+        ) {
+            val run = syncReporter.begin(com.smugview.app.diag.SyncKind.FolderTreeSync, nickname, actionId)
+            var listed = 0
+            var skippedLocked = 0
+            var complete = false
+            var failure: String? = null
+            try {
+                val visited = mutableSetOf<String>()
+                val queue = ArrayDeque<String>()
+                queue.addLast(rootNodeId)
+                var aborted = false
+                while (queue.isNotEmpty() && !aborted) {
+                    val id = queue.removeFirst()
+                    if (!visited.add(id)) continue
+                    try {
+                        val children: List<CachedNode> = if (forced) {
+                            val lock = nodeLocks.getOrPut(id) { Mutex() }
+                            lock.withLock { fetchAndStoreChildren(id, apiKey, true, null, "true") }
+                        } else {
+                            getNodeChildren(id, apiKey, forceRefresh = false, password = null, ignoreErrors = "true")
+                                .first().getOrThrow()
+                        }
+                        listed++
+                        children.filter { it.type == "Folder" }.forEach { queue.addLast(it.nodeId) }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        val code = (e as? retrofit2.HttpException)?.code()
+                        if (code == 401 || code == 403) {
+                            skippedLocked++
+                        } else {
+                            failure = e.javaClass.simpleName + (code?.let { " $it" } ?: "")
+                            aborted = true
+                        }
+                    }
+                    if (!aborted && queue.isNotEmpty() && treeSyncDelayMs > 0) kotlinx.coroutines.delay(treeSyncDelayMs)
+                }
+                complete = !aborted
+                if (complete && forced) syncState.putBoolean(flagKey, true)
+                run?.stop = if (complete) com.smugview.app.diag.StopReason.Completed else com.smugview.app.diag.StopReason.Error
+                run?.stopDetail = failure
+            } catch (e: CancellationException) {
+                run?.stop = com.smugview.app.diag.StopReason.Cancelled
+                throw e
+            } finally {
+                run?.notes = "forced=$forced complete=$complete listed=$listed skippedLocked=$skippedLocked"
+                run?.let { syncReporter.finish(it) }
+            }
+            TreeSyncResult(forced, complete, listed, skippedLocked)
         }
     }
 
