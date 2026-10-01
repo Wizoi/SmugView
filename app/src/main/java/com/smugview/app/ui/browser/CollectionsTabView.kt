@@ -871,6 +871,7 @@ fun CollectionsTabView(
                         }
                     }
                 },
+                onGone = { viewModel.stopCastDiscovery() },
                 onDismiss = {
                     showCastSelector = false
                     pendingCastCollectionId = null

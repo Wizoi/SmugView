@@ -765,6 +765,7 @@ fun PhotoGridScreen(
                                 viewModel.castSlideshow(urls)
                                 onNavigateToCastController(albumTitle)
                             },
+                            onGone = { viewModel.stopCastDiscovery() },
                             onDismiss = {
                                 viewModel.stopCastDiscovery()
                                 showCastSelector = false

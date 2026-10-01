@@ -424,6 +424,7 @@ fun PhotoDetailScreen(
                              }
                             onNavigateToCastController(albumTitle)
                         },
+                        onGone = { viewModel.stopCastDiscovery() },
                         onDismiss = {
                             viewModel.stopCastDiscovery()
                             showCastSelector = false

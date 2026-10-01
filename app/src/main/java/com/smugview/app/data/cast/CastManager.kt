@@ -58,14 +58,19 @@ class DefaultCastManager @Inject constructor(
      */
     private var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 
+    /** The network and Cast SDK work (design 6-8). Production: [RealCastIo]; a test passes a fake through the constructor below. */
+    private var io: CastIo = RealCastIo()
+
     @androidx.annotation.VisibleForTesting
-    constructor(
+    internal constructor(
         context: Context,
-        dispatcher: kotlinx.coroutines.CoroutineDispatcher
+        dispatcher: kotlinx.coroutines.CoroutineDispatcher,
+        castIo: CastIo? = null
     ) : this(context) {
         workDispatcher = dispatcher
         ioDispatcher = dispatcher
         scope = CoroutineScope(SupervisorJob() + dispatcher)
+        if (castIo != null) io = castIo
     }
 
     private val _discoveredDevices = MutableStateFlow<List<CastDevice>>(emptyList())
@@ -97,6 +102,22 @@ class DefaultCastManager @Inject constructor(
     private var useWebCompanion = false
 
     private var discoveryJob: Job? = null
+    /** Ends discovery [DISCOVERY_CAP_MS] after it started, whatever else happens (a sheet that never reported it was gone). */
+    private var discoveryCapJob: Job? = null
+    /** Ends discovery [DISCOVERY_AFTER_PICK_MS] after a device was picked: the list is no longer being read. */
+    private var pickStopJob: Job? = null
+    private val discoveryLock = Any()
+
+    /**
+     * Which connect attempt is the wanted one. [connectToDevice] takes a new number and [disconnect] takes one too, so an
+     * attempt that is still waiting on the network when the user presses Stop (or picks another device) finds its number is no
+     * longer current and gives up, instead of finishing as CONNECTED, binding the server and casting what the user stopped.
+     * Everything an attempt commits happens under [connectLock], and so does [disconnect], so one of the two wins whole.
+     */
+    private val connectGeneration = java.util.concurrent.atomic.AtomicLong(0)
+    private val connectLock = Any()
+    /** The generation of the last Google attempt, to tell a session that the user has since stopped from the one wanted. */
+    @Volatile private var googleAttemptGeneration = 0L
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var slideshowJob: Job? = null
     private var slideshowUrls: List<String> = emptyList()
@@ -162,16 +183,15 @@ class DefaultCastManager @Inject constructor(
     private val sessionListener = object : com.google.android.gms.cast.framework.SessionManagerListener<com.google.android.gms.cast.framework.CastSession> {
         override fun onSessionStarted(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {
             val device = session.castDevice ?: return
-            val castDevice = CastDevice(
-                id = device.deviceId,
-                name = device.friendlyName ?: "Google Cast Target",
-                ipAddress = device.ipAddress?.hostAddress ?: "",
-                type = CastType.GOOGLE,
-                state = ConnectionState.CONNECTED
+            onGoogleSessionConnected(
+                CastDevice(
+                    id = device.deviceId,
+                    name = device.friendlyName ?: "Google Cast Target",
+                    ipAddress = device.ipAddress?.hostAddress ?: "",
+                    type = CastType.GOOGLE,
+                    state = ConnectionState.CONNECTED
+                )
             )
-            _activeDevice.value = castDevice
-            _isCasting.value = true
-            triggerPendingCasts()
         }
 
         override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) {
@@ -179,6 +199,8 @@ class DefaultCastManager @Inject constructor(
         }
 
         override fun onSessionStarting(session: com.google.android.gms.cast.framework.CastSession) {
+            // An attempt the user has since stopped is not shown as connecting; its session is ended when it starts.
+            if (googleAttemptGeneration != connectGeneration.get()) return
             val device = session.castDevice ?: return
             val castDevice = CastDevice(
                 id = device.deviceId,
@@ -199,16 +221,15 @@ class DefaultCastManager @Inject constructor(
         override fun onSessionResuming(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {}
         override fun onSessionResumed(session: com.google.android.gms.cast.framework.CastSession, wasSuspended: Boolean) {
             val device = session.castDevice ?: return
-            val castDevice = CastDevice(
-                id = device.deviceId,
-                name = device.friendlyName ?: "Google Cast Target",
-                ipAddress = device.ipAddress?.hostAddress ?: "",
-                type = CastType.GOOGLE,
-                state = ConnectionState.CONNECTED
+            onGoogleSessionConnected(
+                CastDevice(
+                    id = device.deviceId,
+                    name = device.friendlyName ?: "Google Cast Target",
+                    ipAddress = device.ipAddress?.hostAddress ?: "",
+                    type = CastType.GOOGLE,
+                    state = ConnectionState.CONNECTED
+                )
             )
-            _activeDevice.value = castDevice
-            _isCasting.value = true
-            triggerPendingCasts()
         }
 
         override fun onSessionResumeFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {
@@ -216,6 +237,26 @@ class DefaultCastManager @Inject constructor(
         }
         
         override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {}
+    }
+
+    /**
+     * The Google Cast framework says a session is up (started or resumed). If the user pressed Stop (or chose another device)
+     * after that attempt began, nobody wants this session: it is ended, and the manager is not shown as casting to it.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun onGoogleSessionConnected(castDevice: CastDevice) {
+        synchronized(connectLock) {
+            if (googleAttemptGeneration != connectGeneration.get()) {
+                SmugLog.d("CastManager") { "Google session arrived after Stop; ending it" }
+                scope.launch(Dispatchers.Main) {
+                    try { io.endGoogleSession() } catch (e: Exception) { e.printStackTrace() }
+                }
+                return
+            }
+            _activeDevice.value = castDevice
+            _isCasting.value = true
+            triggerPendingCasts()
+        }
     }
 
     private fun updateDiscoveredDevices(newSsdp: List<CastDevice>? = null) {
@@ -266,8 +307,20 @@ class DefaultCastManager @Inject constructor(
     }
 
     override fun startDiscovery() {
-        if (discoveryJob != null) return
-        
+        synchronized(discoveryLock) {
+            // A sheet opening again while an earlier pick's stop is pending: the list is being read again, so that stop is off,
+            // and the 60 s cap starts over.
+            pickStopJob?.cancel()
+            pickStopJob = null
+            discoveryCapJob?.cancel()
+            discoveryCapJob = scope.launch {
+                delay(DISCOVERY_CAP_MS)
+                SmugLog.d("CastManager") { "Discovery: the ${DISCOVERY_CAP_MS / 1000} s cap reached; stopping" }
+                stopDiscovery()
+            }
+            if (discoveryJob != null) return
+        }
+
         scope.launch(Dispatchers.Main) {
             try {
                 mediaRouter.addCallback(
@@ -283,21 +336,27 @@ class DefaultCastManager @Inject constructor(
 
         discoveryJob = scope.launch {
             _discoveredDevices.value = emptyList()
-            
+
             while (isActive) {
-                val localDevices = performSsdpDiscovery()
-                
+                val localDevices = io.ssdpScan()
+
                 SmugLog.d("CastManager") { "SSDP: Scan successfully resolved ${localDevices.size} local devices." }
                 updateDiscoveredDevices(localDevices)
-                
+
                 delay(8000)
             }
         }
     }
 
     override fun stopDiscovery() {
-        discoveryJob?.cancel()
-        discoveryJob = null
+        synchronized(discoveryLock) {
+            discoveryJob?.cancel()
+            discoveryJob = null
+            discoveryCapJob?.cancel()
+            discoveryCapJob = null
+            pickStopJob?.cancel()
+            pickStopJob = null
+        }
         scope.launch(Dispatchers.Main) {
             try {
                 mediaRouter.removeCallback(mediaRouterCallback)
@@ -308,7 +367,21 @@ class DefaultCastManager @Inject constructor(
     }
 
     override fun connectToDevice(device: CastDevice) {
+        // The user picked a device: nothing reads the list any more, so discovery stops [DISCOVERY_AFTER_PICK_MS] later (not at
+        // once: the sheet and the Cast route are still settling). Before this, a scan every 8 s ran until the process died.
+        synchronized(discoveryLock) {
+            pickStopJob?.cancel()
+            pickStopJob = if (discoveryJob != null) scope.launch {
+                delay(DISCOVERY_AFTER_PICK_MS)
+                SmugLog.d("CastManager") { "Discovery: ${DISCOVERY_AFTER_PICK_MS / 1000} s after a device was picked; stopping" }
+                stopDiscovery()
+            } else null
+        }
+
+        val generation = connectGeneration.incrementAndGet()
+        if (device.type == CastType.GOOGLE) googleAttemptGeneration = generation
         scope.launch {
+            if (generation != connectGeneration.get()) return@launch
             val connectingDevice = device.copy(state = ConnectionState.CONNECTING)
             _activeDevice.value = connectingDevice
             _isCasting.value = false
@@ -320,20 +393,21 @@ class DefaultCastManager @Inject constructor(
             if (device.type == CastType.GOOGLE) {
                 scope.launch(Dispatchers.Main) {
                     try {
-                        val route = mediaRouter.routes.find { it.id == device.id }
-                        if (route != null) {
-                            mediaRouter.selectRoute(route)
-                        }
+                        if (generation != connectGeneration.get()) return@launch
+                        io.selectGoogleRoute(device.id)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
                 }
             } else {
                 val isSupported = when (device.type) {
-                    CastType.ROKU -> checkRokuCastingSupport(device.ipAddress)
+                    CastType.ROKU -> io.rokuSupportsCasting(device.ipAddress)
                     CastType.AMAZON -> checkAmazonCastingSupport(device.ipAddress)
                     else -> true
                 }
+                // Every wait below can outlive the attempt: Stop, or another device, takes a new generation, and this one then
+                // leaves everything alone (it would otherwise finish as CONNECTED and bind the server after the user stopped).
+                if (generation != connectGeneration.get()) return@launch
 
                 if (!isSupported) {
                     withContext(Dispatchers.Main) {
@@ -344,72 +418,80 @@ class DefaultCastManager @Inject constructor(
                         }
                         android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
                     }
-                    _activeDevice.value = null
-                    _isCasting.value = false
-                    _discoveredDevices.value = _discoveredDevices.value.map {
-                        if (it.id == device.id) device.copy(state = ConnectionState.DISCONNECTED) else it
+                    synchronized(connectLock) {
+                        if (generation != connectGeneration.get()) return@launch
+                        _activeDevice.value = null
+                        _isCasting.value = false
+                        _discoveredDevices.value = _discoveredDevices.value.map {
+                            if (it.id == device.id) device.copy(state = ConnectionState.DISCONNECTED) else it
+                        }
                     }
                     return@launch
                 }
 
                 delay(1000) // Connection simulator for Roku/Amazon targets
-                if (device.type == CastType.AMAZON) {
-                    val dialSupported = checkAmazonDialSupport(device.ipAddress)
-                    if (dialSupported) {
-                        useWebCompanion = false
-                        _isWebCompanionActive.value = false
-                        webCompanionServer.stop()
-                    } else {
+                if (generation != connectGeneration.get()) return@launch
+                val dialSupported = device.type == CastType.AMAZON && io.amazonSupportsDial(device.ipAddress)
+
+                // The commit. Stop (disconnect) takes the same lock, so either this runs whole before it and Stop then undoes it,
+                // or it finds the new generation here and does nothing: no CONNECTED, no server bind, no pending casts.
+                synchronized(connectLock) {
+                    if (generation != connectGeneration.get()) return@launch
+                    if (device.type == CastType.AMAZON && !dialSupported) {
                         useWebCompanion = true
                         _isWebCompanionActive.value = true
                         // Only the cast target device may fetch the (potentially private) media.
-                        webCompanionServer.start(port = 8080, allowedClientIp = device.ipAddress)
+                        io.startServer(port = 8080, allowedClientIp = device.ipAddress)
+                    } else {
+                        useWebCompanion = false
+                        _isWebCompanionActive.value = false
+                        io.stopServer()
                     }
-                } else {
-                    useWebCompanion = false
-                    _isWebCompanionActive.value = false
-                    webCompanionServer.stop()
-                }
-                val connectedDevice = device.copy(state = ConnectionState.CONNECTED)
-                _activeDevice.value = connectedDevice
-                _isCasting.value = true
+                    val connectedDevice = device.copy(state = ConnectionState.CONNECTED)
+                    _activeDevice.value = connectedDevice
+                    _isCasting.value = true
 
-                _discoveredDevices.value = _discoveredDevices.value.map {
-                    if (it.id == device.id) connectedDevice else it
-                }
+                    _discoveredDevices.value = _discoveredDevices.value.map {
+                        if (it.id == device.id) connectedDevice else it
+                    }
 
-                triggerPendingCasts()
+                    triggerPendingCasts()
+                }
             }
         }
     }
 
     override fun disconnect() {
-        stopSlideshow()
-        webCompanionServer.stop()
-        useWebCompanion = false
-        _isWebCompanionActive.value = false
-        pendingCastImage = null
-        pendingCastSlideshow = null
-        val currentActive = _activeDevice.value
-        if (currentActive != null) {
-            _discoveredDevices.value = _discoveredDevices.value.map {
-                if (it.id == currentActive.id) it.copy(state = ConnectionState.DISCONNECTED) else it
-            }
-        }
-        
-        if (currentActive?.type == CastType.GOOGLE) {
-            try {
-                scope.launch(Dispatchers.Main) {
-                    castContext?.sessionManager?.endCurrentSession(true)
+        synchronized(connectLock) {
+            // Any connect attempt still in flight is now out of date (see connectGeneration).
+            connectGeneration.incrementAndGet()
+            stopSlideshow()
+            io.stopServer()
+            useWebCompanion = false
+            _isWebCompanionActive.value = false
+            pendingCastImage = null
+            pendingCastSlideshow = null
+            val currentActive = _activeDevice.value
+            if (currentActive != null) {
+                _discoveredDevices.value = _discoveredDevices.value.map {
+                    if (it.id == currentActive.id) it.copy(state = ConnectionState.DISCONNECTED) else it
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
-        }
 
-        _activeDevice.value = null
-        _isCasting.value = false
-        _currentImageUri.value = null
+            if (currentActive?.type == CastType.GOOGLE) {
+                try {
+                    scope.launch(Dispatchers.Main) {
+                        try { io.endGoogleSession() } catch (e: Exception) { e.printStackTrace() }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            _activeDevice.value = null
+            _isCasting.value = false
+            _currentImageUri.value = null
+        }
     }
 
     override fun castImage(url: String, title: String) {
@@ -593,6 +675,8 @@ class DefaultCastManager @Inject constructor(
         val discovered = mutableListOf<CastDevice>()
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
         val lock = wifiManager?.createMulticastLock("SmugViewCastLock")
+        // Opened below, closed in the finally whatever ends the scan (a cancelled scan used to leak the socket and its multicast group).
+        var openSocket: java.net.MulticastSocket? = null
         try {
             lock?.acquire()
             val address = java.net.InetAddress.getByName("239.255.255.250")
@@ -631,6 +715,7 @@ class DefaultCastManager @Inject constructor(
                 android.util.Log.w("CastManager", "SSDP: Local Wi-Fi IP not found, using wildcard binding")
                 java.net.MulticastSocket()
             }
+            openSocket = socket
             socket.soTimeout = 2000
 
             if (wifiNetwork != null) {
@@ -667,6 +752,7 @@ class DefaultCastManager @Inject constructor(
             val receiveBuffer = ByteArray(2048)
             val startTime = System.currentTimeMillis()
             while (System.currentTimeMillis() - startTime < 3000) {
+                ensureActive() // a stopped discovery ends the scan here, not up to 3 s later
                 try {
                     val receivePacket = java.net.DatagramPacket(receiveBuffer, receiveBuffer.size)
                     socket.receive(receivePacket)
@@ -725,18 +811,45 @@ class DefaultCastManager @Inject constructor(
                     break
                 }
             }
-            try {
-                socket.leaveGroup(address)
-            } catch (ex: Exception) {}
-            socket.close()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("CastManager", "SSDP: General exception during scan", e)
         } finally {
+            try {
+                openSocket?.leaveGroup(java.net.InetAddress.getByName("239.255.255.250"))
+            } catch (ex: Exception) {}
+            try {
+                openSocket?.close()
+            } catch (ex: Exception) {}
             if (lock?.isHeld == true) {
                 lock.release()
             }
         }
         discovered
+    }
+
+    /** The real network and Cast SDK work, as the manager did it before the [CastIo] seam existed. */
+    private inner class RealCastIo : CastIo {
+        override suspend fun ssdpScan(): List<CastDevice> = performSsdpDiscovery()
+        override suspend fun rokuSupportsCasting(ip: String): Boolean = checkRokuCastingSupport(ip)
+        override suspend fun amazonSupportsDial(ip: String): Boolean = checkAmazonDialSupport(ip)
+        override fun startServer(port: Int, allowedClientIp: String) = webCompanionServer.start(port, allowedClientIp)
+        override fun stopServer() = webCompanionServer.stop()
+        override fun selectGoogleRoute(routeId: String) {
+            val route = mediaRouter.routes.find { it.id == routeId }
+            if (route != null) mediaRouter.selectRoute(route)
+        }
+        override fun endGoogleSession() {
+            castContext?.sessionManager?.endCurrentSession(true)
+        }
+    }
+
+    private companion object {
+        /** Discovery never runs longer than this, whatever else happens (R-56: a scan every 8 s ran until the process died). */
+        const val DISCOVERY_CAP_MS = 60_000L
+        /** Discovery stops this long after the user picked a device. */
+        const val DISCOVERY_AFTER_PICK_MS = 30_000L
     }
 
     private val isUnitTest: Boolean by lazy {

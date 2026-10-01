@@ -29,12 +29,20 @@ fun CastDeviceSelectorBottomSheet(
     devices: List<CastDevice>,
     onDeviceSelected: (CastDevice) -> Unit,
     onDismiss: () -> Unit,
+    /** Called when the sheet leaves the screen WITHOUT a device having been picked (dismissed, or its screen went away): nothing reads the list, so discovery stops. After a pick the manager stops it itself. */
+    onGone: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val deepDarkBackground = Color(0xFF090A0C)
     val surfaceDark = Color(0xFF121418)
     val neonBlue = Color(0xFF00E5FF)
     
+    // Step 6-8 (R-56): a sheet that closes without a pick must stop discovery (the collections screen never did).
+    var picked by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        onDispose { if (!picked) onGone() }
+    }
+
     // Simulate active scan progress indicator for 2 seconds when opened
     var isScanning by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
@@ -137,7 +145,10 @@ fun CastDeviceSelectorBottomSheet(
                         DeviceItem(
                             device = device,
                             isConnectingGlobal = isConnecting,
-                            onDeviceSelected = onDeviceSelected
+                            onDeviceSelected = { device ->
+                                picked = true
+                                onDeviceSelected(device)
+                            }
                         )
                     }
                 }
