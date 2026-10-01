@@ -32,7 +32,10 @@ internal class GalleryCrawl(
         val pages: Int,
         val nullLastUpdated: Int,
         val passwordSecurity: Int
-    )
+    ) {
+        /** AlbumKey to its folder path (`Uris.Folder`), for the resolver (design 3.4). */
+        val folderPaths: Map<String, String?> by lazy { albums.associate { it.album.albumKey to it.folderPath } }
+    }
 
     class Written(val changed: List<CachedAlbum>, val pruned: Int, val pruneSkipped: Int)
 

@@ -147,12 +147,22 @@ class FakeSmugMugServer {
     private val publicFolder = N("3BxbFF", "Folder", "Kentridge", "None", "None", "https://gallery.idzifamily.com/Kentridge")
     private val publicGallery = N("sXQz4G", "Album", "Public Gallery", "None", "None", "https://gallery.idzifamily.com/Kentridge/Public")
 
-    private val childrenOf: Map<String, List<N>> = mapOf(
-        root.id to listOf(family, publicFolder),
-        family.id to listOf(school),
-        school.id to listOf(gallery),
-        publicFolder.id to listOf(publicGallery)
+    private val childrenOf: MutableMap<String, MutableList<N>> = mutableMapOf(
+        root.id to mutableListOf(family, publicFolder),
+        family.id to mutableListOf(school),
+        school.id to mutableListOf(gallery),
+        publicFolder.id to mutableListOf(publicGallery)
     )
+
+    /**
+     * Adds a sub-folder to [parentId]'s `!children` listing from now on (a folder created on the
+     * site after the app cached its parent). [path] is its UrlPath, e.g. `/Family/School/New`.
+     */
+    fun addFolder(parentId: String, nodeId: String, name: String, path: String) {
+        childrenOf.getOrPut(parentId) { mutableListOf() }
+            .add(N(nodeId, "Folder", name, "None", "Password", "https://gallery.idzifamily.com$path"))
+        childrenOf.putIfAbsent(nodeId, mutableListOf())
+    }
 
     /** Lineage of each node, self first. */
     private val lineages: Map<String, List<N>> = mapOf(

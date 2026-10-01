@@ -43,6 +43,15 @@ interface CollectionDao {
         pruneKeys.chunked(500).forEach { deleteAlbumsByKeys(it) }
     }
 
+    @Query("UPDATE cached_albums SET parentNodeId = :parentNodeId WHERE albumKey = :albumKey")
+    suspend fun updateAlbumParent(albumKey: String, parentNodeId: String)
+
+    /** The resolver's write (design 3.4): album key to its parent folder NodeID, in one transaction. */
+    @androidx.room.Transaction
+    suspend fun applyAlbumParents(parents: Map<String, String>) {
+        for ((key, parent) in parents) updateAlbumParent(key, parent)
+    }
+
     @Query("DELETE FROM cached_albums WHERE albumKey IN (:albumKeys)")
     suspend fun deleteAlbumsByKeys(albumKeys: List<String>)
 

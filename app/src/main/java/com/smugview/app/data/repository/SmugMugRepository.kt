@@ -648,9 +648,19 @@ class SmugMugRepository @Inject constructor(
      * relisted (forced, at most [MAX_RELIST]); their ids are returned so the caller can reload the one
      * on screen. Only gallery *metadata* is synced; contents load on demand.
      *
+     * Then [IndexParentResolver] gives every gallery a parent folder from the folder paths (design
+     * 3.4); a recent gallery in a folder that is not cached yet relists its nearest cached ancestor.
+     * Resolver relists and changed-parent relists share one [MAX_RELIST] budget.
+     *
      * [unlock] is the summary of this launch's unlock ([runSiteSync]); null (unknown) never prunes.
+     * [rootNodeId] is the site root, the parent of root-level galleries.
      */
-    suspend fun buildInMemoryGalleryCache(nickname: String, apiKey: String, unlock: UnlockSummary? = null): Set<String> {
+    suspend fun buildInMemoryGalleryCache(
+        nickname: String,
+        apiKey: String,
+        unlock: UnlockSummary? = null,
+        rootNodeId: String? = null
+    ): Set<String> {
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache starting for user=$nickname")
         }
@@ -663,6 +673,8 @@ class SmugMugRepository @Inject constructor(
             var pruned = 0
             var pruneSkipped = 0
             var relistedCount = 0
+            var parentsResolved = 0
+            var unresolved = 0
             try {
                 // 1. Instant: publish the persisted index (if any) so UI/search can proceed.
                 val persisted = dao.getAlbumIndex(nickname)
@@ -708,10 +720,24 @@ class SmugMugRepository @Inject constructor(
                     android.util.Log.d("SmugMugRepository", "album index crawled: ${written.changed.size} new/changed, total=${_albumsCache.value.size}")
                 }
 
-                // 4. A new or changed gallery means its parent folder's cached listing (the Folders
+                // 4. Parents from the folder paths (relisting the nearest cached ancestor of a recent
+                // gallery whose folder is new).
+                val resolved = IndexParentResolver(dao, clock) { id -> relistOne(id, apiKey) }
+                    .resolve(nickname, rootNodeId, fetched.folderPaths, MAX_RELIST)
+                parentsResolved = resolved.resolved
+                unresolved = resolved.unresolved
+                if (resolved.resolved > 0 || resolved.relisted.isNotEmpty()) {
+                    _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
+                }
+
+                // 5. A new or changed gallery means its parent folder's cached listing (the Folders
                 // tab) may be stale: relist the folders that already have one.
-                val relisted = relistFolders(
-                    written.changed.mapNotNull { it.parentNodeId }.distinct(), apiKey
+                val parentOf = dao.getAlbumIndex(nickname).associate { it.albumKey to it.parentNodeId }
+                val relisted = LinkedHashSet<String>(resolved.relisted)
+                relisted += relistFolders(
+                    written.changed.mapNotNull { parentOf[it.albumKey] }.distinct()
+                        .filter { it !in relisted },
+                    apiKey, MAX_RELIST - relisted.size
                 )
                 relistedCount = relisted.size
                 run?.invalidatedParents = relisted.size
@@ -731,7 +757,7 @@ class SmugMugRepository @Inject constructor(
                 _isAlbumsCacheLoaded.value = true
                 if (run != null) {
                     if (run.notes == null) {
-                        run.notes = "complete=$complete pruned=$pruned pruneSkipped=$pruneSkipped relisted=$relistedCount"
+                        run.notes = "complete=$complete pruned=$pruned pruneSkipped=$pruneSkipped parentsResolved=$parentsResolved unresolved=$unresolved relisted=$relistedCount"
                     }
                     syncReporter.finish(run)
                 }
@@ -740,26 +766,33 @@ class SmugMugRepository @Inject constructor(
     }
 
     /**
-     * Forced relist of up to [MAX_RELIST] of [folderIds] that already have a cached listing (a folder
+     * Forced relist of up to [limit] of [folderIds] that already have a cached listing (a folder
      * never opened has nothing stale to refresh). A folder that cannot be listed (locked, offline) is
      * skipped. Returns the folders actually relisted.
      */
-    private suspend fun relistFolders(folderIds: List<String>, apiKey: String): Set<String> {
+    private suspend fun relistFolders(folderIds: List<String>, apiKey: String, limit: Int = MAX_RELIST): Set<String> {
         val relisted = LinkedHashSet<String>()
         for (id in folderIds) {
-            if (relisted.size >= MAX_RELIST) break
+            if (relisted.size >= limit) break
             if (dao.getCachedNodesByParent(id).first().isEmpty()) continue
-            try {
-                nodeLocks.getOrPut(id) { Mutex() }.withLock { fetchAndStoreChildren(id, apiKey, true, null, "true") }
-                relisted.add(id)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                SmugLog.w("sync", "relist skip $id: ${e.javaClass.simpleName}")
-            }
-            if (treeSyncDelayMs > 0) kotlinx.coroutines.delay(treeSyncDelayMs)
+            if (relistOne(id, apiKey)) relisted.add(id)
         }
         return relisted
+    }
+
+    /** One forced listing of [id] (under its node lock); false when it failed. Pauses afterwards. */
+    private suspend fun relistOne(id: String, apiKey: String): Boolean {
+        var ok = false
+        try {
+            nodeLocks.getOrPut(id) { Mutex() }.withLock { fetchAndStoreChildren(id, apiKey, true, null, "true") }
+            ok = true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            SmugLog.w("sync", "relist skip $id: ${e.javaClass.simpleName}")
+        }
+        if (treeSyncDelayMs > 0) kotlinx.coroutines.delay(treeSyncDelayMs)
+        return ok
     }
 
     companion object {
@@ -918,9 +951,15 @@ class SmugMugRepository @Inject constructor(
      */
     suspend fun runSiteSync(nickname: String, rootNodeId: String, apiKey: String): Set<String> {
         val unlock = unlockSavedRoots(nickname, apiKey)
-        val invalidated = buildInMemoryGalleryCache(nickname, apiKey, unlock)
+        val invalidated = buildInMemoryGalleryCache(nickname, apiKey, unlock, rootNodeId)
         syncFolderTree(nickname, rootNodeId, apiKey)
-        return invalidated
+        // The tree walk may have cached folders the crawl could not match (design 3.4: again after the tree sync).
+        val again = IndexParentResolver(dao, clock) { id -> relistOne(id, apiKey) }
+            .resolve(nickname, rootNodeId, emptyMap(), MAX_RELIST, invalidated)
+        if (again.resolved > 0 || again.relisted.isNotEmpty()) {
+            _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
+        }
+        return invalidated + again.relisted
     }
 
     /** Pause between folder listings in [syncFolderTree]; tests set it to 0. */
