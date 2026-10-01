@@ -639,7 +639,7 @@ class FakeSmugMugServer {
         val images = keys.joinToString(",") { ik ->
             """{"Uri":"/api/v2/image/$ik-0","ImageKey":"$ik","Title":"","Caption":"","FileName":"$ik.jpg","Format":"JPG",""" +
                 """"ThumbnailUrl":"https://photos.smugmug.com/photos/$ik/0/Th/$ik-Th.jpg","Date":"${daysAgo(10)}",""" +
-                """"KeywordArray":["kentridge"],"Keywords":"kentridge","Uris":{${urisJson(req, emptyMap())}}}"""
+                """"KeywordArray":["kentridge"],"Keywords":"kentridge","Uris":{${urisJson(req, mapOf("ImageSizeDetails" to "/api/v2/image/$ik-0!sizedetails"))}}}"""
         }
         val next = if (start - 1 + keys.size < total) ""","NextPage":"${nextPage(req, "image!search", start + keys.size)}"""" else ""
         return json(
@@ -680,7 +680,8 @@ class FakeSmugMugServer {
         ) else json(
             req, 200,
             """{"Response":{"Image":{"Uri":"/api/v2/image/$key-0","ImageKey":"$key","Title":"","FileName":"$key.jpg","Format":"JPG",""" +
-                """"ThumbnailUrl":"https://photos.smugmug.com/photos/$key/0/Th/$key-Th.jpg","OriginalWidth":4000,"OriginalHeight":3000}},"Code":200}"""
+                """"ThumbnailUrl":"https://photos.smugmug.com/photos/$key/0/Th/$key-Th.jpg","OriginalWidth":4000,"OriginalHeight":3000,""" +
+                """"Uris":{${urisJson(req, mapOf("ImageSizeDetails" to "/api/v2/image/$key-0!sizedetails"))}}}},"Code":200}"""
         )
     }
 }

@@ -64,7 +64,7 @@ class AlbumPage2VideoTest {
         val requests = imageRequests()
         assertEquals("two pages each", 4, requests.size)
         assertEquals("pages without _expand=LargestVideo", 0, requests.count { it.url.queryParameter("_expand") != "LargestVideo" })
-        assertEquals("pages without the filter", 0, requests.count { it.url.queryParameter("_filteruri") != "LargestVideo,Album" })
+        assertEquals("pages without the filter", 0, requests.count { it.url.queryParameter("_filteruri") != "LargestVideo,Album,ImageSizeDetails" })
         // the grid and the download may interleave, so compare the starts sorted
         assertEquals(listOf(1, 1, 501, 501), requests.map { (it.url.queryParameter("start") ?: "1").toInt() }.sorted())
     }

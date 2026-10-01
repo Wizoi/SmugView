@@ -177,9 +177,7 @@ fun ImmersivePhotoPage(
             }
             // Instant guess shown as tier 1 while the real ImageSizeDetails call is in flight.
             val fallbackHalfwayUrl = remember(photo.archivedUri, photo.thumbnailUrl) {
-                photo.archivedUri
-                    ?: photo.thumbnailUrl?.replace("/Th/", "/X3/")?.replace("/th/", "/x3/")
-                        ?.replace("-Th.", "-X3.")?.replace("-th.", "-x3.")
+                zoomFallbackUrl(photo.thumbnailUrl, photo.archivedUri)
             }
 
             var scale by remember(photo.imageKey) { mutableStateOf(1f) }
@@ -549,3 +547,15 @@ fun rememberCameraDetails(imageKey: String, viewModel: SmugViewModel): String {
         } ?: ""
     }
 }
+
+/**
+ * The instant tier-1 guess for the pinch zoom while the real `ImageSizeDetails` call is in flight (R-29,
+ * design 3.5): the X3 size derived from the thumbnail URL. The original (`ArchivedUri`) is only a last
+ * resort for a photo with no thumbnail: it used to come first, so every zoom downloaded the original
+ * before the real tiers arrived. A photo too small to have an X3 fails to load it and `onError` falls
+ * back to `ArchivedUri`.
+ */
+internal fun zoomFallbackUrl(thumbnailUrl: String?, archivedUri: String?): String? =
+    thumbnailUrl?.replace("/Th/", "/X3/")?.replace("/th/", "/x3/")
+        ?.replace("-Th.", "-X3.")?.replace("-th.", "-x3.")
+        ?: archivedUri

@@ -866,7 +866,7 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun getImageSizeDetailsByUri(url: String, apiKey: String) = delegate.getImageSizeDetailsByUri(url, apiKey)
     override suspend fun searchImages(apiKey: String, scope: String?, text: String?, sortMethod: String?, sortDirection: String?, count: Int, start: Int, filter: String, filterUri: String, expand: String?, verbosity: Int) = delegate.searchImages(apiKey, scope, text, sortMethod, sortDirection, count, start, filter, filterUri, expand, verbosity)
     override suspend fun searchUsers(apiKey: String, query: String, verbosity: Int) = delegate.searchUsers(apiKey, query, verbosity)
-    override suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int, filter: String, filterUri: String, verbosity: Int) = delegate.getUserRecentImages(nickname, apiKey, count, filter, filterUri, verbosity)
+    override suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int, filter: String, filterUri: String?, verbosity: Int) = delegate.getUserRecentImages(nickname, apiKey, count, filter, filterUri, verbosity)
     
     override suspend fun searchNodes(apiKey: String, scope: String, text: String, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.searchNodes(apiKey, scope, text, expand, filter, filterUri, verbosity)
     override suspend fun getImage(imageKey: String, apiKey: String, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getImage(imageKey, apiKey, expand, filter, filterUri, verbosity)

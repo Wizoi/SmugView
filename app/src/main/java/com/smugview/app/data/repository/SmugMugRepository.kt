@@ -4,6 +4,7 @@ import com.smugview.app.util.SmugLog
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.AlbumDetails
 import com.smugview.app.data.api.AlbumImagesResponse
+import com.smugview.app.data.api.canonicalImageKey
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.data.api.ImageSearchResponse
 import com.smugview.app.data.api.ExifData
@@ -1349,7 +1350,7 @@ class SmugMugRepository @Inject constructor(
     // Fetches EXIF details
     fun getImageExif(imageKey: String, apiKey: String): Flow<Result<ExifData>> = flow {
         try {
-            val response = api.getImageExif(imageKey, apiKey)
+            val response = api.getImageExif(canonicalImageKey(imageKey), apiKey)
             emit(Result.success(response.response.exif))
         } catch (e: CancellationException) {
             throw e
@@ -1364,7 +1365,7 @@ class SmugMugRepository @Inject constructor(
         apiKey: String
     ): Flow<Result<AlbumImageData>> = flow {
         try {
-            val response = api.getImage(imageKey, apiKey)
+            val response = api.getImage(canonicalImageKey(imageKey), apiKey)
             val img = response.response.image
             if (img.isVideo) {
                 val largestVideoUri = img.uris?.largestVideo

@@ -85,8 +85,9 @@ interface SmugMugApi {
         // Every page is this same call with `start`; Pages.NextPage drops _expand (R-27), so it is never followed.
         @Query("start") start: Int? = null,
         @Query("_expand") expand: String = "LargestVideo",
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris",
-        @Query("_filteruri") filterUri: String = "LargestVideo,Album",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris",
+        // ImageSizeDetails is only present when listed here (P4, R-29): the zoom reads its real tiers from it.
+        @Query("_filteruri") filterUri: String = "LargestVideo,Album,ImageSizeDetails",
         @Query("_verbosity") verbosity: Int = 1,
         @Header("X-Ignore-Errors") ignoreErrors: String? = null,
         @Header("Cache-Control") cacheControl: String? = null
@@ -107,8 +108,9 @@ interface SmugMugApi {
         @Query("SortDirection") sortDirection: String? = null,
         @Query("count") count: Int = 500,
         @Query("start") start: Int = 1,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format,Keywords,KeywordArray,Uris,WebUri",
-        @Query("_filteruri") filterUri: String = "ImageAlbum",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,FileName,Format,Keywords,KeywordArray,Uris",
+        // WebUri, DateTime and ImageAlbum are never present on search results (P4): not requested.
+        @Query("_filteruri") filterUri: String = "ImageSizeDetails",
         @Query("_expand") expand: String? = null,
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
@@ -125,8 +127,9 @@ interface SmugMugApi {
         @Path("nickname") nickname: String,
         @Query("APIKey") apiKey: String,
         @Query("count") count: Int = 4,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,Uris",
-        @Query("_filteruri") filterUri: String = "ImageAlbum",
+        // WebUri and ImageAlbum are never present on recent images (P4): not requested, and no _filteruri.
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl",
+        @Query("_filteruri") filterUri: String? = null,
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 
@@ -141,13 +144,15 @@ interface SmugMugApi {
         @Query("_verbosity") verbosity: Int = 1
     ): NodeListResponse
 
+    // `image_key` is the canonical `{key}-0` (see [canonicalImageKey]): `image/{key}` 301s to it with `no-store`
+    // (P5, R-30), and the 200 is what the HTTP cache stores, so details work offline after one online view.
     @GET("image/{image_key}")
     suspend fun getImage(
         @Path("image_key") imageKey: String,
         @Query("APIKey") apiKey: String,
         @Query("_expand") expand: String = "LargestVideo",
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTime,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris,WebUri",
-        @Query("_filteruri") filterUri: String = "LargestVideo,ImageAlbum",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris",
+        @Query("_filteruri") filterUri: String = "LargestVideo,ImageSizeDetails",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageResponse
 
@@ -207,8 +212,9 @@ interface SmugMugApi {
         @Query("Text") text: String? = null,
         @Query("count") count: Int = 500,
         @Query("start") start: Int = 1,
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTime,FileName,Format,Keywords,KeywordArray,Uris,WebUri",
-        @Query("_filteruri") filterUri: String = "ImageAlbum",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,FileName,Format,Keywords,KeywordArray,Uris",
+        // WebUri, DateTime and ImageAlbum are never present on search results (P4): not requested.
+        @Query("_filteruri") filterUri: String = "ImageSizeDetails",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 
@@ -220,3 +226,14 @@ interface SmugMugApi {
         @Body body: UpdateImageMetadataRequest
     ): retrofit2.Response<okhttp3.ResponseBody>
 }
+
+/**
+ * The key an `image/{key}` request should use. SmugMug answers `image/XVRvVTM` with a `301` to `XVRvVTM-0`
+ * and `Cache-Control: no-store` (P5, R-30), so the redirect is never cacheable and the details were not
+ * available offline. A key that already has a serial (`-0`, `-1`) is left alone: a non-zero serial is
+ * followed as before.
+ */
+fun canonicalImageKey(imageKey: String): String =
+    if (SERIAL.containsMatchIn(imageKey)) imageKey else "$imageKey-0"
+
+private val SERIAL = Regex("""-\d+$""")
