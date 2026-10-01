@@ -192,6 +192,11 @@ dependencies {
     // Robolectric so Room's real SQLite (and the recursive-CTE queries) run in JVM unit tests
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("androidx.test:core:1.5.0")
+    // Phase 6-0: Compose UI tests under Robolectric (ui-test-manifest is already debugImplementation)
+    testImplementation(platform("androidx.compose:compose-bom:2024.04.00"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    // Phase 6-0: the JPEG fixture writes BodySerialNumber / LensSerialNumber, which the framework ExifInterface ignores (already on the runtime classpath via Coil, version 1.3.6)
+    testImplementation("androidx.exifinterface:exifinterface:1.3.6")
     // WorkManager test utilities (TestListenableWorkerBuilder) for the offline worker tests (phase 5)
     testImplementation("androidx.work:work-testing:2.9.0")
     // In-memory Room + migration testing (used by DAO and MigrationTestHelper tests)

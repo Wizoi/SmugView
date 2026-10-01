@@ -107,6 +107,13 @@ class FakeSmugMugServer {
     var cookieGate = false
 
     /**
+     * What a locked folder's `!children` answers to a caller with no session: every `cookieGate` refusal and
+     * the password folder `sNWzhX`. Default 401, what the Phase 3 tests were written against. The live
+     * answer is **404** (L2, phase 6): the 6-0 experiment runs the suite at 404, and 6-1 decides the default.
+     */
+    var lockedChildrenCode = 401
+
+    /**
      * When true the session is judged from the request's real `Cookie` header (what the production
      * cookie jar sends over [LoopbackSmugMug]) instead of the interceptor-mode model above, so a new
      * process (an empty jar) is anonymous again even though the server still remembers the unlock.
@@ -276,6 +283,18 @@ class FakeSmugMugServer {
 
     private val secondRoot = N("Wq8Rz3", "Folder", "Work", "Password", "Password", "https://gallery.idzifamily.com/Work")
 
+    /**
+     * Phase 6 (L2 topology, real shapes): public folder `6KHfpq` Memories -> `sNWzhX` "2023 Homecoming"
+     * (Folder, SecurityType Password; its `!children` answers [lockedChildrenCode] without a session)
+     * -> gallery `Bj6Pq4` / `kR2wTz`; and, AFTER it, the public sibling `Tn8Vc3` "2024 Homecoming" -> gallery
+     * `Dw7Lx5` / `mQ4sYb`. Memories joins the root listing only after [listMemories].
+     */
+    private val memories = N(MEMORIES, "Folder", "Memories", "None", "None", "https://gallery.idzifamily.com/Memories")
+    private val homecoming23 = N(LOCKED_FOLDER, "Folder", "2023 Homecoming", "Password", "Password", "https://gallery.idzifamily.com/Memories/2023-Homecoming")
+    private val homecoming23Gallery = N("Bj6Pq4", "Album", "Dance", "None", "Password", "https://gallery.idzifamily.com/Memories/2023-Homecoming/Dance")
+    private val homecoming24 = N(PUBLIC_SIBLING, "Folder", "2024 Homecoming", "None", "None", "https://gallery.idzifamily.com/Memories/2024-Homecoming")
+    private val homecoming24Gallery = N("Dw7Lx5", "Album", "Game Night", "None", "None", "https://gallery.idzifamily.com/Memories/2024-Homecoming/Game-Night")
+
     private val rootB = N("Rb7Tq2", "Folder", "Home", "None", "None", "https://siteb.smugmug.com")
     private val publicFolderB = N("Hq2Lm9", "Folder", "Public", "None", "None", "https://siteb.smugmug.com/Public")
     private val galleryB = N("Vt4Kp8", "Album", "Site B Gallery", "None", "None", "https://siteb.smugmug.com/Public/Site-B-Gallery")
@@ -286,6 +305,9 @@ class FakeSmugMugServer {
         school.id to mutableListOf(gallery),
         publicFolder.id to mutableListOf(publicGallery),
         secondRoot.id to mutableListOf(),
+        memories.id to mutableListOf(homecoming23, homecoming24),
+        homecoming23.id to mutableListOf(homecoming23Gallery),
+        homecoming24.id to mutableListOf(homecoming24Gallery),
         rootB.id to mutableListOf(publicFolderB),
         publicFolderB.id to mutableListOf(galleryB)
     )
@@ -321,6 +343,14 @@ class FakeSmugMugServer {
         synchronized(childrenOf) { childrenOf.getValue(root.id).add(bigFolder) }
     }
 
+    /**
+     * Makes the public folder `6KHfpq` Memories show up in site A's root listing from now on (after the other
+     * root children): the L2 topology whose locked child `sNWzhX` answers [lockedChildrenCode] (design 6-0).
+     */
+    fun listMemories() {
+        synchronized(childrenOf) { childrenOf.getValue(root.id).add(memories) }
+    }
+
     /** Makes `Wq8Rz3` (a second password root) show up in site A's root listing from now on. */
     fun listSecondPasswordRoot() {
         synchronized(childrenOf) { childrenOf.getValue(root.id).add(secondRoot) }
@@ -345,6 +375,11 @@ class FakeSmugMugServer {
         publicFolder.id to listOf(publicFolder, root),
         publicGallery.id to listOf(publicGallery, publicFolder, root),
         secondRoot.id to listOf(secondRoot, root),
+        memories.id to listOf(memories, root),
+        homecoming23.id to listOf(homecoming23, memories, root),
+        homecoming23Gallery.id to listOf(homecoming23Gallery, homecoming23, memories, root),
+        homecoming24.id to listOf(homecoming24, memories, root),
+        homecoming24Gallery.id to listOf(homecoming24Gallery, homecoming24, memories, root),
         rootB.id to listOf(rootB),
         publicFolderB.id to listOf(publicFolderB, rootB),
         galleryB.id to listOf(galleryB, publicFolderB, rootB),
@@ -352,7 +387,10 @@ class FakeSmugMugServer {
     )
 
     private val albumKeyToNodeId: MutableMap<String, String> =
-        mutableMapOf("FfHCms" to "LCdk7F", "N74KSK" to "sXQz4G", "jX9wQe" to "Vt4Kp8")
+        mutableMapOf(
+            "FfHCms" to "LCdk7F", "N74KSK" to "sXQz4G", "jX9wQe" to "Vt4Kp8",
+            "kR2wTz" to "Bj6Pq4", "mQ4sYb" to "Dw7Lx5"
+        )
 
     init {
         childrenOf[bigFolder.id] = mutableListOf()
@@ -374,6 +412,11 @@ class FakeSmugMugServer {
         const val BIG_FOLDER = "Kp7Wq2"
         const val BIG_GALLERY_NODE = "Vn2Lt7"
         const val BIG_GALLERY_ALBUM = "Vd5Qx9"
+        const val MEMORIES = "6KHfpq"
+        /** Password folder under [MEMORIES]; answers [lockedChildrenCode] to a caller with no session. */
+        const val LOCKED_FOLDER = "sNWzhX"
+        /** The public folder listed after [LOCKED_FOLDER] under [MEMORIES]. */
+        const val PUBLIC_SIBLING = "Tn8Vc3"
         const val SEARCH_WINDOW = 10_000
     }
 
@@ -497,10 +540,13 @@ class FakeSmugMugServer {
             val id = path.removePrefix("node/").removeSuffix("!children")
             childrenOverride?.invoke(id, req)?.let { return it }
             if (cookieGate && (id == family.id || id == school.id) && !sessionOk(req)) {
-                return json(req, 401, """{"Code":401,"Message":"Unauthorized"}""")
+                return json(req, lockedChildrenCode, """{"Code":$lockedChildrenCode,"Message":"${if (lockedChildrenCode == 404) "Not Found" else "Unauthorized"}"}""")
             }
             if (cookieGate && id == secondRoot.id && !sessionOk(req, secondRoot.id)) {
-                return json(req, 401, """{"Code":401,"Message":"Unauthorized"}""")
+                return json(req, lockedChildrenCode, """{"Code":$lockedChildrenCode,"Message":"${if (lockedChildrenCode == 404) "Not Found" else "Unauthorized"}"}""")
+            }
+            if (id == LOCKED_FOLDER && !sessionOk(req, LOCKED_FOLDER)) {
+                return json(req, lockedChildrenCode, """{"Code":$lockedChildrenCode,"Message":"${if (lockedChildrenCode == 404) "Not Found" else "Unauthorized"}"}""")
             }
             val kids = synchronized(childrenOf) { childrenOf[id]?.toList() } ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
             val start = req.url.queryParameter("start")?.toIntOrNull() ?: 1
@@ -548,11 +594,21 @@ class FakeSmugMugServer {
         if (req.method == "GET" && path.startsWith("user/") && !path.contains("!")) {
             val nick = path.removePrefix("user/")
             val rootId = if (nick == SITE_B) rootB.id else root.id
+            // L1: `_expand=BioImage` carries the BioImage with a path-bearing ThumbnailUrl on 3 of 5 live sites
+            // (site A here); site B has none, so the app falls back to the initial letter.
+            val bio = bioImages[nick]?.takeIf { expands(req, "BioImage") }
+            val bioUri = "/api/v2/user/$nick!bioimage?_shorturis="
+            val exp = if (bio == null) "" else
+                ""","Expansions":{"$bioUri":{"Uri":"$bioUri","Locator":"BioImage","LocatorType":"Object",""" +
+                    """"BioImage":{"ImageKey":"${bio.first}","ThumbnailUrl":"${bio.second}"}}}"""
             return json(
                 req, 200,
                 """{"Response":{"User":{"NickName":"$nick","Name":"$nick","WebUri":"${hostOf(nick)}",""" +
-                    """"Uris":{"Node":"/api/v2/node/$rootId"}}},"Code":200}"""
+                    """"Uris":{"Node":"/api/v2/node/$rootId"}}},"Code":200$exp}"""
             )
+        }
+        if (req.method == "GET" && path.startsWith("user/") && path.endsWith("!recentimages")) {
+            return recentImages(req, path.removePrefix("user/").removeSuffix("!recentimages"))
         }
         if (req.method == "GET" && path.startsWith("album/") && path.endsWith("!images")) {
             val key = path.removePrefix("album/").removeSuffix("!images")
@@ -580,7 +636,9 @@ class FakeSmugMugServer {
                 all["Album"] = "/api/v2/album/$key"
                 all["ImageSizeDetails"] = "/api/v2/image/$ik-0!sizedetails"
                 """{"Uri":"/api/v2/album/$key/image/$ik-0","ImageKey":"$ik","Title":"","FileName":"$ik.${if (video) "mp4" else "jpg"}","Format":"${if (video) "MP4" else "JPG"}",""" +
-                    """"ThumbnailUrl":"https://photos.smugmug.com/photos/$ik/0/Th/$ik-Th.jpg","WebUri":"$web/i-$ik",""" +
+                    """"ThumbnailUrl":"https://photos.smugmug.com/photos/$ik/0/Th/$ik-Th.jpg",""" +
+                    // L6: the live API answers WebUri (gallery WebUri + /i-{key}) only when _filter asks for it.
+                    (if (wantsField(req, "WebUri")) """"WebUri":"$web/i-$ik",""" else "") +
                     """"OriginalWidth":4000,"OriginalHeight":3000,"OriginalSize":3145728,"Date":"${daysAgo(10)}",""" +
                     """"IsVideo":$video${archivedJson(req, ik, video)},"Uris":{${urisJson(req, all)}}}"""
             }.joinToString(",")
@@ -673,6 +731,31 @@ class FakeSmugMugServer {
         return json(
             req, 200,
             """{"Response":{"Image":[$images],"Pages":{"Total":$total,"Start":$start,"Count":${keys.size},"RequestedCount":$count$next}},"Code":200}"""
+        )
+    }
+
+    /** `ImageKey` and path-bearing `ThumbnailUrl` of the BioImage per nickname (L1: 3 of 5 live sites have one). Site B has none. */
+    val bioImages: MutableMap<String, Pair<String, String>> = mutableMapOf(
+        SITE_A to ("hQ6nTzR" to "https://photos.smugmug.com/Family/Holidays/2014-12-25-Christmas/i-hQ6nTzR/0/Th/Dragon-Th.jpg")
+    )
+
+    /**
+     * `user/{nick}!recentimages` (L4 shape): newest first, `XVRvVTM` of the public gallery `/Kentridge/Public`
+     * and `ttDKqjt` of a gallery under the password folder (`/Family/Events/2025-to-Current/Fall-Picnic`). The thumbnail
+     * path carries the gallery's path; there is no album link and no `WebUri` (P4). Only the asked `_filter` fields.
+     */
+    private fun recentImages(req: Request, nickname: String): Response {
+        val count = (req.url.queryParameter("count")?.toIntOrNull() ?: 4).coerceIn(1, 100)
+        val all = listOf(
+            "XVRvVTM" to "https://photos.smugmug.com/Kentridge/Public/i-XVRvVTM/0/Th/Three-Course-Th.jpg",
+            "ttDKqjt" to "https://photos.smugmug.com/Family/Events/2025-to-Current/Fall-Picnic/i-ttDKqjt/0/Th/Fall-Picnic-Th.jpg"
+        ).take(if (nickname == SITE_A) count else 0)
+        val images = all.joinToString(",") { (ik, th) ->
+            """{"Uri":"/api/v2/image/$ik-0","ImageKey":"$ik","Title":"","Caption":"","ThumbnailUrl":"$th"}"""
+        }
+        return json(
+            req, 200,
+            """{"Response":{"Image":[$images],"Pages":{"Total":${all.size},"Start":1,"Count":${all.size},"RequestedCount":$count}},"Code":200}"""
         )
     }
 

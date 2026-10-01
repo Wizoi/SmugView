@@ -233,4 +233,37 @@ class FakeRealismTest {
             }
         }
     }
+
+    // Phase 6-0 (design L2, L4, L6): the shapes the phase-6 steps are written against.
+
+    @Test fun a_locked_folder_answers_the_configured_code_and_its_public_sibling_is_listed_after_it() {
+        server.listMemories()
+        val memories = response("node/6KHfpq!children").getAsJsonArray("Node").map { it.asJsonObject }
+        assertEquals(listOf("sNWzhX", "Tn8Vc3"), memories.map { it.get("NodeID").asString })
+        assertEquals("Password", memories[0].get("SecurityType").asString)
+        assertEquals(401, get("node/sNWzhX!children").code)
+        server.lockedChildrenCode = 404
+        assertEquals("the live answer (L2)", 404, get("node/sNWzhX!children").code)
+        assertEquals(200, get("node/Tn8Vc3!children").code)
+        assertTrue("the root lists Memories after listMemories()", response("node/4zqWw!children").getAsJsonArray("Node")
+            .any { it.asJsonObject.get("NodeID").asString == "6KHfpq" })
+    }
+
+    @Test fun recent_images_include_one_family_events_photo_and_the_bio_image_comes_with_its_expansion() {
+        val recent = response("user/idzifamily!recentimages?count=25").getAsJsonArray("Image").map { it.asJsonObject }
+        assertEquals(listOf("XVRvVTM", "ttDKqjt"), recent.map { it.get("ImageKey").asString })
+        assertTrue(recent[1].get("ThumbnailUrl").asString.contains("/Family/Events/"))
+        assertFalse("no WebUri on recent images (P4)", recent[1].has("WebUri"))
+        val body = obj("user/idzifamily?_expand=BioImage&_verbosity=1")
+        val bio = body.getAsJsonObject("Expansions").entrySet().first().value.asJsonObject.getAsJsonObject("BioImage")
+        assertTrue(bio.get("ThumbnailUrl").asString.contains("/0/Th/"))
+        assertFalse("site B has no BioImage", obj("user/siteb?_expand=BioImage&_verbosity=1").has("Expansions"))
+    }
+
+    @Test fun album_images_carry_WebUri_only_when_the_filter_asks_for_it() {
+        val without = response("album/N74KSK!images?count=1&_filter=ImageKey,ThumbnailUrl").getAsJsonArray("AlbumImage")[0].asJsonObject
+        assertFalse(without.has("WebUri"))
+        val with = response("album/N74KSK!images?count=1&_filter=ImageKey,WebUri").getAsJsonArray("AlbumImage")[0].asJsonObject
+        assertEquals("https://gallery.idzifamily.com/Kentridge/Public/i-N74KSKi001", with.get("WebUri").asString)
+    }
 }
