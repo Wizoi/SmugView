@@ -9,6 +9,7 @@ import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.db.CollectionBookmark
 import com.smugview.app.data.db.CollectionPhoto
+import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.data.worker.OfflineDownloadWorker
 import kotlinx.coroutines.CoroutineScope
@@ -41,7 +42,9 @@ class CollectionsController(
     private val scope: CoroutineScope,
     private val getActiveNickname: () -> String?,
     private val getCurrentAlbumKey: () -> String,
-    private val getUnlockedPassword: suspend (String) -> String?
+    private val getUnlockedPassword: suspend (String) -> String?,
+    /** Says something to the user; the default is a toast. Called on the main thread. */
+    private val onMessage: (String) -> Unit = { Toast.makeText(application, it, Toast.LENGTH_SHORT).show() }
 ) {
     private val backgroundLoadingStatus = MutableStateFlow<String?>(null)
     private val isBackgroundLoading = MutableStateFlow(false)
@@ -214,6 +217,9 @@ class CollectionsController(
                 withContext(Dispatchers.Main) {
                     Toast.makeText(application, "Album downloaded offline ($successCount photos)", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: AlbumLockedException) {
+                // Q5 (a): a locked gallery stops with one message (R-32).
+                withContext(Dispatchers.Main) { onMessage(e.message ?: AlbumLockedException.MESSAGE) }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(application, "Album download failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
@@ -243,6 +249,9 @@ class CollectionsController(
                 withContext(Dispatchers.Main) {
                     Toast.makeText(application, "Offline files deleted", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: AlbumLockedException) {
+                // The files to delete are found by listing the gallery, which a locked one will not do.
+                withContext(Dispatchers.Main) { onMessage(e.message ?: AlbumLockedException.MESSAGE) }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {

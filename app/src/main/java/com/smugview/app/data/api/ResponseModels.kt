@@ -232,8 +232,16 @@ data class AlbumDetails(
     @SerializedName("Uris") val uris: NodeUris? = null,
     @SerializedName("LastUpdated") val dateModified: String? = null,
     /** When the photos in the gallery last changed: the one "is it new?" date (design Q3). */
-    @SerializedName("ImagesLastUpdated") val imagesLastUpdated: String? = null
-)
+    @SerializedName("ImagesLastUpdated") val imagesLastUpdated: String? = null,
+    /**
+     * What this caller may see of the gallery: "Public", or "Password" while it is locked for them (the
+     * `!images` of a locked gallery is a 200 with no photos, the shape of an empty one). The server sends
+     * it whatever `_filter` says (design P7), so it is not in the filter.
+     */
+    @SerializedName("ResponseLevel") val responseLevel: String? = null
+) {
+    val isLocked: Boolean get() = responseLevel == "Password"
+}
 
 data class UserAlbumsResponse(
     @SerializedName("Response") val response: UserAlbumsPayload,

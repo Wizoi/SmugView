@@ -72,6 +72,7 @@ import java.io.FileOutputStream
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import android.widget.Toast
+import com.smugview.app.data.repository.AlbumLockedException
 import javax.inject.Inject
 
 sealed interface SplashUiState {
@@ -248,7 +249,8 @@ class SmugViewModel @Inject constructor(
         repository = repository,
         apiKey = apiKey,
         scope = viewModelScope,
-        getUnlockedPassword = { albumKey -> getUnlockedPassword(albumKey) }
+        getUnlockedPassword = { albumKey -> getUnlockedPassword(albumKey) },
+        onMessage = { message -> Toast.makeText(getApplication(), message, Toast.LENGTH_SHORT).show() }
     )
 
     val discoveredDevices = cast.discoveredDevices
@@ -1638,6 +1640,19 @@ class SmugViewModel @Inject constructor(
             repository.getAlbumImagesPage(albumKey, apiKey, password, cacheControl = cacheControl)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: AlbumLockedException) {
+            // R-32: the gallery answered 200 with no photos because it is locked (the album's ResponseLevel
+            // says so). Not an empty gallery: ask for the password. A saved password that could not be
+            // tried just now (unlockPending) is no reason to ask: say so and keep it.
+            if (e.unlockPending) {
+                failFirstPage(run, e)
+            } else {
+                // R-11: never prompt for an album the user has already left.
+                if (!run.isCurrent) return
+                run.update { it.copy(loading = false, status = null) }
+                requestPassword(promptNode.copy(access = promptNode.access ?: securityType ?: "Password"))
+            }
+            return
         } catch (e: Exception) {
             failFirstPage(run, e)
             return

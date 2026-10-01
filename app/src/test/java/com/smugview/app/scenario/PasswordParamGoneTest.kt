@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -56,11 +57,11 @@ class PasswordParamGoneTest {
         assertEquals(emptyList<String>(), passwordParamRequests())
     }
 
-    /** Without a password and without a session the gallery stays locked: one empty answer, no unlock call, no throw. */
+    /** Without a password and without a session the gallery stays locked: no unlock call, and (4-8) it says so instead of answering empty. */
     @Test fun `a locked gallery with no password and no session stays locked`() = runBlocking {
-        val locked = try { rig.repository.getAlbumImagesPage("FfHCms", "test-key") } catch (e: retrofit2.HttpException) { null }
+        val locked = try { rig.repository.getAlbumImagesPage("FfHCms", "test-key") } catch (e: com.smugview.app.data.repository.AlbumLockedException) { null }
 
-        assertTrue("no images came back (${locked?.response?.images?.size})", locked == null || locked.response.images.isNullOrEmpty())
+        assertNull("the locked gallery did not answer a page of photos (${locked?.response?.images?.size})", locked)
         assertEquals("nothing tried to unlock", false, rig.server.hasSession())
         assertEquals(emptyList<String>(), passwordParamRequests())
     }

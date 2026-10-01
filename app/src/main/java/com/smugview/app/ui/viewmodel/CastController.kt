@@ -26,7 +26,9 @@ class CastController(
     private val repository: SmugMugRepository,
     private val apiKey: String,
     private val scope: CoroutineScope,
-    private val getUnlockedPassword: suspend (String) -> String?
+    private val getUnlockedPassword: suspend (String) -> String?,
+    /** Says something to the user (the app shows a toast). Called on the controller's scope. */
+    private val onMessage: (String) -> Unit = {}
 ) {
     val discoveredDevices = castManager.discoveredDevices
     val activeCastDevice = castManager.activeDevice
@@ -99,6 +101,11 @@ class CastController(
                             }
                         }
                         urls.addAll(albumUrls)
+                    } catch (e: com.smugview.app.data.repository.AlbumLockedException) {
+                        // Q5 (a): a locked gallery stops the cast with one message; a collection that casts
+                        // everything but that gallery would be wrong without saying so.
+                        onMessage(e.message ?: com.smugview.app.data.repository.AlbumLockedException.MESSAGE)
+                        return@launch
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }

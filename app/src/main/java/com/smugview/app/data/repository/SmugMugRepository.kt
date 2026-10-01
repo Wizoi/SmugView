@@ -385,34 +385,29 @@ class SmugMugRepository @Inject constructor(
     ): AlbumImagesResponse {
         // Later pages are not retried through the unlock path: the first page already proved the access.
         if (start > 1) return api.getAlbumImages(albumKey, apiKey, start = start, cacheControl = cacheControl)
-        return try {
-            val response = api.getAlbumImages(albumKey, apiKey, start = start, ignoreErrors = "true", cacheControl = cacheControl)
-            val images = response.response.images
-            
-            // If the response is successful but images is null or empty, and we have a password, try unlocking parent root
-            if ((images == null || images.isEmpty()) && !password.isNullOrEmpty()) {
-                val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
-                if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, start = start, ignoreErrors = "true", cacheControl = cacheControl)
-                    if (retryResponse.response.images != null && retryResponse.response.images.isNotEmpty()) {
-                        return retryResponse
-                    }
-                }
-            }
-            
-            if (response.response.images == null) {
-                throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
-            }
-            response
+        return firstImagesPage(albumKey, apiKey, password, cacheControl)
+    }
+
+    /**
+     * Page 1 of a gallery with the password logic (design 3.4): a refused answer (401/404) or an empty one
+     * reauthorizes the password root once when a password is saved, and asks again. A page that is still
+     * empty is "locked" only when the album itself says so (`ResponseLevel == "Password"`): the `!images`
+     * of a locked gallery is a 200 with no photos, the same as a gallery that has none (R-32).
+     *
+     * @throws AlbumLockedException the gallery is locked for this caller
+     */
+    private suspend fun firstImagesPage(
+        albumKey: String,
+        apiKey: String,
+        password: String?,
+        cacheControl: String?
+    ): AlbumImagesResponse {
+        var first = try {
+            api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true", cacheControl = cacheControl)
         } catch (e: Exception) {
             if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
-                if (unlocked) {
-                    val retryResponse = api.getAlbumImages(albumKey, apiKey, start = start, ignoreErrors = "true", cacheControl = cacheControl)
-                    if (retryResponse.response.images == null) {
-                        throw e
-                    }
-                    retryResponse
+                if (unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success) {
+                    api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true", cacheControl = cacheControl)
                 } else {
                     throw e
                 }
@@ -420,7 +415,28 @@ class SmugMugRepository @Inject constructor(
                 throw e
             }
         }
+        if (!first.hasNoListing()) return first
+
+        var unlockPending = false
+        if (!password.isNullOrEmpty()) {
+            when (unlocks.reauthorize(albumKey, apiKey, password)) {
+                UnlockResult.Success -> {
+                    first = api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true", cacheControl = cacheControl)
+                    if (!first.hasNoListing()) return first
+                }
+                UnlockResult.Transient -> unlockPending = true
+                UnlockResult.Rejected -> {}
+            }
+        }
+        // Still nothing: a gallery with no photos, or a locked one. Only the album can say which. A failure
+        // to read it (offline, uncached) propagates: an empty grid would claim the gallery is empty.
+        val album = api.getAlbum(albumKey, apiKey, ignoreErrors = "true", cacheControl = cacheControl).response.album
+        if (album.isLocked) throw AlbumLockedException(albumKey, unlockPending)
+        return first
     }
+
+    private fun AlbumImagesResponse.hasNoListing(): Boolean =
+        response.images.isNullOrEmpty() && (response.pages?.total ?: 0) == 0
 
     /** Gives every video of [images] its playable URL from this page's own `LargestVideo` expansions. */
     private fun applyVideoUrls(images: List<AlbumImageData>, expansions: Map<String, com.smugview.app.data.api.ExpansionContainer>?) {
@@ -487,28 +503,7 @@ class SmugMugRepository @Inject constructor(
         password: String? = null
     ): List<AlbumImageData> {
         val allImages = mutableListOf<AlbumImageData>()
-        val first = try {
-            val res = api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true")
-            if (res.response.images == null) {
-                throw retrofit2.HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
-            }
-            res
-        } catch (e: Exception) {
-            if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
-                val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
-                if (unlocked) {
-                    val retryRes = api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true")
-                    if (retryRes.response.images == null) {
-                        throw e
-                    }
-                    retryRes
-                } else {
-                    throw e
-                }
-            } else {
-                throw e
-            }
-        }
+        val first = firstImagesPage(albumKey, apiKey, password, cacheControl = null)
         applyVideoUrls(first.response.images ?: emptyList(), first.expansions)
         first.response.images?.let { allImages.addAll(it) }
         val next = first.toPage(1).nextStart()
