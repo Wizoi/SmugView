@@ -338,6 +338,14 @@ object AppModule {
     ): com.smugview.app.data.offline.OfflineCollections =
         com.smugview.app.data.offline.OfflineCollections(database, store, scheduler)
 
+    /** What the screens read about saved files (phase 5, 5-9). */
+    @Provides
+    @Singleton
+    fun provideOfflineReader(
+        database: AppDatabase,
+        store: com.smugview.app.data.offline.OfflineStore
+    ): com.smugview.app.data.offline.OfflineReader = com.smugview.app.data.offline.OfflineReader(database, store)
+
     @Provides
     @Singleton
     fun provideCastManager(impl: com.smugview.app.data.cast.DefaultCastManager): com.smugview.app.data.cast.CastManager {

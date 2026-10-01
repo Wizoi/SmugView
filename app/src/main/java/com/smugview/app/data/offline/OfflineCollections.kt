@@ -105,6 +105,18 @@ class OfflineCollections(
         afterRemoval()
     }
 
+    /** "Try again" on a failed row (5-9): the row is wanted again and the pass is kicked. */
+    suspend fun tryAgain(imageKey: String) {
+        if (store.retryNow(imageKey)) kick()
+    }
+
+    /** "Remove" on a row (5-9): the photo and the Image bookmark of it leave this collection; an unshared copy goes. */
+    suspend fun removeFromCollection(imageKey: String, collectionId: Long) {
+        dao.removePhotoFromCollection(imageKey, collectionId)
+        dao.removeBookmark(collectionId, TYPE_IMAGE, imageKey)
+        afterRemoval()
+    }
+
     /** A gallery that is gone from SmugMug: every collection's bookmark of it, and its kept-offline rows. */
     suspend fun removeBookmarkGlobally(itemKey: String) {
         dao.removeBookmarkGlobally(itemKey)

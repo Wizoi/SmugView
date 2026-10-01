@@ -150,11 +150,40 @@ fun CollectionsTabView(
         Color(0xFFD500F9)
     )
 
+    // Q8 (5-9): deleting a collection that holds saved photos asks first, with how many and how much will go.
+    var pendingDelete by remember { mutableStateOf<Pair<Long, String>?>(null) }
+    pendingDelete?.let { (id, text) ->
+        DeleteCollectionDialog(
+            text = text,
+            onConfirm = {
+                viewModel.deleteCollection(id)
+                if (selectedCollectionForShortcuts?.id == id) selectedCollectionForShortcuts = null
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null }
+        )
+    }
+    val requestDelete: (OfflineCollection) -> Unit = { c ->
+        scope.launch {
+            val confirm = viewModel.deleteConfirm(c.id, c.name)
+            if (confirm == null) {
+                viewModel.deleteCollection(c.id)
+                if (selectedCollectionForShortcuts?.id == c.id) selectedCollectionForShortcuts = null
+            } else {
+                pendingDelete = c.id to confirm.text
+            }
+        }
+    }
+
     if (selectedCollectionForShortcuts != null) {
         val col = selectedCollectionForShortcuts!!
         // Reactively lookup active name in case it changed
         val activeColName = collections.find { it.id == col.id }?.name ?: col.name
         val bookmarks by viewModel.getBookmarksForCollection(col.id).collectAsState(initial = emptyList())
+        // 5-9: the photos saved by "Save", their saved-copy states, and the kept galleries (one Flow per collection).
+        val savedPhotos by viewModel.getPhotosInCollection(col.id).collectAsState(initial = emptyList())
+        val offlineState by viewModel.offlineOf(col.id).collectAsState(initial = com.smugview.app.data.offline.OfflineReader.CollectionOffline.EMPTY)
+        val savedFiles by viewModel.localFiles.collectAsState()
         var isRenaming by remember { mutableStateOf(false) }
         var renameInputText by remember { mutableStateOf(activeColName) }
 
@@ -234,10 +263,7 @@ fun CollectionsTabView(
                     
                     // Delete Button
                     IconButton(
-                        onClick = {
-                            viewModel.deleteCollection(col.id)
-                            selectedCollectionForShortcuts = null
-                        }
+                        onClick = { requestDelete(col.copy(name = activeColName)) }
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete Collection", tint = Color.Red.copy(alpha = 0.8f))
                     }
@@ -246,7 +272,7 @@ fun CollectionsTabView(
 
             Divider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(bottom = 12.dp))
 
-            if (bookmarks.isEmpty()) {
+            if (bookmarks.isEmpty() && savedPhotos.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -340,10 +366,10 @@ fun CollectionsTabView(
                             )
                         }
                         items(albums, key = { com.smugview.app.ui.navigation.CollectionRowKeys.album(it.itemKey) }) { a ->
+                            Column(modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
                                     .clickable {
                                         // a is a CollectionBookmark — use albumKey field directly (already the resolved album key)
                                         val albumKey = a.albumKey.ifBlank { a.itemKey }
@@ -372,6 +398,82 @@ fun CollectionsTabView(
                                 }
                                 IconButton(
                                     onClick = { viewModel.removeBookmark(col.id, "Album", a.itemKey) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Unsave",
+                                        tint = Color.White.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            val galleryKey = a.albumKey.ifBlank { a.itemKey }
+                            GalleryKeepOffline(
+                                kept = offlineState.galleries[galleryKey],
+                                onKeepChange = { keep ->
+                                    if (keep) viewModel.keepGalleryOffline(col.id, galleryKey, a.title)
+                                    else viewModel.stopKeepingGalleryOffline(col.id, galleryKey)
+                                },
+                                onMobileDataTooChange = { too -> viewModel.setGalleryWifiOnly(col.id, galleryKey, !too) },
+                                onUseMobileData = { viewModel.setGalleryWifiOnly(col.id, galleryKey, false) }
+                            )
+                            }
+                        }
+                    }
+
+                    // Photos saved with "Save" (5-9): each row says what became of its saved copy.
+                    if (savedPhotos.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Saved Photos",
+                                color = NeonBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                            )
+                        }
+                        items(savedPhotos, key = { com.smugview.app.ui.navigation.CollectionRowKeys.savedPhoto(it.imageKey) }) { p ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                                    .clickable { onImageClick(p.albumKey, p.imageKey) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    AsyncImage(
+                                        model = savedFiles[p.imageKey] ?: p.thumbnailUrl,
+                                        contentDescription = p.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                    )
+                                    Column {
+                                        Text(
+                                            text = p.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${p.imageKey}",
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        OfflineRowLine(
+                                            state = offlineState.rows[p.imageKey],
+                                            onTryAgain = { viewModel.tryAgain(p.imageKey) },
+                                            onRemove = { viewModel.removeSavedRow(p.imageKey, col.id) }
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { viewModel.removePhotoFromCollection(p.imageKey, col.id) },
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
@@ -468,7 +570,7 @@ fun CollectionsTabView(
                                                     ) {
                                                         if (!img.thumbnailUrl.isNullOrEmpty()) {
                                                             AsyncImage(
-                                                                model = img.thumbnailUrl,
+                                                                model = savedFiles[img.itemKey] ?: img.thumbnailUrl,
                                                                 contentDescription = img.title,
                                                                 contentScale = ContentScale.Crop,
                                                                 modifier = Modifier
@@ -499,6 +601,11 @@ fun CollectionsTabView(
                                                                 overflow = TextOverflow.Ellipsis
                                                             )
                                                             Text("Image Shortcut", color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp)
+                                                            OfflineRowLine(
+                                                                state = offlineState.rows[img.itemKey],
+                                                                onTryAgain = { viewModel.tryAgain(img.itemKey) },
+                                                                onRemove = { viewModel.removeSavedRow(img.itemKey, col.id) }
+                                                            )
                                                         }
                                                     }
                                                     Row(
@@ -701,7 +808,7 @@ fun CollectionsTabView(
                                     }
 
                                     IconButton(
-                                        onClick = { viewModel.deleteCollection(col.id) },
+                                        onClick = { requestDelete(col) },
                                         modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(

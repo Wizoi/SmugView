@@ -528,6 +528,23 @@ fun PhotoGridScreen(
                 }
             )
 
+            // 2b. 5-9 (Q2): the gallery opened from the photos saved on this phone (offline): say so, and say what is shown.
+            val notice by viewModel.albumNotice.collectAsState()
+            notice?.let { line ->
+                Text(
+                    text = line,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
             // 3. Static Sticky Buttons Top Bar (always visible!)
             Row(
                 modifier = Modifier

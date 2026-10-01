@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 /**
  * The offline tables (phase 5). 5-2 put rows in and read them back; 5-3 adds what `OfflineStore` needs (the
@@ -323,4 +324,71 @@ interface OfflineDao {
     /** Galleries still to be listed: until they are, a legacy file may be the one a listing adopts. */
     @Query("SELECT COUNT(*) FROM offline_galleries WHERE state IN ('LEGACY', 'LIST_PENDING') OR (state = 'FAILED' AND retryable = 1)")
     suspend fun countUnsettledGalleries(): Int
+
+    // ---- readers (5-9): what the screens show ------------------------------------------------------------------
+
+    /** Every DONE file as (imageKey, relPath): one Flow for the whole app, never one per photo (R-49). */
+    @Query("SELECT imageKey AS imageKey, relPath AS relPath FROM offline_files WHERE state = 'DONE' AND relPath IS NOT NULL")
+    fun doneFiles(): Flow<List<DoneFile>>
+
+    /** The file rows of the photos and Image bookmarks that one collection holds (its rows' states). */
+    @Query(
+        "SELECT * FROM offline_files WHERE imageKey IN (" +
+            "SELECT imageKey FROM collection_photos WHERE collectionId = :collectionId " +
+            "UNION SELECT itemKey FROM collection_bookmarks WHERE collectionId = :collectionId AND type = 'Image')"
+    )
+    fun filesOfCollection(collectionId: Long): Flow<List<OfflineFile>>
+
+    @Query("SELECT * FROM offline_galleries WHERE collectionId = :collectionId ORDER BY albumKey")
+    fun galleriesOfCollection(collectionId: Long): Flow<List<OfflineGallery>>
+
+    /** One line per (kept gallery, photo): what a gallery's summary is counted from. */
+    @Query(
+        "SELECT i.albumKey AS albumKey, f.state AS state, f.failure AS failure, f.retryable AS retryable, " +
+            "f.bytes AS bytes, f.expectedBytes AS expectedBytes, f.httpCode AS httpCode " +
+            "FROM offline_gallery_items i JOIN offline_files f ON f.imageKey = i.imageKey WHERE i.collectionId = :collectionId"
+    )
+    fun galleryFilesOfCollection(collectionId: Long): Flow<List<GalleryFileRow>>
+
+    /** The saved (DONE) photos of a kept gallery in listing order, whichever collection kept it. */
+    @Query(
+        "SELECT f.* FROM offline_files f JOIN offline_gallery_items i ON i.imageKey = f.imageKey " +
+            "WHERE i.albumKey = :albumKey AND f.state = 'DONE' AND f.relPath IS NOT NULL " +
+            "GROUP BY f.imageKey ORDER BY MIN(i.collectionId), MIN(i.sortIndex)"
+    )
+    suspend fun savedPhotosOfGallery(albumKey: String): List<OfflineFile>
+
+    @Query("SELECT * FROM offline_files WHERE imageKey = :imageKey AND state = 'DONE' AND relPath IS NOT NULL")
+    suspend fun doneFileOf(imageKey: String): OfflineFile?
+
+    /**
+     * Q8: what deleting [collectionId] would remove: saved (DONE) files this collection refers to and nothing
+     * else does (another collection's photo or Image bookmark, or another collection's kept gallery).
+     */
+    @Query(
+        "SELECT COUNT(*) AS photos, COALESCE(SUM(f.bytes), 0) AS bytes FROM offline_files f WHERE f.state = 'DONE' " +
+            "AND (EXISTS(SELECT 1 FROM collection_photos p WHERE p.imageKey = f.imageKey AND p.collectionId = :collectionId) " +
+            "OR EXISTS(SELECT 1 FROM collection_bookmarks b WHERE b.type = 'Image' AND b.itemKey = f.imageKey AND b.collectionId = :collectionId) " +
+            "OR EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey AND g.collectionId = :collectionId)) " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_photos p WHERE p.imageKey = f.imageKey AND p.collectionId != :collectionId) " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_bookmarks b WHERE b.type = 'Image' AND b.itemKey = f.imageKey AND b.collectionId != :collectionId) " +
+            "AND NOT EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey AND g.collectionId != :collectionId)"
+    )
+    suspend fun savedOnlyIn(collectionId: Long): SavedStats
 }
+
+/** A saved file: the photo and where it is, relative to `filesDir`. */
+data class DoneFile(val imageKey: String, val relPath: String)
+
+/** One photo of a kept gallery, as the gallery's summary counts it. */
+data class GalleryFileRow(
+    val albumKey: String,
+    val state: String,
+    val failure: String?,
+    val retryable: Boolean,
+    val bytes: Long?,
+    val expectedBytes: Long?,
+    val httpCode: Int?
+)
+
+data class SavedStats(val photos: Int, val bytes: Long)

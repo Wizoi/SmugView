@@ -23,6 +23,9 @@ object OfflineMessages {
     /** Not in design section 4: a photo with no usable source. Flagged to the owner in the 5-1 report. */
     const val NO_SOURCE = "SmugMug didn't say where to download this photo. Open it once online, then try again."
 
+    /** The Q1 switch before the gallery is kept (its size is only known once listed, then it reads [keepOffline]). */
+    const val KEEP_OFFLINE = "Keep offline"
+
     const val TRY_AGAIN = "Try again"
     const val REMOVE = "Remove"
 
@@ -46,7 +49,27 @@ object OfflineMessages {
     fun deleteConfirm(name: String, photos: Int, sizeBytes: Long) =
         "Delete “$name”? $photos photos saved on this phone (${size(sizeBytes)}) will be removed. They stay on SmugMug."
 
-    fun offlineGallery(photos: Int) = "You're offline. Showing the $photos photos saved on this phone."
+    fun offlineGallery(photos: Int) =
+        "You're offline. Showing the ${if (photos == 1) "1 photo" else "$photos photos"} saved on this phone."
+
+    /**
+     * A kept gallery's second line when some photos failed (design section 3: "3 photos can't be saved: removed
+     * from SmugMug"). The largest group's reason; a failure that clears by itself says "will be saved later".
+     */
+    fun galleryFailed(count: Int, reason: FailureReason, httpCode: Int? = null): String {
+        val photos = if (count == 1) "1 photo" else "$count photos"
+        return when (reason) {
+            FailureReason.OFFLINE -> "$photos will be saved later: no connection"
+            FailureReason.BUSY -> "$photos will be saved later: SmugMug is busy"
+            FailureReason.LOCKED -> "$photos will be saved later: the gallery needs its password"
+            FailureReason.GONE -> "$photos can't be saved: removed from SmugMug"
+            FailureReason.FORBIDDEN -> "$photos can't be saved: SmugMug refused the download"
+            FailureReason.DAMAGED -> "$photos can't be saved: the download arrived damaged"
+            FailureReason.NO_SOURCE -> "$photos can't be saved: SmugMug didn't say where to download them"
+            FailureReason.STORAGE_FULL -> "$photos can't be saved: not enough space on this phone"
+            FailureReason.UNEXPECTED -> "$photos can't be saved: SmugMug answered with error ${httpCode ?: "unknown"}"
+        }
+    }
 
     /**
      * The text for a failed row. [needBytes] and [freeBytes] fill [FailureReason.STORAGE_FULL]; [httpCode] fills

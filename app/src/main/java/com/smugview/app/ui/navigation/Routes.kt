@@ -10,4 +10,5 @@ object CollectionRowKeys {
     fun folder(itemKey: String): String = "folder:$itemKey"
     fun album(itemKey: String): String = "album:$itemKey"
     fun photoGroup(albumKey: String): String = "photos:$albumKey"
+    fun savedPhoto(imageKey: String): String = "saved:$imageKey"
 }

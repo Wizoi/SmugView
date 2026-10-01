@@ -132,7 +132,12 @@ data class AlbumImageData(
     @SerializedName("ArchivedMD5") val archivedMd5: String? = null,
     @SerializedName("Format") val format: String? = null,
     @SerializedName("Uris") val uris: AlbumImageUris? = null,
-    var videoUrl: String? = null
+    var videoUrl: String? = null,
+    /**
+     * The saved copy on this phone (5-9, a `file:` URI), set by the view model for a photo with a DONE offline file. Never
+     * serialized (`@Transient`: Gson skips it). The viewer shows it first, so a saved photo opens with no network.
+     */
+    @Transient var localUri: String? = null
 ) {
     val keywordsString: String?
         get() {

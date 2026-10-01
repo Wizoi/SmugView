@@ -33,6 +33,7 @@ class SmugViewModelTest {
     private lateinit var mockApp: Application
     private lateinit var mockPrefs: SharedPreferences
     private lateinit var mockOffline: com.smugview.app.data.offline.OfflineCollections
+    private lateinit var mockOfflineReader: com.smugview.app.data.offline.OfflineReader
     private lateinit var mockRepository: SmugMugRepository
     /** First-page tag-search results the mocked `getImagesByKeywordPage` answers, keyed `scope|keywords|count|start`. */
     private val keywordPages = mutableMapOf<String, List<AlbumImageData>>()
@@ -59,6 +60,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockEditor.putLong(Mockito.anyString(), Mockito.anyLong())).thenReturn(mockEditor)
         
         mockOffline = Mockito.mock(com.smugview.app.data.offline.OfflineCollections::class.java)
+        mockOfflineReader = Mockito.mock(com.smugview.app.data.offline.OfflineReader::class.java)
         mockRepository = Mockito.mock(SmugMugRepository::class.java)
         // Cap the VM's "follow next-url" pagination loops at 2 pages in tests (replaces the old
         // SmugMugRepository.isTesting static). Without this a mock returns 0 and loops never run.
@@ -122,7 +124,7 @@ class SmugViewModelTest {
         fakePasswordStore = com.smugview.app.data.security.FakePasswordStore()
         Mockito.`when`(mockRepository.unlocks)
             .thenReturn(com.smugview.app.data.repository.UnlockManager(mockRepository, fakePasswordStore))
-        viewModel = SmugViewModel(mockApp, mockRepository, mockOffline, mockCastManager, fakePasswordStore, testDispatcher)
+        viewModel = SmugViewModel(mockApp, mockRepository, mockOffline, mockOfflineReader, mockCastManager, fakePasswordStore, testDispatcher)
     }
 
     @After
@@ -154,7 +156,7 @@ class SmugViewModelTest {
         val store = com.smugview.app.data.security.FakePasswordStore(
             mapOf("2sDN5x" to "fake-pw-1", "LCdk7F" to "fake-pw-1")
         )
-        SmugViewModel(mockApp, mockRepository, mockOffline, mockCastManager, store, testDispatcher, reporter)
+        SmugViewModel(mockApp, mockRepository, mockOffline, mockOfflineReader, mockCastManager, store, testDispatcher, reporter)
         Thread.sleep(300) // the old init launched the unlock on Dispatchers.IO
 
         assertTrue("no LaunchUnlock run from the ViewModel", reporter.runs.isEmpty())

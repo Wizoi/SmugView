@@ -28,4 +28,12 @@ class ZoomFallbackUrlTest {
     @Test fun `no thumbnail and no original gives nothing`() {
         assertNull(zoomFallbackUrl(null, null))
     }
+
+    /** 5-9 (Q2): a photo saved on this phone zooms from its own file, with no network. Red on the old code: it answered the X3 URL. */
+    @Test fun `a saved copy wins over the X3 guess`() {
+        val saved = "file:///data/user/0/com.smugview.app/files/offline/XVRvVTM.orig.jpg"
+        assertEquals(saved, zoomFallbackUrl(thumb, original, saved))
+        assertEquals(saved, viewerImageModel(thumb, original, saved))
+        assertEquals(saved, viewerImageModel(null, null, saved))
+    }
 }

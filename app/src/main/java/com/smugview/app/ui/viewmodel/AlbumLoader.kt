@@ -25,6 +25,8 @@ data class AlbumState(
     /** The album's own spinner: true from the moment it is selected until its stream ends or fails. */
     val loading: Boolean = false,
     val status: String? = null,
+    /** A line that stays while the photos are shown (5-9: "You're offline. Showing the N photos saved on this phone."). */
+    val notice: String? = null,
     val error: String? = null,
     /** Every page arrived (or the page cap was reached). Only complete states are kept for later. */
     val complete: Boolean = false
@@ -90,6 +92,9 @@ class AlbumLoader(
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
 
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+
     private val _error = MutableStateFlow<String?>(null)
 
     /** The error the grid shows instead of photos: only while there are no photos to show (R-46 keeps partial pages). */
@@ -130,6 +135,7 @@ class AlbumLoader(
         _tags.value = s?.tags ?: emptySet()
         _loading.value = s?.loading ?: false
         _status.value = s?.status
+        _notice.value = s?.notice
         _error.value = s?.error?.takeIf { s.photos.isEmpty() }
         onChange(s)
     }

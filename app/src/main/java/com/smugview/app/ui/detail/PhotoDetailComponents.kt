@@ -165,19 +165,19 @@ fun ImmersivePhotoPage(
                 onClick = onToggleControls
             )
         } else {
-            val pagerImageModel = remember(photo.thumbnailUrl, photo.archivedUri) {
-                photo.thumbnailUrl?.replace("/Th/", "/L/")
-                    ?.replace("/th/", "/l/")
-                    ?.replace("-Th.", "-L.")
-                    ?.replace("-th.", "-l.")
-                    ?: photo.archivedUri
+            // 5-9 (Q2): a saved copy opens with no network. The page's own localUri (placeholder, offline gallery)
+            // or the app-wide map of saved files (live: a photo saved while this page is open).
+            val savedFiles by viewModel.localFiles.collectAsState()
+            val localUri = photo.localUri ?: savedFiles[photo.imageKey]
+            val pagerImageModel = remember(photo.thumbnailUrl, photo.archivedUri, localUri) {
+                viewerImageModel(photo.thumbnailUrl, photo.archivedUri, localUri)
             }
             var currentDetailUrl by remember(photo.thumbnailUrl, pagerImageModel) {
                 mutableStateOf(pagerImageModel)
             }
             // Instant guess shown as tier 1 while the real ImageSizeDetails call is in flight.
-            val fallbackHalfwayUrl = remember(photo.archivedUri, photo.thumbnailUrl) {
-                zoomFallbackUrl(photo.thumbnailUrl, photo.archivedUri)
+            val fallbackHalfwayUrl = remember(photo.archivedUri, photo.thumbnailUrl, localUri) {
+                zoomFallbackUrl(photo.thumbnailUrl, photo.archivedUri, localUri)
             }
 
             var scale by remember(photo.imageKey) { mutableStateOf(1f) }
@@ -208,7 +208,7 @@ fun ImmersivePhotoPage(
             val isZoomed = scale > 1.01f
 
             // Kick off the real (accurate) size lookup on first pinch, once, per photo.
-            val sizeDetailsUri = photo.uris?.imageSizeDetails
+            val sizeDetailsUri = if (localUri != null) null else photo.uris?.imageSizeDetails // the saved original needs no size lookup
             LaunchedEffect(isZoomed, isActive) {
                 if (isZoomed && isActive && sizeDetailsUri != null && sizeDetailsFlow == null) {
                     sizeDetailsFlow = viewModel.getImageSizeDetails(photo.imageKey, sizeDetailsUri)
@@ -315,14 +315,21 @@ fun ImmersivePhotoPage(
                             contentAspectRatio = d.intrinsicWidth.toFloat() / d.intrinsicHeight.toFloat()
                         }
                     },
-                    onError = { currentDetailUrl = photo.archivedUri ?: photo.thumbnailUrl },
+                    onError = {
+                        // A saved file that will not decode falls back to the network rendition, then the original.
+                        currentDetailUrl = if (localUri != null && currentDetailUrl == localUri) {
+                            viewerImageModel(photo.thumbnailUrl, photo.archivedUri, null)
+                        } else {
+                            photo.archivedUri ?: photo.thumbnailUrl
+                        }
+                    },
                     modifier = zoomModifier
                 )
                 if (loadHalfway) {
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(halfwayUrl)
-                            .size(halfwayEntry?.width ?: 2560)
+                            .size(if (localUri != null) 4096 else halfwayEntry?.width ?: 2560)
                             .crossfade(true)
                             .build(),
                         contentDescription = null,
@@ -554,8 +561,21 @@ fun rememberCameraDetails(imageKey: String, viewModel: SmugViewModel): String {
  * resort for a photo with no thumbnail: it used to come first, so every zoom downloaded the original
  * before the real tiers arrived. A photo too small to have an X3 fails to load it and `onError` falls
  * back to `ArchivedUri`.
+ *
+ * 5-9 (Q2): a saved copy on this phone wins over everything ([localUri]): it is the original, needs no network
+ * and no size lookup.
  */
-internal fun zoomFallbackUrl(thumbnailUrl: String?, archivedUri: String?): String? =
-    thumbnailUrl?.replace("/Th/", "/X3/")?.replace("/th/", "/x3/")
-        ?.replace("-Th.", "-X3.")?.replace("-th.", "-x3.")
+internal fun zoomFallbackUrl(thumbnailUrl: String?, archivedUri: String?, localUri: String? = null): String? =
+    localUri
+        ?: thumbnailUrl?.replace("/Th/", "/X3/")?.replace("/th/", "/x3/")
+            ?.replace("-Th.", "-X3.")?.replace("-th.", "-x3.")
+        ?: archivedUri
+
+/**
+ * The picture a still opens with (5-9, Q2): the saved copy when there is one, otherwise the large rendition derived
+ * from the thumbnail, otherwise the original.
+ */
+internal fun viewerImageModel(thumbnailUrl: String?, archivedUri: String?, localUri: String?): String? =
+    localUri
+        ?: thumbnailUrl?.replace("/Th/", "/L/")?.replace("/th/", "/l/")?.replace("-Th.", "-L.")?.replace("-th.", "-l.")
         ?: archivedUri

@@ -55,6 +55,7 @@ class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
     /** The offline writers over this rig's database; the scheduler is a mock WorkManager (no pass runs here). */
     val offlineFilesDir: java.io.File = java.nio.file.Files.createTempDirectory("smugview-rig-files").toFile()
     val offlineStore = com.smugview.app.data.offline.OfflineStore(db, offlineFilesDir, freeBytes = { 50L shl 30 })
+    val reader = com.smugview.app.data.offline.OfflineReader(db, offlineStore)
     private fun offline() = com.smugview.app.data.offline.OfflineCollections(
         db, offlineStore,
         com.smugview.app.data.offline.OfflineScheduler(workManager = { Mockito.mock(WorkManager::class.java) }, store = offlineStore)
@@ -85,7 +86,7 @@ class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
         Mockito.`when`(cast.slideshowInterval).thenReturn(MutableStateFlow(5))
         Mockito.`when`(cast.isSlideshowPlaying).thenReturn(MutableStateFlow(false))
         return SmugViewModel(
-            app, repo, offline(), cast, passwords,
+            app, repo, offline(), reader, cast, passwords,
             Dispatchers.Default, reporter, handle
         )
     }

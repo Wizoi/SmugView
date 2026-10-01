@@ -42,6 +42,19 @@ object SmugMugErrorMapper {
             error?.localizedMessage ?: fallback
         }
 
+    /**
+     * True when [error] means "this phone cannot reach SmugMug right now": no network at all, or OkHttp's synthetic
+     * 504 for an `only-if-cached` miss, or a locked gallery whose saved password could not be tried for that reason.
+     * A 429, a 5xx and a 404 are NOT offline: SmugMug answered.
+     */
+    fun isOffline(error: Throwable?): Boolean = when (error) {
+        is java.io.IOException -> true
+        is retrofit2.HttpException -> error.response()?.raw()?.isSyntheticCacheMiss() == true
+        is com.smugview.app.data.repository.AlbumLockedException ->
+            error.pendingReason == com.smugview.app.data.repository.TransientReason.Offline
+        else -> false
+    }
+
     /** True only when SmugMug explicitly refused the credentials (401/403). Offline, 429, 5xx and
      *  OkHttp's synthetic 504 say nothing about whether a saved password is still correct. */
     fun isPasswordRejection(error: Throwable?): Boolean =

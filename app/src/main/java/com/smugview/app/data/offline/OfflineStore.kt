@@ -189,6 +189,9 @@ class OfflineStore(
     /** The row as stored now (the pass reads the outcome of a file from here). */
     suspend fun file(fileKey: String): OfflineFile? = dao.getFile(fileKey)
 
+    /** The user's "Try again" (5-9): a FAILED row becomes PENDING with its count reset. False when it was not FAILED. */
+    suspend fun retryNow(imageKey: String): Boolean = dao.retryNow(fileKeyOf(imageKey), clock()) > 0
+
     /** Rows a pass may try, oldest first (see [OfflineDao.candidates]). */
     suspend fun candidates(now: Long, unmetered: Boolean, limit: Int): List<OfflineFile> =
         dao.candidates(now, unmetered, limit)

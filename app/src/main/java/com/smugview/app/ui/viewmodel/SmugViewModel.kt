@@ -123,6 +123,7 @@ class SmugViewModel @Inject constructor(
     application: Application,
     private val repository: SmugMugRepository,
     private val offline: com.smugview.app.data.offline.OfflineCollections,
+    private val offlineReader: com.smugview.app.data.offline.OfflineReader,
     val castManager: CastManager,
     private val passwordStore: com.smugview.app.data.security.PasswordStore,
     /**
@@ -532,6 +533,9 @@ class SmugViewModel @Inject constructor(
 
     /** The error that replaces the grid: the current album failed before any photo arrived. */
     val albumLoadError: StateFlow<String?> get() = albums.blockingError
+
+    /** The line shown above a gallery that opened from saved photos (offline), or null. */
+    val albumNotice: StateFlow<String?> get() = albums.notice
 
     /** The current album's state, for tests and diagnostics. */
     internal val albumState: StateFlow<AlbumState?> get() = albums.state
@@ -1413,7 +1417,6 @@ class SmugViewModel @Inject constructor(
      * album on screen. A finished album you come back to is shown from memory with no request.
      */
     fun selectAlbum(albumKey: String, targetImageKey: String? = null, force: Boolean = false) {
-        val isLocal = albumKey.startsWith("local_col_")
         val diag = com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("gallery"))
         _currentAlbumKey.value = albumKey
         // Step 4-6: the load decides "is this gallery lit?" (and so whether it goes to the network) BEFORE
@@ -1423,12 +1426,12 @@ class SmugViewModel @Inject constructor(
             albumKey = albumKey,
             target = targetImageKey,
             force = force,
-            scope = if (isLocal) viewModelScope else session.scope,
+            scope = session.scope,
             context = diag,
-            initialStatus = if (isLocal) "Loading offline collection..." else "Fetching album photos..."
+            initialStatus = "Fetching album photos..."
         ) { run ->
             try {
-                if (isLocal) loadLocalCollection(run) else loadAlbum(run, targetImageKey, force, litDecision)
+                loadAlbum(run, targetImageKey, force, litDecision)
             } finally {
                 litDecision.complete(false) // a load that never got as far as the check
             }
@@ -1437,7 +1440,6 @@ class SmugViewModel @Inject constructor(
         if (selection != AlbumSelection.Started) litDecision.complete(false) // restored from memory: no load runs
         _includedTags.value = emptySet()
         _excludedTags.value = emptySet()
-        if (isLocal) return
 
         // Not part of the album's load: switching to another album must not cancel the "viewed" mark.
         session.scope.launch(diag) {
@@ -1460,33 +1462,6 @@ class SmugViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadLocalCollection(run: AlbumRun) {
-        val collectionId = run.albumKey.removePrefix("local_col_").toLongOrNull() ?: 0L
-        val dbCollection = repository.getCollectionById(collectionId)
-        run.update { it.copy(title = dbCollection?.name ?: "Local Collection") }
-
-        repository.getPhotosInCollection(collectionId).collect { dbPhotos ->
-            val images = dbPhotos.map { dbPhoto ->
-                AlbumImageData(
-                    imageKey = dbPhoto.imageKey,
-                    title = dbPhoto.title,
-                    caption = dbPhoto.title,
-                    thumbnailUrl = dbPhoto.localFilePath ?: dbPhoto.thumbnailUrl,
-                    archivedUri = dbPhoto.localFilePath ?: dbPhoto.archivedUri,
-                    date = dbPhoto.dateTaken,
-                    dateTime = dbPhoto.dateTaken,
-                    keywords = dbPhoto.keywords,
-                    webUri = null,
-                    originalWidth = null,
-                    originalHeight = null,
-                    format = if (dbPhoto.localFilePath?.lowercase()?.endsWith(".mp4") == true || dbPhoto.archivedUri?.lowercase()?.contains(".mp4") == true) "MP4" else "JPG",
-                    videoUrl = dbPhoto.localFilePath ?: dbPhoto.archivedUri
-                )
-            }
-            run.update { it.copy(photos = images, tags = tagsOf(images), loading = false, status = null) }
-        }
-    }
-
     private suspend fun loadAlbum(
         run: AlbumRun,
         targetImageKey: String?,
@@ -1497,25 +1472,33 @@ class SmugViewModel @Inject constructor(
         loadAlbumPages(run, targetImageKey, force, litDecision)
     }
 
-    /** The image the detail screen was opened on: a placeholder from the local DB, then the API's copy. */
+    /**
+     * The image the detail screen was opened on: a placeholder from the local DB, then the API's copy.
+     * 5-9: a saved copy (a DONE `offline_files` row) rides along as [AlbumImageData.localUri], so the viewer opens it
+     * with no network (Q2). The placeholder is always a still (`format` "JPG", no `videoUrl`, N2): a video's saved
+     * copy is a picture, and a collection photo never was a stream.
+     */
     private suspend fun loadTargetImage(run: AlbumRun, targetImageKey: String) {
         try {
+            val saved = offlineReader.savedPhoto(targetImageKey)
+            val localUri = saved?.let { android.net.Uri.fromFile(it.file).toString() }
             val dbPhoto = repository.getCollectionPhotoByKey(targetImageKey)
             val placeholder = if (dbPhoto != null) {
                 AlbumImageData(
                     imageKey = dbPhoto.imageKey,
                     title = dbPhoto.title,
                     caption = dbPhoto.title,
-                    thumbnailUrl = dbPhoto.localFilePath ?: dbPhoto.thumbnailUrl,
-                    archivedUri = dbPhoto.localFilePath ?: dbPhoto.archivedUri,
+                    thumbnailUrl = dbPhoto.thumbnailUrl,
+                    archivedUri = dbPhoto.archivedUri,
                     date = dbPhoto.dateTaken,
                     dateTime = dbPhoto.dateTaken,
                     keywords = dbPhoto.keywords,
                     webUri = null,
                     originalWidth = null,
                     originalHeight = null,
-                    format = if (dbPhoto.localFilePath?.lowercase()?.endsWith(".mp4") == true || dbPhoto.archivedUri?.lowercase()?.contains(".mp4") == true) "MP4" else "JPG",
-                    videoUrl = dbPhoto.localFilePath ?: dbPhoto.archivedUri
+                    format = "JPG",
+                    videoUrl = null,
+                    localUri = localUri
                 )
             } else {
                 val dbBookmark = repository.getBookmarkByItemKey(targetImageKey)
@@ -1533,9 +1516,10 @@ class SmugViewModel @Inject constructor(
                         originalWidth = null,
                         originalHeight = null,
                         format = "JPG",
-                        videoUrl = null
+                        videoUrl = null,
+                        localUri = localUri
                     )
-                } else null
+                } else saved?.let { savedImageData(it) } // a photo of a kept gallery: only the file row knows it
             }
 
             if (placeholder != null) {
@@ -1547,6 +1531,8 @@ class SmugViewModel @Inject constructor(
                     run.update { s ->
                         val updated = s.photos.toMutableList()
                         val index = updated.indexOfFirst { it.imageKey == targetImageKey }
+                        // The API copy replaces the placeholder but not what is on this phone.
+                        apiImg.localUri = apiImg.localUri ?: updated.getOrNull(index)?.localUri ?: localUri
                         if (index >= 0) {
                             updated[index] = apiImg
                         } else {
@@ -1745,14 +1731,68 @@ class SmugViewModel @Inject constructor(
         }
     }
 
-    /** Page 1 failed: the grid is empty, the error says why, and the password logic decides about a prompt. */
-    private fun failFirstPage(run: AlbumRun, e: Exception) {
+    /**
+     * A photo built from its saved file and the row that saved it (5-9): nothing here is a network address.
+     * The file is also its own thumbnail. A video's saved copy is a still picture (Q7), so it is shown as one.
+     */
+    private fun savedImageData(saved: com.smugview.app.data.offline.OfflineReader.SavedPhoto): AlbumImageData {
+        val uri = android.net.Uri.fromFile(saved.file).toString()
+        val row = saved.row
+        return AlbumImageData(
+            imageKey = row.imageKey,
+            title = row.title,
+            caption = row.title,
+            thumbnailUrl = uri,
+            archivedUri = null,
+            date = row.dateTaken,
+            dateTime = row.dateTaken,
+            keywords = null,
+            webUri = null,
+            originalWidth = null,
+            originalHeight = null,
+            format = "JPG",
+            videoUrl = null,
+            localUri = uri
+        )
+    }
+
+    /**
+     * Page 1 failed: the grid is empty, the error says why, and the password logic decides about a prompt.
+     * 5-9 (Q2): when the phone is offline, what is saved opens instead of the error: the photos of this gallery that
+     * were kept offline, or (opened from a collection) the saved copy of the photo that was asked for. Only when
+     * nothing is saved does the error show.
+     */
+    private suspend fun failFirstPage(run: AlbumRun, e: Exception) {
         val message = com.smugview.app.data.api.SmugMugErrorMapper.userMessage(e, "Failed to load album images")
-        val applied = run.update {
-            it.copy(photos = emptyList(), tags = emptySet(), loading = false, status = null, error = message)
+        var shownOffline = false
+        val applied = if (com.smugview.app.data.api.SmugMugErrorMapper.isOffline(e)) {
+            val keptPhotos = try {
+                offlineReader.savedGallery(run.albumKey).map { savedImageData(it) }
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (_: Exception) {
+                emptyList()
+            }
+            run.update { s ->
+                val saved = keptPhotos.ifEmpty { s.photos.filter { it.localUri != null } }
+                if (saved.isEmpty()) {
+                    s.copy(photos = emptyList(), tags = emptySet(), loading = false, status = null, error = message)
+                } else {
+                    shownOffline = true
+                    // Not complete: coming back to this gallery once online must load it for real.
+                    s.copy(
+                        photos = saved, tags = emptySet(), loading = false, status = null, error = null,
+                        notice = com.smugview.app.data.offline.OfflineMessages.offlineGallery(saved.size), complete = false
+                    )
+                }
+            }
+        } else {
+            run.update {
+                it.copy(photos = emptyList(), tags = emptySet(), loading = false, status = null, error = message)
+            }
         }
         // A stale run (the user moved on) must not touch the password state of the album on screen (R-11).
-        if (applied) handleAlbumLoadError(run.albumKey, e)
+        if (applied && !shownOffline) handleAlbumLoadError(run.albumKey, e)
     }
 
     fun cycleTag(tag: String) {
@@ -2007,6 +2047,36 @@ class SmugViewModel @Inject constructor(
 
     fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean) =
         collections.setGalleryWifiOnly(collectionId, albumKey, wifiOnly)
+
+    // --- What is saved on this phone (5-9): reads come from OfflineReader, writes from OfflineCollections ---
+
+    /**
+     * Every saved photo: image key to the `file:` URI of its copy. One Flow for the whole app, started on first use
+     * (the viewer reads it, so a saved photo opens with no network, Q2).
+     */
+    val localFiles: StateFlow<Map<String, String>> by lazy {
+        offlineReader.localFiles()
+            .map { files -> files.mapValues { (_, file) -> android.net.Uri.fromFile(file).toString() } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+    }
+
+    /** The row states and kept-gallery summaries of one collection (phase 5 design 3 and 4). */
+    fun offlineOf(collectionId: Long): Flow<com.smugview.app.data.offline.OfflineReader.CollectionOffline> =
+        offlineReader.collection(collectionId)
+
+    /** "Try again" on a failed row. */
+    fun tryAgain(imageKey: String) {
+        viewModelScope.launch { offline.tryAgain(imageKey) }
+    }
+
+    /** "Remove" on a row: the photo and its Image bookmark leave the collection; an unshared copy goes (Q8). */
+    fun removeSavedRow(imageKey: String, collectionId: Long) {
+        viewModelScope.launch { offline.removeFromCollection(imageKey, collectionId) }
+    }
+
+    /** Q8: what deleting [collectionId] would remove, or null when no saved photo would go (no question needed). */
+    suspend fun deleteConfirm(collectionId: Long, name: String): com.smugview.app.data.offline.OfflineReader.DeleteConfirm? =
+        offlineReader.deleteConfirm(collectionId, name)
 
     suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean =
         collections.isBookmarked(collectionId, type, itemKey)
