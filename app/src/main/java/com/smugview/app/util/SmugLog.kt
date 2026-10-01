@@ -2,19 +2,15 @@ package com.smugview.app.util
 
 import android.util.Log
 import com.smugview.app.BuildConfig
+import com.smugview.app.diag.Diag
 
 /**
- * Centralized debug logging.
+ * Centralized logging.
  *
- * In release builds (`BuildConfig.DEBUG == false`) the message lambda is never
- * invoked, so no string is built and nothing is written to logcat. This matters
- * because R8 minification is disabled for this app (to protect reflection-based
- * Gson/Retrofit models), so `Log.d(...)` calls are NOT stripped by the shrinker —
- * routing them through here is what keeps chatty logs and their string-building
- * out of release builds.
- *
- * Use this for diagnostic/trace logging. Genuine errors worth keeping in release
- * can call [e] or `Log.e` directly.
+ * [d] is debug-only chatter: in release the lambda is never invoked and nothing is written. [i],
+ * [w] and [e] are persisted (redacted) to the diagnostics log in every build, and W/E are also
+ * mirrored to logcat, redacted. R8 is enabled for release, but `Log.d` calls are not stripped by
+ * our rules, so route trace logging through [d] to keep the string-building out of release.
  */
 object SmugLog {
     inline fun d(tag: String, message: () -> String) {
@@ -22,10 +18,16 @@ object SmugLog {
     }
 
     inline fun i(tag: String, message: () -> String) {
-        if (BuildConfig.DEBUG) Log.i(tag, message())
+        val text = message()
+        if (BuildConfig.DEBUG) Log.i(tag, text)
+        Diag.log.i(tag, text)
+    }
+
+    fun w(tag: String, message: String, throwable: Throwable? = null) {
+        Diag.log.w(tag, message, throwable)
     }
 
     fun e(tag: String, message: String, throwable: Throwable? = null) {
-        if (BuildConfig.DEBUG) Log.e(tag, message, throwable)
+        Diag.log.e(tag, message, throwable)
     }
 }

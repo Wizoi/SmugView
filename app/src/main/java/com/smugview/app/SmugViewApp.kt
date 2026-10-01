@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import com.smugview.app.diag.DiagnosticsInitializer
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.Call
 import javax.inject.Inject
@@ -20,6 +21,14 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
     // API calls (see the Coil note in that provider's doc comment).
     @Inject
     lateinit var callFactory: Call.Factory
+
+    @Inject
+    lateinit var diagnostics: DiagnosticsInitializer
+
+    override fun onCreate() {
+        super.onCreate()
+        diagnostics.start()
+    }
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()

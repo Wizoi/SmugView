@@ -16,7 +16,8 @@ class DiagLog(
     private val sink: LogSink,
     private val redactor: Redactor,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val ringSize: Int = 2000
+    private val ringSize: Int = 2000,
+    private val logcat: ((Level, String, String) -> Unit)? = null
 ) {
     private class Entry(val level: Level, val text: String)
 
@@ -33,6 +34,7 @@ class DiagLog(
                 while (ring.size > ringSize) ring.removeFirst()
             }
             sink.append(line)
+            if (level >= Level.W) logcat?.invoke(level, cat, safe)
         }
     }
 
