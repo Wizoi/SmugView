@@ -33,7 +33,12 @@ import org.mockito.Mockito
  * [awaitUntil]. Call [close] from `@After`.
  */
 @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.DelicateCoroutinesApi::class)
-class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
+class ScenarioRig(
+    retrying: Boolean = false,
+    httpCache: Boolean = false,
+    /** What `Dispatchers.Main` is for this rig; null (the default) is a private single thread named "main". Screen tests pass the Robolectric main looper. */
+    mainDispatcher: kotlinx.coroutines.CoroutineDispatcher? = null
+) {
     val server = FakeSmugMugServer()
     private val cacheDir: java.io.File? = if (httpCache) java.nio.file.Files.createTempDirectory("smugview-http-cache").toFile() else null
 
@@ -50,7 +55,8 @@ class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
     val syncState = InMemorySyncStateStore()
     val savedState = SavedStateHandle()
     val app: Application = ApplicationProvider.getApplicationContext()
-    private val mainThread = newSingleThreadContext("main")
+    private val ownedMainThread = if (mainDispatcher == null) newSingleThreadContext("main") else null
+    private val mainThread: kotlinx.coroutines.CoroutineDispatcher = mainDispatcher ?: ownedMainThread!!
 
     /** The offline writers over this rig's database; the scheduler is a mock WorkManager (no pass runs here). */
     val offlineFilesDir: java.io.File = java.nio.file.Files.createTempDirectory("smugview-rig-files").toFile()
@@ -115,7 +121,7 @@ class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
         viewModel.viewModelScope.cancel()
         restarted.forEach { it.viewModelScope.cancel() }
         resetMainWhenIdle()
-        mainThread.close()
+        ownedMainThread?.close()
         db.close()
         loopback?.close()
         cacheDir?.deleteRecursively()

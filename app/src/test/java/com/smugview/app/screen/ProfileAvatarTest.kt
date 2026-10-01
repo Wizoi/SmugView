@@ -47,7 +47,7 @@ class ProfileAvatarTest {
                 viewModel = screens.viewModel
             )
         }
-        screens.waitUntil { screens.viewModel.browserState.value is BrowserUiState.Success }
+        screens.awaitSiteQuiet()
         screens.waitUntil { screens.viewModel.activeUserProfile.value != null }
         compose.waitForIdle()
     }

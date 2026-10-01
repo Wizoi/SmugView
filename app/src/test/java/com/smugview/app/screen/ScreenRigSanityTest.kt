@@ -36,7 +36,7 @@ class ScreenRigSanityTest {
                 viewModel = screens.viewModel
             )
         }
-        screens.waitUntil { screens.viewModel.browserState.value is BrowserUiState.Success }
+        screens.awaitSiteQuiet()
         compose.onNodeWithText("Family").assertIsDisplayed()
     }
 }
