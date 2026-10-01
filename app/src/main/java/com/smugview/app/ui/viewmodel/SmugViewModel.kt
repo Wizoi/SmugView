@@ -525,6 +525,8 @@ class SmugViewModel @Inject constructor(
         private set
 
     private val _currentAlbumKey = MutableStateFlow("")
+    /** The photo the current gallery was selected for (the viewer), or null for the grid. */
+    private var openedOnImageKey: String? = null
     val currentAlbumKey: StateFlow<String> = _currentAlbumKey.asStateFlow()
 
     var currentAlbumStyle by mutableStateOf<String?>("Collage")
@@ -1290,7 +1292,9 @@ class SmugViewModel @Inject constructor(
                                 }
                                 withContext(Dispatchers.Main) { open(albumKey) }
                             } else {
-                                selectAlbum(albumKey)
+                                // 6-7: forced, because a viewer opened on one photo already holds that photo, which the loader counts as
+                                // "this album is loaded" and would skip. The photo it was opened on is kept.
+                                selectAlbum(albumKey, targetImageKey = openedOnImageKey.takeIf { _currentAlbumKey.value == albumKey }, force = true)
                             }
                         }
                     }
@@ -1461,6 +1465,7 @@ class SmugViewModel @Inject constructor(
     fun selectAlbum(albumKey: String, targetImageKey: String? = null, force: Boolean = false) {
         val diag = com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("gallery"))
         _currentAlbumKey.value = albumKey
+        openedOnImageKey = targetImageKey
         // Step 4-6: the load decides "is this gallery lit?" (and so whether it goes to the network) BEFORE
         // the viewed mark below clears the dot. The mark waits for that answer.
         val litDecision = CompletableDeferred<Boolean>()

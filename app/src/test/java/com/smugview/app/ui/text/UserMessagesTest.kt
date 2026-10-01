@@ -205,4 +205,24 @@ class UserMessagesTest {
         assertEquals("Couldn't check the password. SmugMug didn't answer.", UserMessages.passwordCheckFailed(Problem.Slow(Subject.Gallery)))
         assertEquals("Couldn't check the password. Error 418.", UserMessages.passwordCheckFailed(Problem.Unexpected(Subject.Gallery, "418")))
     }
+
+    @Test fun downloadFailed_namesTheCause_andNeverTheExceptionText() {
+        assertEquals("Couldn't save the photo. You went offline.", UserMessages.downloadFailed(Problem.from(UnknownHostException("RAW-MESSAGE"), Subject.Photo)))
+        assertEquals("Couldn't save the photo. Error 418.", UserMessages.downloadFailed(Problem.Unexpected(Subject.Photo, "418")))
+        assertFalse(UserMessages.downloadFailed(Problem.from(IOException("RAW-MESSAGE"), Subject.Photo)).contains("RAW-MESSAGE"))
+    }
+
+    @Test fun forSubject_changesTheNounOnly() {
+        val p = Problem.OfflineNothingSaved(Subject.Gallery).forSubject(Subject.Photo)
+        assertEquals(Problem.OfflineNothingSaved(Subject.Photo), p)
+        assertEquals(Problem.SmugMugTrouble(Subject.Photo, 503), Problem.SmugMugTrouble(Subject.Gallery, 503).forSubject(Subject.Photo))
+        assertEquals(Problem.Gone(Subject.Photo), Problem.Gone(Subject.Site).forSubject(Subject.Photo))
+        assertTrue(UserMessages.body(p).startsWith("This photo hasn't been opened on this phone yet"))
+    }
+
+    @Test fun albumLockedException_userText_isTheLockText_notTheMessage() {
+        assertEquals(AlbumLockedException.MESSAGE, AlbumLockedException("k").userText)
+        assertEquals(AlbumLockedException.OFFLINE_MESSAGE, AlbumLockedException("k", TransientReason.Offline).userText)
+        assertEquals(AlbumLockedException.BUSY_MESSAGE, AlbumLockedException("k", TransientReason.Busy).userText)
+    }
 }

@@ -17,6 +17,15 @@ import com.smugview.app.scenario.ScenarioRig
 import com.smugview.app.ui.theme.SmugViewTheme
 import org.robolectric.Shadows.shadowOf
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.smugview.app.ui.detail.PhotoDetailScreen
+import com.smugview.app.ui.grid.PhotoGridScreen
 
 /**
  * Phase 6 screen rig (design section 6): [ScenarioRig] (real repository, real in-memory Room, the fake
@@ -55,6 +64,69 @@ class ScreenRig(val compose: ComposeContentTestRule, retrying: Boolean = false) 
         Coil.setImageLoader(ImageLoader.Builder(rig.app).components { add(recorder) }.build())
     }
 
+    /** The grid <-> viewer navigation of [setGalleryContent]; null until it is called. */
+    var navController: NavHostController? = null
+        private set
+
+    /** How many times the grid or the viewer asked to go back (a Back or Go back tap). */
+    val backClicks = AtomicInteger()
+
+    val currentRoute: String? get() = navController?.currentBackStackEntry?.destination?.route
+
+    /**
+     * Design 6-7: the app's `photo_grid/{albumKey}` and `photo_detail/{albumKey}/{imageKey}` routes in a tiny `NavHost`, with the
+     * app's own back handling (`navigateUp`), so a test can open a photo from the grid and come back, as `MainActivity` does.
+     * With [startImageKey] the viewer is the first destination (its arguments are defaults), else the grid is. Going back from the first
+     * destination is only counted.
+     */
+    fun setGalleryContent(albumKey: String, startImageKey: String? = null) {
+        setContent {
+            val nav = rememberNavController()
+            navController = nav
+            val back: () -> Unit = {
+                backClicks.incrementAndGet()
+                if (nav.previousBackStackEntry != null) nav.popBackStack()
+            }
+            NavHost(navController = nav, startDestination = if (startImageKey != null) VIEWER else GRID) {
+                composable(GRID) {
+                    PhotoGridScreen(
+                        albumKey = albumKey,
+                        albumTitle = "A gallery",
+                        onNavigateToPhotoDetail = { imageKey -> nav.navigate(viewer(albumKey, imageKey)) },
+                        onBackClick = back,
+                        onNavigateToFolder = {},
+                        onNavigateToCastController = {},
+                        viewModel = viewModel
+                    )
+                }
+                composable(
+                    VIEWER,
+                    arguments = listOf(
+                        navArgument("albumKey") { type = NavType.StringType; defaultValue = albumKey },
+                        navArgument("imageKey") { type = NavType.StringType; defaultValue = startImageKey ?: "" }
+                    )
+                ) { entry ->
+                    PhotoDetailScreen(
+                        albumKey = entry.arguments?.getString("albumKey") ?: albumKey,
+                        targetImageKey = entry.arguments?.getString("imageKey") ?: "",
+                        onBackClick = back,
+                        onNavigateToFolder = {},
+                        onNavigateToGallery = { _, _ -> },
+                        onNavigateToKeywordImages = {},
+                        onNavigateToCastController = {},
+                        viewModel = viewModel
+                    )
+                }
+            }
+        }
+    }
+
+    /** Opens the viewer on [imageKey] from the test thread, as a tap on a grid photo does. */
+    fun openViewer(albumKey: String, imageKey: String) {
+        compose.runOnUiThread { navController!!.navigate(viewer(albumKey, imageKey)) }
+        settle()
+    }
+
     /** Renders [content] under the app theme. */
     fun setContent(content: @Composable () -> Unit) = compose.setContent { SmugViewTheme { content() } }
 
@@ -72,10 +144,17 @@ class ScreenRig(val compose: ComposeContentTestRule, retrying: Boolean = false) 
             shadowOf(android.os.Looper.getMainLooper()).idle()
             compose.mainClock.advanceTimeByFrame()
             if (condition()) break
-            if (System.currentTimeMillis() > deadline) throw AssertionError("timed out after ${timeoutMs}ms waiting for: $message")
+            if (System.currentTimeMillis() > deadline) throw AssertionError("timed out after ${timeoutMs}ms waiting for: $message; ${describeState()}")
             Thread.sleep(20)
         }
         settle()
+    }
+
+    /** What the view model held when a wait timed out: the state is the diagnosis (never a title, password or key of the account). */
+    private fun describeState(): String {
+        val a = viewModel.albumState.value
+        return "album=${a?.albumKey} photos=${a?.photos?.size} loading=${a?.loading} complete=${a?.complete} problem=${a?.problem} " +
+            "prompt=${viewModel.passwordPromptNode?.nodeId} passwordError=${viewModel.passwordError} route=$currentRoute"
     }
 
     /**
@@ -117,5 +196,11 @@ class ScreenRig(val compose: ComposeContentTestRule, retrying: Boolean = false) 
 
     fun close() {
         rig.close()
+    }
+
+    companion object {
+        const val GRID = "photo_grid"
+        const val VIEWER = "photo_detail/{albumKey}/{imageKey}"
+        fun viewer(albumKey: String, imageKey: String) = "photo_detail/$albumKey/$imageKey"
     }
 }

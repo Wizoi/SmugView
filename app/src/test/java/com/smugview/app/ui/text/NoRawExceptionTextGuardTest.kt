@@ -10,18 +10,14 @@ import java.io.File
  * text (`localizedMessage`, `.message`) never reaches the screen. A screen asks [UserMessages].
  *
  * The allow-list is today's sites in `ui/`, by file and count. It only shrinks: each Phase 6 step that
- * converts a site lowers its count here ((6-3 added this guard; 6-6 removed the search, tag and password sites; 6-7 empties it)). A new site fails the test,
+ * converts a site lowers its count here ((6-3 added this guard; 6-6 removed the search, tag and password sites; 6-7 emptied it: the two download toasts now say [UserMessages.downloadFailed], the cast message says [com.smugview.app.data.repository.AlbumLockedException.userText]). A new site fails the test,
  * and so does a removed one that is still listed, so the list cannot go stale.
  */
 class NoRawExceptionTextGuardTest {
     private val ui = File("src/main/java/com/smugview/app/ui")
 
     /** File name to the number of lines that still read an exception's text or a state's `.message`. */
-    private val allowed: Map<String, Int> = mapOf(
-        "CollectionsTabView.kt" to 1,   // Toast "Download failed: ..." (6-15)
-        "PhotoDetailScreen.kt" to 1,    // Toast "Error: ..." (6-7)
-        "CastController.kt" to 1        // onMessage(e.message) (6-8)
-    )
+    private val allowed: Map<String, Int> = emptyMap()
 
     private fun isComment(line: String) = line.trim().let { it.startsWith("//") || it.startsWith("*") || it.startsWith("/*") }
 

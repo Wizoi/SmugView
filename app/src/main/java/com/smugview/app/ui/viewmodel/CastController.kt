@@ -104,7 +104,7 @@ class CastController(
                     } catch (e: com.smugview.app.data.repository.AlbumLockedException) {
                         // Q5 (a): a locked gallery stops the cast with one message; a collection that casts
                         // everything but that gallery would be wrong without saying so.
-                        onMessage(e.message ?: com.smugview.app.data.repository.AlbumLockedException.MESSAGE)
+                        onMessage(e.userText)
                         return@launch
                     } catch (e: Exception) {
                         e.printStackTrace()

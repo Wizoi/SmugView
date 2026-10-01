@@ -57,6 +57,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.smugview.app.ui.grid.GridView
+import com.smugview.app.ui.text.ProblemAction
+import com.smugview.app.ui.text.Subject
+import com.smugview.app.ui.text.UserMessages
+import com.smugview.app.ui.text.forSubject
+import com.smugview.app.ui.browser.PasswordPromptHost
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -131,15 +139,28 @@ fun PhotoDetailScreen(
     val context = LocalContext.current
     val updatedKeywordsMap = remember { mutableStateMapOf<String, String>() }
 
+    val ownAlbum by viewModel.albumState.collectAsState()
+    val filterType by viewModel.filterType.collectAsState()
+    val includedTags by viewModel.includedTags.collectAsState()
+    val excludedTags by viewModel.excludedTags.collectAsState()
+
     if (lazyPhotos.itemCount == 0) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = NeonBlue)
-        }
+        // 6-7 (R-45, design 3.5): nothing to show yet. The grid's pure function says why: still loading, failed (offline,
+        // gone, locked, ...), empty, filtered out, or waiting for a password. The album state of ANOTHER gallery (the screen
+        // is composed before `selectAlbum` ran) must not leak in, so only this album's own state counts.
+        val album = ownAlbum?.takeIf { it.albumKey == albumKey }
+        val view = GridView.of(
+            rawCount = album?.photos?.size ?: 0,
+            shownCount = 0,
+            loading = album?.loading ?: true,
+            problem = album?.problem,
+            complete = album?.complete ?: false,
+            notice = null,
+            expected = null,
+            filtersActive = filterType != com.smugview.app.ui.viewmodel.GalleryFilterType.ALL ||
+                includedTags.isNotEmpty() || excludedTags.isNotEmpty()
+        )
+        ViewerWithoutPhoto(view, albumKey, targetImageKey, viewModel, onBackClick)
         return
     }
 
@@ -148,28 +169,37 @@ fun PhotoDetailScreen(
         pageCount = { lazyPhotos.itemCount }
     )
 
-    var hasScrolledToTarget by remember { mutableStateOf(false) }
+    // R-48: scroll to the photo that was asked for only until the user swipes once or it has been reached. Both survive
+    // rotation, and so does the key of the photo the user is on, so a list that grows (page 2 streaming in) never pulls
+    // the viewer back to the photo it was opened on.
+    var userSwiped by rememberSaveable(albumKey, targetImageKey) { mutableStateOf(false) }
+    var hasScrolledToTarget by rememberSaveable(albumKey, targetImageKey) { mutableStateOf(false) }
+    var currentKey by rememberSaveable(albumKey, targetImageKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(pagerState) {
+        pagerState.interactionSource.interactions.collect { if (it is DragInteraction.Start) userSwiped = true }
+    }
     LaunchedEffect(lazyPhotos.itemCount) {
-        if (lazyPhotos.itemCount > 0) {
-            var targetIndex = -1
-            for (i in 0 until lazyPhotos.itemCount) {
-                if (lazyPhotos[i]?.imageKey == targetImageKey) {
-                    targetIndex = i
-                    break
-                }
-            }
-            if (targetIndex != -1) {
-                if (!hasScrolledToTarget || pagerState.currentPage != targetIndex) {
-                    if (!hasScrolledToTarget || lazyPhotos.itemCount > 1) {
-                        pagerState.scrollToPage(targetIndex)
-                        hasScrolledToTarget = true
-                    }
-                }
-            }
+        if (lazyPhotos.itemCount == 0 || pagerState.isScrollInProgress) return@LaunchedEffect
+        val anchor = if (userSwiped) currentKey else targetImageKey
+        if (anchor == null) return@LaunchedEffect
+        var index = -1
+        for (i in 0 until lazyPhotos.itemCount) {
+            if (lazyPhotos[i]?.imageKey == anchor) { index = i; break }
         }
+        if (index != -1 && (!hasScrolledToTarget || pagerState.currentPage != index)) {
+            pagerState.scrollToPage(index)
+            hasScrolledToTarget = true
+        }
+    }
+    LaunchedEffect(pagerState.currentPage, lazyPhotos.itemCount) {
+        if (hasScrolledToTarget || userSwiped) lazyPhotos[pagerState.currentPage]?.imageKey?.let { currentKey = it }
     }
 
     val currentPhoto = lazyPhotos[pagerState.currentPage]
+
+    // 6-7 (R-45): the one photo that was asked for can show before the gallery says it is locked (its image URL needs no
+    // session). The prompt belongs here too, and dismissing it is Back.
+    PasswordPromptHost(viewModel, onDismiss = onBackClick)
 
 
 
@@ -785,12 +815,12 @@ suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, view
                 }
             } else {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Failed to download image", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, com.smugview.app.ui.text.UserMessages.downloadFailed(com.smugview.app.ui.text.Problem.Unexpected(com.smugview.app.ui.text.Subject.Photo, connection.responseCode.toString())), Toast.LENGTH_SHORT).show()
                 }
             }
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, com.smugview.app.ui.text.UserMessages.downloadFailed(com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Photo)), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -1034,3 +1064,102 @@ fun getAuthenticatedMediaUrl(url: String?): String {
     return builder.build().toString()
 }
 
+
+/**
+ * What the viewer shows while its album has no photo for it (6-7, R-45, design 3.5): a spinner while loading, the real cause
+ * and the way out when the load failed (offline with nothing saved, gone, SmugMug trouble), and the password prompt when the
+ * gallery is locked. Dismissing the prompt goes back: there is nothing behind it.
+ */
+@Composable
+private fun ViewerWithoutPhoto(
+    view: GridView,
+    albumKey: String,
+    targetImageKey: String,
+    viewModel: SmugViewModel,
+    onBackClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .statusBarsPadding(),
+        contentAlignment = Alignment.Center
+    ) {
+        when (view) {
+            is GridView.Failed -> {
+                val problem = view.problem.forSubject(Subject.Photo)
+                val primary = UserMessages.primaryAction(problem)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = UserMessages.heading(problem),
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = UserMessages.body(problem),
+                        color = Color.White.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row {
+                        if (primary != ProblemAction.GoBack) {
+                            Button(
+                                onClick = onBackClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark)
+                            ) {
+                                Text(UserMessages.BUTTON_GO_BACK, color = Color.White)
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                        }
+                        Button(
+                            onClick = {
+                                if (primary == ProblemAction.GoBack) onBackClick()
+                                else viewModel.selectAlbum(albumKey, targetImageKey, force = true)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonBlue)
+                        ) {
+                            Text(primary.label)
+                        }
+                    }
+                }
+            }
+            GridView.EmptyGallery, GridView.FilterEmpty -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = if (view == GridView.EmptyGallery) UserMessages.EMPTY_GALLERY else UserMessages.FILTER_EMPTY,
+                        color = Color.White.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = onBackClick, colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark)) {
+                        Text(UserMessages.BUTTON_GO_BACK, color = Color.White)
+                    }
+                }
+            }
+            // A password prompt is open or about to be (or the load was interrupted): claim nothing, keep a way out.
+            GridView.Blank -> Button(
+                onClick = onBackClick,
+                colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark)
+            ) {
+                Text(UserMessages.BUTTON_GO_BACK, color = Color.White)
+            }
+            else -> CircularProgressIndicator(color = NeonBlue)
+        }
+    }
+    PasswordPromptHost(viewModel, onDismiss = onBackClick)
+}

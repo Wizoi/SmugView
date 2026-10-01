@@ -365,14 +365,7 @@ fun BrowserScreen(
                 }
 
                 // Secure Password Entry Dialog Overlay
-                viewModel.passwordPromptNode?.let { node ->
-                    PasswordPromptDialog(
-                        node = node,
-                        error = viewModel.passwordError,
-                        onSubmit = { password -> viewModel.submitPassword(password) },
-                        onDismiss = { viewModel.dismissPasswordPrompt() }
-                    )
-                }
+                PasswordPromptHost(viewModel)
 
                 // Immersive detailed image dialog overlay
                 selectedImageForDetail?.let { image ->
@@ -797,4 +790,24 @@ fun rememberRowLock(viewModel: SmugViewModel, node: CachedNode): UnlockManager.R
         value = viewModel.lockOf(node)
     }
     return lock
+}
+
+/**
+ * The one place a password prompt is drawn (design 3.5, R-45). The Folders tab, the gallery grid and the photo viewer each
+ * host it, so the prompt shows wherever the lock was met. [onDismiss] runs after the prompt is dismissed: a grid or a viewer
+ * with nothing behind the prompt goes back.
+ */
+@Composable
+fun PasswordPromptHost(viewModel: SmugViewModel, onDismiss: () -> Unit = {}) {
+    viewModel.passwordPromptNode?.let { node ->
+        PasswordPromptDialog(
+            node = node,
+            error = viewModel.passwordError,
+            onSubmit = { password -> viewModel.submitPassword(password) },
+            onDismiss = {
+                viewModel.dismissPasswordPrompt()
+                onDismiss()
+            }
+        )
+    }
 }

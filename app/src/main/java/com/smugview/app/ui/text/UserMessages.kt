@@ -186,6 +186,21 @@ object UserMessages {
     /** `TAGS_FAILED`: the tag list or the tag scan failed. */
     fun tagsFailed(cause: Problem): String = "Couldn't load the tags. ${shortCause(cause)}"
 
+    /** `DOWNLOAD_FAILED`: a photo could not be saved to this phone (the toast of the download button). */
+    fun downloadFailed(cause: Problem): String = "Couldn't save the photo. ${shortCause(cause)}"
+
     /** `PASSWORD_CHECK_FAILED`: the password could not be checked (not "wrong password"). */
     fun passwordCheckFailed(cause: Problem): String = "Couldn't check the password. ${shortCause(cause)}"
+}
+
+/** The same failure about another thing: the viewer shows its album's [Problem] with the noun "photo" (design 3.5). */
+fun Problem.forSubject(subject: Subject): Problem = when (this) {
+    is Problem.OfflineNothingSaved -> copy(subject = subject)
+    is Problem.Slow -> copy(subject = subject)
+    is Problem.RateLimited -> copy(subject = subject)
+    is Problem.SmugMugTrouble -> copy(subject = subject)
+    is Problem.Gone -> copy(subject = subject)
+    is Problem.Locked -> copy(subject = subject)
+    is Problem.LockedPending -> copy(subject = subject)
+    is Problem.Unexpected -> copy(subject = subject)
 }

@@ -18,6 +18,13 @@ class AlbumLockedException(val albumKey: String, val pendingReason: TransientRea
             TransientReason.Busy -> BUSY_MESSAGE
         }
     ) {
+    /** What a screen may say about this lock: the same text as the message, read without touching an exception's own text (design 3.1). */
+    val userText: String get() = when (pendingReason) {
+        null -> MESSAGE
+        TransientReason.Offline -> OFFLINE_MESSAGE
+        TransientReason.Busy -> BUSY_MESSAGE
+    }
+
     /** The saved password could not be tried just now (not that it failed). */
     val unlockPending: Boolean get() = pendingReason != null
 

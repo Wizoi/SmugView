@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.data.db.CachedNode
 import androidx.compose.ui.graphics.Brush
@@ -108,9 +109,16 @@ fun PhotoGridScreen(
     val staggeredGridState = rememberLazyStaggeredGridState()
     val gridState = rememberLazyGridState()
 
-    LaunchedEffect(sortBy, filterType) {
-        staggeredGridState.scrollToItem(0)
-        gridState.scrollToItem(0)
+    // R-48: back to the top only when the sort or the filter CHANGED since the last time this ran. This effect also runs on
+    // every return from the viewer (the screen is composed again), and that must keep the position the lazy states restored.
+    val sortFilterKey = "$sortBy|$filterType"
+    var appliedSortFilter by rememberSaveable { mutableStateOf(sortFilterKey) }
+    LaunchedEffect(sortFilterKey) {
+        if (sortFilterKey != appliedSortFilter) {
+            staggeredGridState.scrollToItem(0)
+            gridState.scrollToItem(0)
+            appliedSortFilter = sortFilterKey
+        }
     }
 
     val styleClean = currentAlbumStyle?.lowercase()?.replace(" ", "") ?: ""
@@ -803,19 +811,7 @@ fun PhotoGridScreen(
             )
         }
 
-        if (viewModel.passwordPromptNode != null) {
-            com.smugview.app.ui.browser.PasswordPromptDialog(
-                node = viewModel.passwordPromptNode!!,
-                error = viewModel.passwordError,
-                onSubmit = { password ->
-                    viewModel.submitPassword(password)
-                },
-                onDismiss = {
-                    viewModel.dismissPasswordPrompt()
-                    onBackClick()
-                }
-            )
-        }
+        com.smugview.app.ui.browser.PasswordPromptHost(viewModel, onDismiss = onBackClick)
     }
 }
 

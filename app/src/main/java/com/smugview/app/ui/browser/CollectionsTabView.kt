@@ -661,7 +661,7 @@ fun CollectionsTabView(
                                                                     try {
                                                                         com.smugview.app.ui.detail.downloadPhotoToGallery(context, detailItem, viewModel)
                                                                     } catch (e: Exception) {
-                                                                        Toast.makeText(context, "Download failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                                                        Toast.makeText(context, com.smugview.app.ui.text.UserMessages.downloadFailed(com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Photo)), Toast.LENGTH_SHORT).show()
                                                                     }
                                                                 }
                                                             },
