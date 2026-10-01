@@ -231,4 +231,144 @@ class CastManagerTest {
         assertTrue(castManager.isCasting.value)
         assertEquals(0, io.endedSessions.get())
     }
+
+    // ---- Step 6-9 (R-58, R-59): the screen link's URL, Stop off Main, the slideshow, names -------------------------------------
+
+    @Test
+    fun `a Fire TV with the server on the next free port publishes the URL with that port`() = runTest(dispatcher) {
+        io.dialSupported = false
+        io.serverStartResult = WebCompanionStart.Bound(8081) // 8080 was taken by another app
+        castManager.connectToDevice(fireTv)
+        advanceTimeBy(1_500); runCurrent()
+
+        assertTrue(castManager.isWebCompanionActive.value)
+        assertEquals("http://192.168.1.20:8081", castManager.webCompanionUrl.value)
+    }
+
+    @Test
+    fun `a server that could not start publishes no URL, and the link stays marked in use so the UI can say it failed`() = runTest(dispatcher) {
+        io.dialSupported = false
+        io.serverStartResult = WebCompanionStart.Failed("ports 8080 to 8089 are in use")
+        castManager.connectToDevice(fireTv)
+        advanceTimeBy(1_500); runCurrent()
+
+        assertEquals(ConnectionState.CONNECTED, castManager.activeDevice.value?.state)
+        assertTrue("companion mode is on for this device", castManager.isWebCompanionActive.value)
+        assertNull("but no URL: nothing is listening", castManager.webCompanionUrl.value)
+    }
+
+    @Test
+    fun `a bound server on a phone with no Wi-Fi address publishes no URL and is not left listening`() = runTest(dispatcher) {
+        io.dialSupported = false
+        io.localIp = null
+        castManager.connectToDevice(fireTv)
+        advanceTimeBy(1_500); runCurrent()
+
+        assertNull(castManager.webCompanionUrl.value)
+        assertFalse("nothing is left listening that nobody can find", io.serverBound)
+    }
+
+    @Test
+    fun `Stop clears the URL at once and closes the server off the calling thread`() = runTest(dispatcher) {
+        io.dialSupported = false
+        castManager.connectToDevice(fireTv)
+        advanceTimeBy(1_500); runCurrent()
+        assertNotNull(castManager.webCompanionUrl.value)
+        val stopsBefore = io.serverStops.get()
+
+        castManager.disconnect()
+
+        assertNull(castManager.webCompanionUrl.value)
+        assertFalse(castManager.isWebCompanionActive.value)
+        assertEquals("closing the server waits for its workers: not on the thread that pressed Stop", stopsBefore, io.serverStops.get())
+        runCurrent()
+        assertEquals("it is closed once the I/O dispatcher runs", stopsBefore + 1, io.serverStops.get())
+        assertFalse(io.serverBound)
+    }
+
+    @Test
+    fun `Stop then at once connecting the Fire TV again does not close the server that the new connect bound`() = runTest(dispatcher) {
+        io.dialSupported = false
+        castManager.connectToDevice(fireTv)
+        advanceTimeBy(1_500); runCurrent()
+
+        castManager.disconnect()
+        castManager.connectToDevice(fireTv) // before the dispatcher ran Stop's close
+        advanceTimeBy(1_500); runCurrent()
+
+        assertEquals(ConnectionState.CONNECTED, castManager.activeDevice.value?.state)
+        assertTrue("the old Stop must not close the new server", io.serverBound)
+        assertEquals("http://192.168.1.20:8080", castManager.webCompanionUrl.value)
+    }
+
+    @Test
+    fun `Next and Previous after Stop do nothing and throw nothing, and a stopped slideshow stays stopped`() = runTest(dispatcher) {
+        io.dialSupported = false // a Fire TV with the screen link: casting an image makes no network call
+        castManager.connectToDevice(fireTv)
+        advanceTimeBy(1_500); runCurrent()
+        castManager.castSlideshow(listOf("https://example.com/1.jpg", "https://example.com/2.jpg"), intervalSeconds = 2)
+        runCurrent()
+        assertTrue(castManager.isSlideshowPlaying.value)
+
+        castManager.disconnect()
+        castManager.nextPhoto()
+        castManager.previousPhoto()
+        advanceTimeBy(10_000); runCurrent()
+
+        assertFalse(castManager.isSlideshowPlaying.value)
+        assertNull("nothing was cast after Stop", castManager.currentImageUri.value)
+    }
+
+    @Test
+    fun `Previous from the first photo wraps to the last, and Next wraps back`() = runTest(dispatcher) {
+        io.dialSupported = false // a Fire TV with the screen link: casting an image makes no network call
+        castManager.connectToDevice(fireTv)
+        advanceTimeBy(1_500); runCurrent()
+        val urls = listOf("https://example.com/1.jpg", "https://example.com/2.jpg", "https://example.com/3.jpg")
+        castManager.castSlideshow(urls, intervalSeconds = 30)
+        runCurrent()
+        assertEquals(urls[0], castManager.currentImageUri.value)
+
+        castManager.previousPhoto(); runCurrent()
+        assertEquals(urls[2], castManager.currentImageUri.value)
+        castManager.nextPhoto(); runCurrent()
+        assertEquals(urls[0], castManager.currentImageUri.value)
+        castManager.disconnect(); runCurrent() // the 30 s timer would otherwise run for ever under virtual time
+    }
+
+    // ---- pure rules ---------------------------------------------------------------------------------------------------------
+
+    @Test
+    fun `routeIdFor matches the session device to the route that carries its Cast device id`() {
+        val routes = listOf(
+            CastRouteRef(routeId = "route-1", castDeviceId = "uuid-living-room"),
+            CastRouteRef(routeId = "route-2", castDeviceId = "uuid-kitchen"),
+            CastRouteRef(routeId = "route-3", castDeviceId = null)
+        )
+        assertEquals("route-2", routeIdFor("uuid-kitchen", routes))
+        assertEquals("route-1", routeIdFor("uuid-living-room", routes))
+    }
+
+    @Test
+    fun `routeIdFor is null when no route carries the id, and never matches a route that has no Cast device id`() {
+        val routes = listOf(CastRouteRef("route-1", "uuid-a"), CastRouteRef("route-3", null))
+        assertNull(routeIdFor("uuid-other", routes))
+        assertNull(routeIdFor("route-1", routes)) // a route id is not a Cast device id
+        assertNull(routeIdFor("", listOf(CastRouteRef("route-3", null))))
+        assertNull(routeIdFor("uuid-a", emptyList()))
+    }
+
+    @Test
+    fun `a DIAL device that gives no name is Amazon only when its manufacturer says so`() {
+        assertEquals("Amazon Device", unnamedDialDeviceLabel("Amazon.com, Inc."))
+        assertEquals("Amazon Device", unnamedDialDeviceLabel("amazon"))
+        assertEquals("TV or streaming device", unnamedDialDeviceLabel("Samsung Electronics"))
+        assertEquals("TV or streaming device", unnamedDialDeviceLabel(null))
+        assertEquals("TV or streaming device", unnamedDialDeviceLabel(""))
+    }
+
+    @Test
+    fun `the companion URL names the port that was bound`() {
+        assertEquals("http://192.168.1.20:8083", webCompanionUrlFor("192.168.1.20", 8083))
+    }
 }

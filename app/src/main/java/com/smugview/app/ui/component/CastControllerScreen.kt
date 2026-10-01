@@ -1,5 +1,7 @@
 package com.smugview.app.ui.component
 
+import androidx.compose.ui.platform.testTag
+import com.smugview.app.ui.text.UserMessages
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -34,7 +36,7 @@ fun CastControllerScreen(
     volume: Float,
     isMuted: Boolean,
     isWebCompanionActive: Boolean = false,
-    localIpAddress: String = "",
+    webCompanionUrl: String? = null,
     onPlayPauseToggle: () -> Unit,
     onNextClick: () -> Unit,
     onPrevClick: () -> Unit,
@@ -179,20 +181,13 @@ fun CastControllerScreen(
                         fontSize = 14.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    // No URL unless the server really is bound, and then the port it really got (R-58).
                     Text(
-                        text = "To cast to this Echo Show, open the Silk browser on the device (say: 'Alexa, open Silk browser') and navigate to:",
-                        color = Color.LightGray,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "http://${if (localIpAddress.isEmpty()) "192.168.1.X" else localIpAddress}:8080",
+                        text = if (webCompanionUrl != null) UserMessages.castCompanion(webCompanionUrl) else UserMessages.CAST_COMPANION_FAILED,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        fontSize = 16.sp,
+                        modifier = Modifier.fillMaxWidth().testTag("cast_companion_text")
                     )
                 }
             }

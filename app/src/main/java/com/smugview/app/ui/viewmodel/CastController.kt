@@ -39,6 +39,8 @@ class CastController(
     val castVolume = castManager.volume
     val isCastMuted = castManager.isMuted
     val isWebCompanionActive = castManager.isWebCompanionActive
+    /** The address to type on the Echo Show once the screen link is really bound; null otherwise (design 3.12). */
+    val webCompanionUrl = castManager.webCompanionUrl
 
     private val _castedAlbumKey = MutableStateFlow<String?>(null)
     val castedAlbumKeyFlow: StateFlow<String?> = _castedAlbumKey.asStateFlow()
@@ -55,10 +57,6 @@ class CastController(
 
     fun stopCastDiscovery() {
         castManager.stopDiscovery()
-    }
-
-    fun getLocalIpAddress(): String? {
-        return castManager.getLocalIpAddress()
     }
 
     fun connectToCastDevice(device: CastDevice) {

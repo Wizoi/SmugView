@@ -88,6 +88,13 @@ object UserMessages {
     const val HOME_OFFLINE = "You're offline. Galleries show here when you're back online."
     const val HOME_EMPTY = "This site has no public galleries."
 
+    /** `CAST_DIAL_DEVICE` (design 5): a device that answered DIAL and does not say who made it. */
+    const val CAST_DIAL_DEVICE = "TV or streaming device"
+
+    /** `CAST_COMPANION_FAILED`: no port from 8080 to 8089 could be bound for the Echo Show screen link. */
+    const val CAST_COMPANION_FAILED =
+        "Couldn't start the screen link on this phone: ports 8080 to 8089 are in use. Close other apps that share your screen, then try again."
+
     fun heading(problem: Problem): String = when (problem) {
         is Problem.OfflineNothingSaved -> OFFLINE_HEADING
         is Problem.Slow -> "No answer from SmugMug"
@@ -162,6 +169,9 @@ object UserMessages {
     /** True when the cause is "no network": the 5-9 offline notice already says what is shown then. */
     fun isOfflineKind(problem: Problem): Boolean =
         problem is Problem.OfflineNothingSaved || (problem is Problem.LockedPending && problem.reason == TransientReason.Offline)
+
+    /** `CAST_COMPANION`: what to type on the Echo Show; [url] is the one the server really bound. */
+    fun castCompanion(url: String): String = "On the Echo Show, open the Silk browser and go to $url"
 
     /** `HOME_FAILED`: the featured-galleries row when the request failed and nothing saved could stand in. */
     fun homeFailed(problem: Problem): String = "Couldn't load the galleries. ${shortCause(problem)}"

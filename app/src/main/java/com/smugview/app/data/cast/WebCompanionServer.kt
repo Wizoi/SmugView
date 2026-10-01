@@ -6,9 +6,20 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+
+/** Step 6-9 (R-58): what [WebCompanionServer.start] did. The UI shows a URL only for [Bound]. */
+sealed interface WebCompanionStart {
+    /** Listening on [port]. */
+    data class Bound(val port: Int) : WebCompanionStart
+
+    /** Nothing was bound: [reason] is for the diagnostics log, never shown to the user. */
+    data class Failed(val reason: String) : WebCompanionStart
+}
 
 /**
  * A tiny HTTP server that mirrors the currently-cast photo/video to a device that cannot
@@ -19,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   - binds and accepts only from an explicit allow-listed client IP (the cast target) when one
  *     is supplied; all other LAN peers get 403,
  *   - applies a read timeout so idle/hostile sockets can't pin handler threads (Slowloris),
- *   - uses a small bounded thread pool instead of an unbounded thread-per-connection,
+ *   - uses a small bounded thread pool (4 workers, at most 16 waiting connections; more are dropped),
  *   - sends `Cache-Control: no-store` so intermediaries/the browser don't retain the URLs.
  * It is still only appropriate on a trusted network; document that for users.
  */
@@ -30,22 +41,37 @@ class WebCompanionServer(
     private val running = AtomicBoolean(false)
     private var serverSocket: ServerSocket? = null
     private var acceptThread: Thread? = null
-    private var workers = Executors.newFixedThreadPool(4)
+    private var workers = newPool()
     /** When non-empty, only this client IP may connect. */
     @Volatile private var allowedClientIp: String = ""
 
+    /**
+     * Binds the first free port from [firstPort] to [lastPort] (R-58: another app may hold 8080) and returns which one,
+     * or [WebCompanionStart.Failed] when none is free. Already running returns the port it is on.
+     */
     @Synchronized
-    fun start(port: Int = 8080, allowedClientIp: String = "") {
-        if (running.get()) return
+    fun start(
+        port: Int = DEFAULT_FIRST_PORT,
+        allowedClientIp: String = "",
+        lastPort: Int = port + (DEFAULT_LAST_PORT - DEFAULT_FIRST_PORT)
+    ): WebCompanionStart {
         this.allowedClientIp = allowedClientIp
-        val socket = try {
-            ServerSocket(port)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to bind Web Companion server on port $port", e)
-            return
+        serverSocket?.takeIf { running.get() }?.let { return WebCompanionStart.Bound(it.localPort) }
+        var lastError: Exception? = null
+        var bound: ServerSocket? = null
+        for (candidate in port..lastPort) {
+            try {
+                bound = ServerSocket(candidate)
+                break
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Web Companion server could not bind port $candidate", e)
+            }
         }
+        val socket = bound
+            ?: return WebCompanionStart.Failed("ports $port to $lastPort are in use (${lastError?.javaClass?.simpleName})")
         serverSocket = socket
-        if (workers.isShutdown) workers = Executors.newFixedThreadPool(4)
+        if (workers.isShutdown) workers = newPool()
         running.set(true)
         acceptThread = Thread {
             while (running.get()) {
@@ -65,6 +91,7 @@ class WebCompanionServer(
                 }
             }
         }.apply { name = "web-companion-accept"; start() }
+        return WebCompanionStart.Bound(socket.localPort)
     }
 
     @Synchronized
@@ -83,6 +110,12 @@ class WebCompanionServer(
             Thread.currentThread().interrupt()
         }
     }
+
+    /** Test hook: how many pooled worker threads exist right now. */
+    internal fun workerThreadCount(): Int = workers.poolSize
+
+    /** Test hook: connections accepted and waiting for a free worker. */
+    internal fun queuedConnections(): Int = workers.queue.size
 
     private fun handleConnection(socket: Socket) {
         try {
@@ -171,6 +204,18 @@ class WebCompanionServer(
     companion object {
         private const val TAG = "WebCompanionServer"
         private const val READ_TIMEOUT_MS = 5000
+        const val DEFAULT_FIRST_PORT = 8080
+        const val DEFAULT_LAST_PORT = 8089
+        internal const val WORKERS = 4
+        internal const val WAITING = 16
+        private val poolIds = AtomicInteger()
+
+        /** 4 workers, 16 waiting connections, then [ThreadPoolExecutor.AbortPolicy]: the accept loop's catch drops the connection. */
+        private fun newPool() = ThreadPoolExecutor(
+            WORKERS, WORKERS, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(WAITING),
+            { r -> Thread(r, "web-companion-worker-${poolIds.incrementAndGet()}") },
+            ThreadPoolExecutor.AbortPolicy()
+        )
 
         private val HTML = """
             <!DOCTYPE html>

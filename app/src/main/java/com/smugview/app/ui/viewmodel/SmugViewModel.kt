@@ -268,6 +268,7 @@ class SmugViewModel @Inject constructor(
     val castVolume = cast.castVolume
     val isCastMuted = cast.isCastMuted
     val isWebCompanionActive = cast.isWebCompanionActive
+    val webCompanionUrl = cast.webCompanionUrl
     val castedAlbumKeyFlow: StateFlow<String?> = cast.castedAlbumKeyFlow
 
     var castedAlbumKey: String?
@@ -279,8 +280,6 @@ class SmugViewModel @Inject constructor(
     fun startCastDiscovery() = cast.startCastDiscovery()
 
     fun stopCastDiscovery() = cast.stopCastDiscovery()
-
-    fun getLocalIpAddress(): String? = cast.getLocalIpAddress()
 
     fun connectToCastDevice(device: CastDevice) = cast.connectToCastDevice(device)
 

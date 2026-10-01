@@ -17,8 +17,14 @@ internal interface CastIo {
     /** Whether an Amazon device at [ip] answers DIAL; when it does not, the Web Companion server is used. */
     suspend fun amazonSupportsDial(ip: String): Boolean
 
-    /** Binds the Web Companion server so only [allowedClientIp] can fetch the media. */
-    fun startServer(port: Int, allowedClientIp: String)
+    /**
+     * Binds the Web Companion server so only [allowedClientIp] can fetch the media. Tries [port] and the nine after it, and says
+     * which one it got ([WebCompanionStart.Bound]) or that none was free ([WebCompanionStart.Failed]) (R-58).
+     */
+    fun startServer(port: Int, allowedClientIp: String): WebCompanionStart
+
+    /** This phone's Wi-Fi IPv4 address, for the URL shown for the Web Companion server; null when there is no Wi-Fi. */
+    fun localIpAddress(): String?
 
     fun stopServer()
 

@@ -661,15 +661,12 @@ fun PhotoGridScreen(
                     var showAmazonDialog by remember { mutableStateOf(false) }
 
                     if (showAmazonDialog) {
-                        val ip = viewModel.getLocalIpAddress() ?: "192.168.1.X"
+                        val companionUrl by viewModel.webCompanionUrl.collectAsState()
                         AlertDialog(
                             onDismissRequest = { showAmazonDialog = false },
                             title = { Text("Cast to Amazon Echo Show") },
                             text = {
-                                Text(
-                                    "To cast to this Echo Show, open the Silk browser on the device (say: 'Alexa, open Silk browser') and navigate to:\n\n" +
-                                    "http://$ip:8080"
-                                )
+                                Text(companionUrl?.let { UserMessages.castCompanion(it) } ?: UserMessages.CAST_COMPANION_FAILED)
                             },
                             confirmButton = {
                                 TextButton(onClick = { showAmazonDialog = false }) {

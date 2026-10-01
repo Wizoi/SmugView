@@ -225,4 +225,13 @@ class UserMessagesTest {
         assertEquals(AlbumLockedException.OFFLINE_MESSAGE, AlbumLockedException("k", TransientReason.Offline).userText)
         assertEquals(AlbumLockedException.BUSY_MESSAGE, AlbumLockedException("k", TransientReason.Busy).userText)
     }
+
+    @Test fun castTexts_areTheDesignWords_andTheCompanionUrlIsTheBoundOne() {
+        assertEquals("On the Echo Show, open the Silk browser and go to http://192.168.1.20:8081", UserMessages.castCompanion("http://192.168.1.20:8081"))
+        assertEquals(
+            "Couldn't start the screen link on this phone: ports 8080 to 8089 are in use. Close other apps that share your screen, then try again.",
+            UserMessages.CAST_COMPANION_FAILED
+        )
+        assertEquals("TV or streaming device", UserMessages.CAST_DIAL_DEVICE)
+    }
 }

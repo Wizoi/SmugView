@@ -54,10 +54,19 @@ internal class FakeCastIo : CastIo {
 
     override suspend fun amazonSupportsDial(ip: String): Boolean = dialSupported
 
-    override fun startServer(port: Int, allowedClientIp: String) {
+    /** What the server start answers; null binds the asked-for port. A test sets it to [WebCompanionStart.Failed] or another port. */
+    @Volatile var serverStartResult: WebCompanionStart? = null
+    /** This phone's Wi-Fi address as the URL shows it; null is "no Wi-Fi". */
+    @Volatile var localIp: String? = "192.168.1.20"
+
+    override fun startServer(port: Int, allowedClientIp: String): WebCompanionStart {
         serverStarts += port to allowedClientIp
-        serverBound = true
+        val result = serverStartResult ?: WebCompanionStart.Bound(port)
+        serverBound = result is WebCompanionStart.Bound
+        return result
     }
+
+    override fun localIpAddress(): String? = localIp
 
     override fun stopServer() {
         serverStops.incrementAndGet()

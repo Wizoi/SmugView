@@ -23,6 +23,11 @@ interface CastManager {
     val volume: StateFlow<Float>
     val isMuted: StateFlow<Boolean>
     val isWebCompanionActive: StateFlow<Boolean>
+    /**
+     * The address to type on the Echo Show: `http://{phone ip}:{port}` once the Web Companion server is really bound, else null.
+     * While [isWebCompanionActive] with a null URL, the server could not be started (R-58). Never show a URL that is not this.
+     */
+    val webCompanionUrl: StateFlow<String?>
 
     fun startDiscovery()
     fun stopDiscovery()
@@ -70,6 +75,7 @@ class DefaultCastManager @Inject constructor(
         workDispatcher = dispatcher
         ioDispatcher = dispatcher
         scope = CoroutineScope(SupervisorJob() + dispatcher)
+        slideshowDispatcher = dispatcher.limitedParallelism(1)
         if (castIo != null) io = castIo
     }
 
@@ -99,6 +105,8 @@ class DefaultCastManager @Inject constructor(
 
     private val _isWebCompanionActive = MutableStateFlow(false)
     override val isWebCompanionActive: StateFlow<Boolean> = _isWebCompanionActive.asStateFlow()
+    private val _webCompanionUrl = MutableStateFlow<String?>(null)
+    override val webCompanionUrl: StateFlow<String?> = _webCompanionUrl.asStateFlow()
     private var useWebCompanion = false
 
     private var discoveryJob: Job? = null
@@ -119,6 +127,13 @@ class DefaultCastManager @Inject constructor(
     /** The generation of the last Google attempt, to tell a session that the user has since stopped from the one wanted. */
     @Volatile private var googleAttemptGeneration = 0L
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * The slideshow's list, index and job are read and written only on this one-at-a-time dispatcher (R-59): the timer loop, Stop
+     * and Next/Previous used to touch them from different threads, and `% 0` or an index past the end of a list that Stop had just
+     * emptied threw. It is a view of [workDispatcher], so a test's virtual time still drives it.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private var slideshowDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
     private var slideshowJob: Job? = null
     private var slideshowUrls: List<String> = emptyList()
     private var slideshowIndex = 0
@@ -180,12 +195,23 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
+    /**
+     * The id the list uses for the Google device a session reports as [sessionDeviceId]: its route's id (R-59), so the list can show
+     * it as connected and Stop can find it. Falls back to the session's own id when no route carries it. Main thread.
+     */
+    private fun googleDeviceId(sessionDeviceId: String): String = try {
+        val refs = mediaRouter.routes.map { CastRouteRef(it.id, com.google.android.gms.cast.CastDevice.getFromBundle(it.extras)?.deviceId) }
+        routeIdFor(sessionDeviceId, refs) ?: sessionDeviceId
+    } catch (e: Exception) {
+        sessionDeviceId
+    }
+
     private val sessionListener = object : com.google.android.gms.cast.framework.SessionManagerListener<com.google.android.gms.cast.framework.CastSession> {
         override fun onSessionStarted(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {
             val device = session.castDevice ?: return
             onGoogleSessionConnected(
                 CastDevice(
-                    id = device.deviceId,
+                    id = googleDeviceId(device.deviceId),
                     name = device.friendlyName ?: "Google Cast Target",
                     ipAddress = device.ipAddress?.hostAddress ?: "",
                     type = CastType.GOOGLE,
@@ -203,7 +229,7 @@ class DefaultCastManager @Inject constructor(
             if (googleAttemptGeneration != connectGeneration.get()) return
             val device = session.castDevice ?: return
             val castDevice = CastDevice(
-                id = device.deviceId,
+                id = googleDeviceId(device.deviceId),
                 name = device.friendlyName ?: "Google Cast Target",
                 ipAddress = device.ipAddress?.hostAddress ?: "",
                 type = CastType.GOOGLE,
@@ -223,7 +249,7 @@ class DefaultCastManager @Inject constructor(
             val device = session.castDevice ?: return
             onGoogleSessionConnected(
                 CastDevice(
-                    id = device.deviceId,
+                    id = googleDeviceId(device.deviceId),
                     name = device.friendlyName ?: "Google Cast Target",
                     ipAddress = device.ipAddress?.hostAddress ?: "",
                     type = CastType.GOOGLE,
@@ -440,11 +466,13 @@ class DefaultCastManager @Inject constructor(
                     if (device.type == CastType.AMAZON && !dialSupported) {
                         useWebCompanion = true
                         _isWebCompanionActive.value = true
-                        // Only the cast target device may fetch the (potentially private) media.
-                        io.startServer(port = 8080, allowedClientIp = device.ipAddress)
+                        // Only the cast target device may fetch the (potentially private) media. The URL is published only
+                        // when the server really is bound, on the port it really got (R-58); otherwise the UI says it failed.
+                        _webCompanionUrl.value = bindWebCompanion(device.ipAddress)
                     } else {
                         useWebCompanion = false
                         _isWebCompanionActive.value = false
+                        _webCompanionUrl.value = null
                         io.stopServer()
                     }
                     val connectedDevice = device.copy(state = ConnectionState.CONNECTED)
@@ -461,14 +489,40 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
+    /** Binds the Web Companion server for [clientIp]; the URL to show, or null when it could not be bound or this phone has no Wi-Fi address. */
+    private fun bindWebCompanion(clientIp: String): String? =
+        when (val started = io.startServer(port = WebCompanionServer.DEFAULT_FIRST_PORT, allowedClientIp = clientIp)) {
+            is WebCompanionStart.Bound -> {
+                val ip = io.localIpAddress()
+                if (ip == null) {
+                    io.stopServer() // nothing could be shown to type, so nothing is left listening
+                    null
+                } else {
+                    webCompanionUrlFor(ip, started.port)
+                }
+            }
+            is WebCompanionStart.Failed -> {
+                SmugLog.d("CastManager") { "Web Companion could not start: ${started.reason}" }
+                null
+            }
+        }
+
     override fun disconnect() {
         synchronized(connectLock) {
             // Any connect attempt still in flight is now out of date (see connectGeneration).
             connectGeneration.incrementAndGet()
             stopSlideshow()
-            io.stopServer()
             useWebCompanion = false
             _isWebCompanionActive.value = false
+            _webCompanionUrl.value = null
+            // Closing the server waits for its workers (up to a second): never on the caller's thread, which is Main.
+            val stopGeneration = connectGeneration.get()
+            scope.launch(ioDispatcher) {
+                synchronized(connectLock) {
+                    // A connect that began after this Stop owns the server now (it binds or stops it itself).
+                    if (stopGeneration == connectGeneration.get()) io.stopServer()
+                }
+            }
             pendingCastImage = null
             pendingCastSlideshow = null
             val currentActive = _activeDevice.value
@@ -531,14 +585,17 @@ class DefaultCastManager @Inject constructor(
         }
         pendingCastSlideshow = null
 
-        stopSlideshow()
-        slideshowUrls = urls
         // Clamp to the same bounds as setSlideshowInterval so a bad caller can't create a
         // zero/negative delay tight-loop in startSlideshowLoop().
         _slideshowInterval.value = intervalSeconds.coerceIn(2, 30)
         _isSlideshowPlaying.value = true
-        slideshowIndex = 0
-        startSlideshowLoop()
+        val list = urls.toList()
+        scope.launch(slideshowDispatcher) {
+            resetSlideshow()
+            slideshowUrls = list
+            slideshowIndex = 0
+            startSlideshowLoop()
+        }
     }
 
     private fun triggerPendingCasts() {
@@ -557,10 +614,8 @@ class DefaultCastManager @Inject constructor(
     override fun setSlideshowPlaying(playing: Boolean) {
         if (_isSlideshowPlaying.value == playing) return
         _isSlideshowPlaying.value = playing
-        if (playing) {
-            startSlideshowLoop()
-        } else {
-            slideshowJob?.cancel()
+        scope.launch(slideshowDispatcher) {
+            if (playing) startSlideshowLoop() else slideshowJob?.cancel()
         }
     }
 
@@ -569,20 +624,19 @@ class DefaultCastManager @Inject constructor(
     }
 
     override fun nextPhoto() {
-        if (slideshowUrls.isEmpty()) return
-        slideshowIndex = (slideshowIndex + 1) % slideshowUrls.size
-        val url = slideshowUrls[slideshowIndex]
-        castImage(url, "Slideshow Media ${slideshowIndex + 1}")
-        if (_isSlideshowPlaying.value) {
-            startSlideshowLoop()
-        }
+        scope.launch(slideshowDispatcher) { stepSlideshow(+1) }
     }
 
     override fun previousPhoto() {
-        if (slideshowUrls.isEmpty()) return
-        slideshowIndex = if (slideshowIndex - 1 < 0) slideshowUrls.size - 1 else slideshowIndex - 1
-        val url = slideshowUrls[slideshowIndex]
-        castImage(url, "Slideshow Media ${slideshowIndex + 1}")
+        scope.launch(slideshowDispatcher) { stepSlideshow(-1) }
+    }
+
+    /** On [slideshowDispatcher]. An emptied list (Stop got there first) does nothing. */
+    private fun stepSlideshow(delta: Int) {
+        val urls = slideshowUrls
+        if (urls.isEmpty()) return
+        slideshowIndex = Math.floorMod(slideshowIndex + delta, urls.size)
+        castImage(urls[slideshowIndex], "Slideshow Media ${slideshowIndex + 1}")
         if (_isSlideshowPlaying.value) {
             startSlideshowLoop()
         }
@@ -648,23 +702,35 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
+    /** On [slideshowDispatcher]. */
     private fun startSlideshowLoop() {
         slideshowJob?.cancel()
         if (slideshowUrls.isEmpty()) return
 
-        slideshowJob = scope.launch {
+        slideshowJob = scope.launch(slideshowDispatcher) {
             while (isActive && _isSlideshowPlaying.value) {
-                val url = slideshowUrls[slideshowIndex]
-                castImage(url, "Slideshow Media ${slideshowIndex + 1}")
+                val urls = slideshowUrls
+                if (urls.isEmpty()) break
+                val index = slideshowIndex.coerceIn(0, urls.size - 1)
+                castImage(urls[index], "Slideshow Media ${index + 1}")
 
                 delay(_slideshowInterval.value * 1000L)
-                slideshowIndex = (slideshowIndex + 1) % slideshowUrls.size
+                // Stop or a new list may have run while this waited; an empty list ends the loop.
+                val after = slideshowUrls
+                if (after.isEmpty()) break
+                slideshowIndex = (index + 1) % after.size
             }
         }
     }
 
+    /** Called from any thread: playing goes false at once; the list and job are cleared on [slideshowDispatcher], in call order. */
     private fun stopSlideshow() {
         _isSlideshowPlaying.value = false
+        scope.launch(slideshowDispatcher) { resetSlideshow() }
+    }
+
+    /** On [slideshowDispatcher]. */
+    private fun resetSlideshow() {
         slideshowJob?.cancel()
         slideshowJob = null
         slideshowUrls = emptyList()
@@ -793,13 +859,7 @@ class DefaultCastManager @Inject constructor(
                                 ?: when (type) {
                                     CastType.ROKU -> "Roku TV"
                                     CastType.GOOGLE -> "Google Cast"
-                                    CastType.AMAZON -> {
-                                        if (details.manufacturer?.contains("Amazon", ignoreCase = true) == true) {
-                                            "Amazon Device"
-                                        } else {
-                                            "Amazon Fire TV"
-                                        }
-                                    }
+                                    CastType.AMAZON -> unnamedDialDeviceLabel(details.manufacturer)
                                 }
 
                             SmugLog.d("CastManager") { "SSDP Discovered: name=$name, ip=$ip, type=$type" }
@@ -835,6 +895,7 @@ class DefaultCastManager @Inject constructor(
         override suspend fun rokuSupportsCasting(ip: String): Boolean = checkRokuCastingSupport(ip)
         override suspend fun amazonSupportsDial(ip: String): Boolean = checkAmazonDialSupport(ip)
         override fun startServer(port: Int, allowedClientIp: String) = webCompanionServer.start(port, allowedClientIp)
+        override fun localIpAddress(): String? = getLocalIpAddress()
         override fun stopServer() = webCompanionServer.stop()
         override fun selectGoogleRoute(routeId: String) {
             val route = mediaRouter.routes.find { it.id == routeId }

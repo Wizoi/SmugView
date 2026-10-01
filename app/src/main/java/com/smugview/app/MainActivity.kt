@@ -285,7 +285,7 @@ fun SmugViewNavigation() {
                 val volume by viewModel.castVolume.collectAsState()
                 val isMuted by viewModel.isCastMuted.collectAsState()
                 val isWebCompanionActive by viewModel.isWebCompanionActive.collectAsState()
-                val localIpAddress = remember { viewModel.getLocalIpAddress() ?: "" }
+                val webCompanionUrl by viewModel.webCompanionUrl.collectAsState()
 
                 activeDevice?.let { device ->
                     com.smugview.app.ui.component.CastControllerScreen(
@@ -297,7 +297,7 @@ fun SmugViewNavigation() {
                         volume = volume,
                         isMuted = isMuted,
                         isWebCompanionActive = isWebCompanionActive,
-                        localIpAddress = localIpAddress,
+                        webCompanionUrl = webCompanionUrl,
                         onPlayPauseToggle = { viewModel.toggleCastSlideshowPlay() },
                         onNextClick = { viewModel.castNextPhoto() },
                         onPrevClick = { viewModel.castPreviousPhoto() },
