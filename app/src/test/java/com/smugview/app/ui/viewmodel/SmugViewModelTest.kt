@@ -129,6 +129,58 @@ class SmugViewModelTest {
         Dispatchers.resetMain()
     }
 
+    /** Keeps what the launch-unlock run reported, for assertions. */
+    private class RecordingReporter : com.smugview.app.diag.SyncReporter {
+        val runs = java.util.concurrent.CopyOnWriteArrayList<com.smugview.app.diag.SyncRun>()
+        @Volatile var finished = false
+        override fun begin(kind: com.smugview.app.diag.SyncKind, nickname: String, actionId: String) =
+            com.smugview.app.diag.SyncRun(actionId, kind, nickname, System.currentTimeMillis()).also { runs.add(it) }
+        override fun finish(run: com.smugview.app.diag.SyncRun) {
+            if (run.stop == null) run.stop = com.smugview.app.diag.StopReason.Completed
+            finished = true
+        }
+        override fun recordUnlock(a: com.smugview.app.diag.UnlockAttempt) {}
+        override fun recent(n: Int) = runs.toList().takeLast(n)
+        override fun hasOpenRun() = runs.isNotEmpty() && !finished
+    }
+
+    // Phase 1b-3 / R-22: the launch unlock records which saved keys it skipped. Real topology: password
+    // folder (2sDN5x) -> sub-folder (P4BKB) -> gallery node (LCdk7F); SmugMug's password copy puts the
+    // password under both the folder and the gallery (R-26), so two keys are saved.
+    @Test
+    fun launchUnlock_recordsSkippedKeys() {
+        val reporter = RecordingReporter()
+        val store = com.smugview.app.data.security.FakePasswordStore(
+            mapOf("2sDN5x" to "fake-pw-1", "LCdk7F" to "fake-pw-1")
+        )
+        runBlocking {
+            Mockito.`when`(mockRepository.getNodeById("2sDN5x"))
+                .thenReturn(createTestNode("2sDN5x", parentNodeId = "SITE01"))
+            Mockito.`when`(mockRepository.getNodeById("P4BKB"))
+                .thenReturn(createTestNode("P4BKB", parentNodeId = "2sDN5x"))
+            Mockito.`when`(mockRepository.getNodeById("LCdk7F"))
+                .thenReturn(createTestNode("LCdk7F", parentNodeId = "P4BKB", type = "Album"))
+        }
+        val vm = SmugViewModel(mockApp, mockRepository, mockWorkManager, mockCastManager, store, testDispatcher, reporter)
+
+        // the launch unlock starts from the ViewModel init, as in the app
+        val deadline = System.currentTimeMillis() + 5000
+        while (!reporter.finished && System.currentTimeMillis() < deadline) Thread.sleep(10)
+
+        val run = reporter.runs.single()
+        assertEquals(com.smugview.app.diag.SyncKind.LaunchUnlock, run.kind)
+        assertTrue(run.runId.startsWith("unlock#"))
+        assertEquals(2, run.savedKeys)
+        // R-22 evidence: isNodeUnlocked() means "has a saved password", so BOTH saved keys are skipped
+        // (the child because its parent is saved, the parent because it is saved itself) and no
+        // unlock call is made. Shallowest first.
+        assertEquals(listOf("2sDN5x", "LCdk7F"), run.skippedAlreadyUnlocked)
+        assertEquals(com.smugview.app.diag.StopReason.Completed, run.stop)
+        runBlocking {
+            Mockito.verify(mockRepository, Mockito.never()).unlockNode(Mockito.anyString(), Mockito.anyString(), Mockito.anyString())
+        }
+    }
+
     @Test
     fun navigatingIntoFolder_doesNotMarkItsGalleriesViewed() = runTest {
         // v0.7.6 regression: navigateToChildFolder called markNodeAsViewed(folder), which marks
