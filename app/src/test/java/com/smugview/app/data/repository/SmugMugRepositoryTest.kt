@@ -10,7 +10,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import org.junit.Assert.*
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import okhttp3.ResponseBody
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -21,7 +26,25 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], manifest = Config.NONE)
 class SmugMugRepositoryTest {
+
+    // Real Room (in-memory, Robolectric): REPLACE semantics, the real recursive-CTE SQL and the
+    // real 30-day date handling, instead of a hand-written fake (review R-63).
+    private lateinit var db: AppDatabase
+    private lateinit var dao: CollectionDao
+
+    @Before
+    fun setUpDb() {
+        db = TestDb.inMemory()
+        dao = db.collectionDao()
+    }
+
+    @After
+    fun closeDb() {
+        db.close()
+    }
 
     private fun mockContext(): android.content.Context {
         val mockContext = org.mockito.Mockito.mock(android.content.Context::class.java)
@@ -237,7 +260,6 @@ class SmugMugRepositoryTest {
 
     @Test
     fun testGetAlbumsInScopeOrchestration() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         
         val mockInterceptor = Interceptor { chain ->
             val url = chain.request().url.toString()
@@ -300,7 +322,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // 1. Initially database cache is empty
         val initialAlbums = repository.getAlbumsInScope("folder1")
@@ -321,7 +343,6 @@ class SmugMugRepositoryTest {
 
     @Test
     fun testGetAlbumKeywordsOrchestration() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         
         val mockInterceptor = Interceptor { chain ->
             val json = """
@@ -357,7 +378,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // Call repository keywords batch method
         val response = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
@@ -372,7 +393,6 @@ class SmugMugRepositoryTest {
 
     @Test
     fun testMockVisibilityAnonymousState() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         var callCount = 0
         
         val mockInterceptor = Interceptor { chain ->
@@ -423,7 +443,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // 1. Simulate anonymous/locked state
         val response1 = repository.getAlbumKeywords(listOf("album1"), "dummy_key")
@@ -439,7 +459,6 @@ class SmugMugRepositoryTest {
 
     @Test
     fun testSearchImagesOrchestrationAndPaging() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         val gson = com.google.gson.Gson()
         
         val mockInterceptor = Interceptor { chain ->
@@ -478,7 +497,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // Call performBackgroundSearchImages
         repository.performBackgroundSearchImages(
@@ -490,14 +509,13 @@ class SmugMugRepositoryTest {
         )
 
         // Verify they were inserted in search_results table in Fake Dao
-        val dbResults = fakeDao.getSearchResults("testQuery", "folder1", "Photo")
+        val dbResults = dao.getSearchResults("testQuery", "folder1", "Photo")
         assertEquals(300, dbResults.size)
         assertEquals("img_1", dbResults.first().itemKey)
     }
 
     @Test
     fun testGetImagesByKeywordRepositoryMapping() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         var apiScope: String? = null
         var apiText: String? = null
         
@@ -536,7 +554,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         val result = repository.getImagesByKeyword(
             scope = "/api/v2/user/testUser",
@@ -570,7 +588,6 @@ class SmugMugRepositoryTest {
 
     @Test
     fun testResolveAndCacheAlbumLineageSafeForRoot() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         val mockInterceptor = Interceptor { chain ->
             if (chain.request().url.toString().contains("node/root")) {
                 throw RuntimeException("Should not request root node from API")
@@ -584,9 +601,9 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
         
-        fakeDao.insertNodes(listOf(
+        dao.insertNodes(listOf(
             CachedNode(
                 nodeId = "child_node",
                 parentNodeId = "root",
@@ -607,7 +624,6 @@ class SmugMugRepositoryTest {
 
     @Test
     fun testActiveUpdatesDetectionBubblingAndClearing() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         val mockInterceptor = Interceptor { chain ->
             Response.Builder()
                 .request(chain.request())
@@ -618,7 +634,7 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // Insert hierarchy:
         // root (parentNodeId = null)
@@ -653,7 +669,7 @@ class SmugMugRepositoryTest {
             dateModified = recentDate
         )
 
-        fakeDao.insertNodes(listOf(nodeFolder, nodeAlbum))
+        dao.insertNodes(listOf(nodeFolder, nodeAlbum))
 
         // Check active updates: album1 is updated recently and not viewed, folder1 should bubble it up
         val initialUpdates = repository.getNodesWithActiveUpdates().first()
@@ -672,8 +688,8 @@ class SmugMugRepositoryTest {
         // Add a new update to album1 (date modified is newer than viewed date)
         val newerDate = now.plus(java.time.Duration.ofHours(2)).toString()
         val nodeAlbumUpdated = nodeAlbum.copy(dateModified = newerDate)
-        fakeDao.clearAllCachedNodes()
-        fakeDao.insertNodes(listOf(nodeFolder, nodeAlbumUpdated))
+        dao.clearAllCachedNodes()
+        dao.insertNodes(listOf(nodeFolder, nodeAlbumUpdated))
 
         // Active updates should reappear
         val updatedUpdates = repository.getNodesWithActiveUpdates().first()
@@ -689,7 +705,6 @@ class SmugMugRepositoryTest {
 
     @Test
     fun testSearchPublicSites() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         
         val mockInterceptor = Interceptor { chain ->
             val url = chain.request().url.toString()
@@ -788,7 +803,7 @@ class SmugMugRepositoryTest {
         }
         
         val mockApi = createMockApi(mockInterceptor)
-        val repo = SmugMugRepository(mockApi, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repo = SmugMugRepository(mockApi, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
         
         val result = repo.searchPublicSites("nature", "fakeApiKey").first()
         val sites = result.getOrThrow()
@@ -810,7 +825,6 @@ class SmugMugRepositoryTest {
         // Regression test for: after unlocking a password-protected folder, its galleries stayed
         // invisible to search forever because getNodeChildren only wrote them into cached_nodes,
         // never into the flat gallery index (cached_albums / albumsCache) that gallery search reads.
-        val fakeDao = FakeCollectionDao()
 
         val mockInterceptor = Interceptor { chain ->
             val json = """
@@ -848,7 +862,7 @@ class SmugMugRepositoryTest {
         }
 
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // Before unlock: gallery search (which filters repository.albumsCache.value by title) finds nothing.
         assertTrue(repository.albumsCache.value.isEmpty())
@@ -864,7 +878,7 @@ class SmugMugRepositoryTest {
         assertEquals("albumX", indexed?.nodeId)
 
         // ...and persisted, so it survives process death / the next cache load.
-        val persisted = fakeDao.getAlbumIndex("").find { it.albumKey == "albumX" }
+        val persisted = dao.getAlbumIndex("").find { it.albumKey == "albumX" }
         assertNotNull("Unlocked gallery should be persisted into cached_albums", persisted)
     }
 
@@ -875,10 +889,9 @@ class SmugMugRepositoryTest {
         // folder's children forever and nothing ever invalidated that cache when a gallery changed
         // server-side, even though buildInMemoryGalleryCache already does a cheap LastUpdated-based
         // delta query at every startup that could drive that invalidation.
-        val fakeDao = FakeCollectionDao()
 
         // Baseline: album already indexed with an older LastUpdated (as if from a previous sync).
-        fakeDao.albumIndex.add(
+        dao.upsertAlbums(listOf(
             CachedAlbum(
                 albumKey = "albumX",
                 nodeId = "albumX",
@@ -896,10 +909,10 @@ class SmugMugRepositoryTest {
                 nickname = "testuser",
                 parentNodeId = "folder1"
             )
-        )
+        ))
         // Baseline: folder1's children are already cached from a previous browse (this is the
         // stale listing that should get evicted once we learn albumX changed).
-        fakeDao.nodes.add(
+        dao.insertNodes(listOf(
             CachedNode(
                 nodeId = "albumX",
                 parentNodeId = "folder1",
@@ -912,7 +925,7 @@ class SmugMugRepositoryTest {
                 childNodesUri = null,
                 albumUri = "/api/v2/album/albumX"
             )
-        )
+        ))
 
         val mockInterceptor = Interceptor { chain ->
             val json = """
@@ -947,15 +960,15 @@ class SmugMugRepositoryTest {
         }
 
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         // Sanity: folder1's stale listing is present before the sync.
-        assertEquals(1, fakeDao.nodes.count { it.parentNodeId == "folder1" })
+        assertEquals(1, dao.getAllCachedNodes().count { it.parentNodeId == "folder1" })
 
         repository.buildInMemoryGalleryCache("testuser", "dummy_key")
 
         // The gallery index picked up the new LastUpdated...
-        val updated = fakeDao.getAlbumIndex("testuser").find { it.albumKey == "albumX" }
+        val updated = dao.getAlbumIndex("testuser").find { it.albumKey == "albumX" }
         assertEquals("2026-07-20T10:00:00+00:00", updated?.dateModified)
 
         // ...and folder1's cached children were evicted so the Folders tab re-fetches fresh
@@ -963,7 +976,7 @@ class SmugMugRepositoryTest {
         assertEquals(
             "Stale parent folder listing should be invalidated after a gallery under it changed",
             0,
-            fakeDao.nodes.count { it.parentNodeId == "folder1" }
+            dao.getAllCachedNodes().count { it.parentNodeId == "folder1" }
         )
     }
 
@@ -973,7 +986,6 @@ class SmugMugRepositoryTest {
         // index. Real sites commonly nest galleries under sub-folders (locked "family" ->
         // "school" -> the actual gallery), so a single-level fetch left search still blind to
         // anything deeper even though the folder itself showed as unlocked.
-        val fakeDao = FakeCollectionDao()
 
         val mockInterceptor = Interceptor { chain ->
             val url = chain.request().url.toString()
@@ -1033,7 +1045,7 @@ class SmugMugRepositoryTest {
         }
 
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         assertTrue(repository.albumsCache.value.isEmpty())
 
@@ -1054,7 +1066,6 @@ class SmugMugRepositoryTest {
         // Regression coverage for the "search reads incomplete data mid-background-sync" fix:
         // SearchController waits on this flag before trusting repository.albumsCache.value, so it
         // must actually flip true while unlockAndIndexSubtree is running and back to false once done.
-        val fakeDao = FakeCollectionDao()
         val mockInterceptor = Interceptor { chain ->
             Response.Builder()
                 .request(chain.request())
@@ -1068,7 +1079,7 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         assertFalse("Should be idle before any indexing starts", repository.isIndexingSubtree.value)
 
@@ -1090,7 +1101,6 @@ class SmugMugRepositoryTest {
         // under runBlocking's single-threaded event loop is not reliable (verified: flaked because
         // both ~200ms delays resolved close enough together that completion order wasn't
         // guaranteed).
-        val fakeDao = FakeCollectionDao()
         fun childrenResponse(nextNodeId: String?): String {
             val nodesJson = if (nextNodeId == null) "[]" else """
                 [{
@@ -1120,7 +1130,7 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
         val shortJob = launch { repository.unlockAndIndexSubtree("shortFolder", "dummy_key", "pw1") }
         val longJob = launch { repository.unlockAndIndexSubtree("longFolder", "dummy_key", "pw2") }
@@ -1136,7 +1146,6 @@ class SmugMugRepositoryTest {
 
     @Test
     fun testRepositoryGetNodeCachingPrioritizesSecurityType() = runBlocking {
-        val fakeDao = FakeCollectionDao()
         val mockNodeData = com.smugview.app.data.api.NodeData(
             uri = "/api/v2/node/testNodeId",
             nodeId = "testNodeId",
@@ -1170,14 +1179,14 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, fakeDao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
         
         // Call unlockInheritedPasswordRoot which fetches and caches the node
         repository.unlockInheritedPasswordRoot("testNodeId", "dummy_key", "password")
         
         // Verify the node was saved into the fake database with the correct "Password" access parameter
         // rather than the "Public" privacy parameter.
-        val cached = fakeDao.getNodeById("testNodeId")
+        val cached = dao.getNodeById("testNodeId")
         assertNotNull(cached)
         assertEquals("Password", cached?.access)
     }
@@ -1204,7 +1213,7 @@ class SmugMugRepositoryTest {
                     .build()
             }
         }
-        val repository = SmugMugRepository(createMockApi(interceptor), FakeCollectionDao(), store, mockContext())
+        val repository = SmugMugRepository(createMockApi(interceptor), dao, store, mockContext())
         val ok = repository.unlockInheritedPasswordRoot("2sDN5x", "dummy_key", "secret")
         ok to store
     }
