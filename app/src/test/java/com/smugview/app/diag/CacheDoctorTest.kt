@@ -215,4 +215,64 @@ class CacheDoctorTest {
         val ms = (System.nanoTime() - t0) / 1_000_000
         assertTrue("doctor took ${ms}ms", ms < 1000)
     }
+
+    private fun DoctorReport.total(id: String): Long = checks.firstOrNull { it.id == id }?.total ?: -1L
+
+    /** Phase 5 (5-10): the saved files, counted by state. Keys are real-shaped; "referenced" means a collection photo, an Image bookmark or a kept gallery's item. */
+    private suspend fun seedOffline() {
+        val sql = db.openHelper.writableDatabase
+        sql.execSQL("INSERT INTO offline_collections (id, name, siteNickname, createdAt) VALUES (1, 'Favorites', 'nick', 0)")
+        fun photo(key: String) = sql.execSQL(
+            "INSERT INTO collection_photos (imageKey, collectionId, albumKey, title, thumbnailUrl, archivedUri, localFilePath, dateTaken, keywords, isDownloaded) " +
+                "VALUES ('$key', 1, 'FfHCms', 'IMG', NULL, NULL, NULL, NULL, NULL, 0)"
+        )
+        val od = db.offlineDao()
+        val now = System.currentTimeMillis()
+        fun file(key: String, state: String, bytes: Long? = null) = com.smugview.app.data.db.OfflineFile(
+            fileKey = "$key/orig", imageKey = key, albumKey = "FfHCms", nickname = "nick", state = state,
+            relPath = if (state == "DONE") "offline/$key.orig.jpg" else null, bytes = bytes, createdAt = now, updatedAt = now
+        )
+        od.insertFile(file("XVRvVTM", "PENDING")); photo("XVRvVTM")
+        od.insertFile(file("Hk42gZp", "PENDING"))
+        sql.execSQL("INSERT INTO collection_bookmarks (collectionId, type, itemKey, title, albumKey, albumTitle) VALUES (1, 'Image', 'Hk42gZp', 'IMG', 'FfHCms', 'g')")
+        od.insertFile(file("n83tQ3s", "DOWNLOADING"))
+        od.insertFile(file("Qw8LmZ2", "DOWNLOADING"))                                  // unreferenced, but being written: not garbage
+        od.insertFile(file("Ab12CdE", "DONE", 1_000)); photo("Ab12CdE")
+        od.insertFile(file("Fg34HiJ", "DONE", 2_500))
+        od.insertFile(file("Kl56MnO", "DONE", 3_000_000_000L))                         // unreferenced; passes 2 GiB
+        od.insertFile(file("Pq78RsT", "FAILED")); photo("Pq78RsT")
+        od.insertFile(file("Uv90WxY", "FAILED"))                                       // unreferenced
+        od.insertGallery(com.smugview.app.data.db.OfflineGallery(1, "FfHCms", "nick", "g", "LISTED"))
+        od.insertGalleryItems(
+            listOf("n83tQ3s", "Fg34HiJ").mapIndexed { i, k -> com.smugview.app.data.db.OfflineGalleryItem(1, "FfHCms", k, i) }
+        )
+    }
+
+    /** Red against a doctor without the offline checks: every one of these reads -1 (the check is absent). */
+    @Test
+    fun offlineFiles_areCountedByState_andUnreferencedAndBytesAreExact() = runBlocking {
+        seedOffline()
+        val before = totalChanges()
+
+        val r = CacheDoctor(db.doctorDao()).run(null)
+
+        assertEquals("pending", 2, r.count("offline_by_state_pending"))
+        assertEquals("downloading", 2, r.count("offline_by_state_downloading"))
+        assertEquals("done", 3, r.count("offline_by_state_done"))
+        assertEquals("failed", 2, r.count("offline_by_state_failed"))
+        assertEquals("unreferenced (DONE Kl56MnO and FAILED Uv90WxY)", 2, r.count("offline_unreferenced"))
+        assertEquals("done bytes", 3_000_003_500L, r.total("offline_done_bytes"))
+        assertEquals(Severity.INFO, r.severity("offline_by_state_done"))
+        assertEquals("a file nothing wants is worth a look", Severity.WARN, r.severity("offline_unreferenced"))
+        assertEquals("counts only: nothing written", before, totalChanges())
+    }
+
+    @Test
+    fun offlineFiles_withNothingSaved_areAllZero() = runBlocking {
+        val r = CacheDoctor(db.doctorDao()).run(null)
+        assertEquals(0, r.count("offline_by_state_done"))
+        assertEquals(0, r.count("offline_unreferenced"))
+        assertEquals(0L, r.total("offline_done_bytes"))
+        assertEquals(Severity.OK, r.severity("offline_unreferenced"))
+    }
 }

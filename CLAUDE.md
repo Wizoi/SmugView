@@ -74,6 +74,16 @@ before starting on a bug.
   (R-23). Password-gallery CDN image URLs work with no session at all (R-53).
 - A Gradle exit code of 0 has been seen on a failed build (a concurrent-build collision). Also
   check for `BUILD SUCCESSFUL` (R-69).
+- **Saved photos are `offline_files` rows plus `filesDir/offline/{imageKey}.orig.{ext}`, owned by
+  `OfflineStore`.** Nothing else writes there, and `collection_photos.localFilePath/isDownloaded`
+  are dead columns. A file is wanted while a collection photo, an Image bookmark or a kept
+  gallery's item refers to it (a query, not a counter). Screens read through `OfflineReader`, and
+  only a DONE row's file is ever opened.
+- **A video's `ArchivedUri` is a JPEG still, not the video.** A CDN original's ETag is its MD5
+  and its path hash is not checked: a 404 there means the photo is gone (`SMUGMUG.md`).
+- **"Offline" for a screen means `SmugMugErrorMapper.isOffline`** (IOException or the synthetic
+  504). A 429 or 5xx is SmugMug answering and must not be shown as "you're offline" or
+  replaced by saved photos.
 
 ## Before committing or shipping
 

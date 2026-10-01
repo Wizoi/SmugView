@@ -9,7 +9,9 @@ data class CheckResult(
     val label: String,
     val count: Int,
     val severity: Severity,
-    val ms: Long
+    val ms: Long,
+    /** [count] clamped to an Int; this is the exact value (a byte total can pass 2 GiB). */
+    val total: Long = count.toLong()
 )
 
 data class DoctorReport(val checks: List<CheckResult>, val totalMs: Long, val ranDuringSync: Boolean)
@@ -84,6 +86,28 @@ class CacheDoctor(
         check("rows_cached_nodes", "Rows in cached_nodes", Severity.INFO, dao::countNodes)
         check("rows_cached_albums", "Rows in cached_albums", Severity.INFO, dao::countIndexAlbums)
         check("rows_viewed_gallery_updates", "Rows in viewed_gallery_updates", Severity.INFO, dao::countViewedRows)
+        // Phase 5 (5-10): the saved files, counts only (no key, title, URL or path is read or printed).
+        for ((state, id) in listOf(
+            "PENDING" to "offline_by_state_pending", "DOWNLOADING" to "offline_by_state_downloading",
+            "DONE" to "offline_by_state_done", "FAILED" to "offline_by_state_failed"
+        )) {
+            check(id, "Saved-file rows in state $state", Severity.INFO) { dao.countOfflineFiles(state) }
+        }
+        check(
+            "offline_unreferenced", "Saved-file rows no collection, bookmark or kept gallery wants (the next pass deletes them)",
+            Severity.WARN, dao::countOfflineUnreferenced
+        )
+        run {
+            val t0 = System.nanoTime()
+            val bytes = runCatching { dao.sumOfflineDoneBytes() }.getOrElse { -1L }
+            val n = bytes.coerceIn(-1L, Int.MAX_VALUE.toLong()).toInt()
+            out.add(
+                CheckResult(
+                    "offline_done_bytes", "Bytes of saved files (DONE); equals the size of offline/",
+                    n, if (n < 0) Severity.WARN else Severity.INFO, (System.nanoTime() - t0) / 1_000_000, bytes
+                )
+            )
+        }
         if (activeRootId != null) {
             // Presence, not a violation: 1 = the active site's root node row is cached.
             check("site_root_row", "Active site root row cached (1 = yes)", Severity.INFO) {

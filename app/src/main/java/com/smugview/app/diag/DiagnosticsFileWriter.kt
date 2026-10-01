@@ -110,9 +110,16 @@ class DiagnosticsFileWriter(
             head.append("totalMs=").append(d.totalMs)
             if (d.ranDuringSync) head.append(" (a sync was open: counts may be transient)")
             head.append('\n')
-            for (c in d.checks) {
-                head.append('[').append(c.severity).append("] ").append(c.id).append(" = ").append(c.count)
+            fun line(c: CheckResult) {
+                head.append('[').append(c.severity).append("] ").append(c.id).append(" = ").append(c.total)
                     .append("  ").append(c.label).append('\n')
+            }
+            val (offline, invariants) = d.checks.partition { it.id.startsWith("offline_") }
+            invariants.forEach(::line)
+            // Phase 5 (5-10): counts and one byte total, never a key, title, URL or file name.
+            if (offline.isNotEmpty()) {
+                head.append("\n== offline files (counts only) ==\n")
+                offline.forEach(::line)
             }
         }
         head.append("\n== last sync runs (newest last) ==\n")

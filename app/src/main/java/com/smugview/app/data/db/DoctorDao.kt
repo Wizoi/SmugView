@@ -147,4 +147,22 @@ interface DoctorDao {
 
     @Query("SELECT COUNT(*) FROM cached_nodes WHERE parentNodeId = 'search_result'")
     suspend fun countSearchResultParented(): Int
+
+    // ---- Phase 5 (design 2.6, 5-10): the offline files. Counts only: no key, title or path is read. ----
+
+    @Query("SELECT COUNT(*) FROM offline_files WHERE state = :state")
+    suspend fun countOfflineFiles(state: String): Int
+
+    /** Rows nothing refers to and nobody is writing: what the next pass's garbage collector would delete. Same rule as `OfflineDao.unreferencedFiles`. */
+    @Query(
+        "SELECT COUNT(*) FROM offline_files WHERE state != 'DOWNLOADING' " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_photos p WHERE p.imageKey = offline_files.imageKey) " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_bookmarks b WHERE b.type = 'Image' AND b.itemKey = offline_files.imageKey) " +
+            "AND NOT EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = offline_files.imageKey)"
+    )
+    suspend fun countOfflineUnreferenced(): Int
+
+    /** Bytes of every DONE file: should equal the size of `filesDir/offline/` (design 9). A Long: a big library passes 2 GiB. */
+    @Query("SELECT COALESCE(SUM(bytes), 0) FROM offline_files WHERE state = 'DONE'")
+    suspend fun sumOfflineDoneBytes(): Long
 }

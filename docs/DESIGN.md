@@ -310,13 +310,17 @@ When a photo is viewed in detail/full-screen mode, the application must offer th
 ### 4. Detailed Metadata Viewer
 *   Shows a bottom sheet displaying complete EXIF metadata fetched from `/api/v2/image/{image_key}!metadata` (Camera, exposure settings, shutter speed, aperture, ISO, and keywords).
 
-### 5. Custom App-Local Collections & WorkManager Sync
-*   **Room Database**: Local custom collections are persisted in a Room SQLite database.
-*   **WorkManager Integration**: When a photo is added to a collection designated for offline access:
-    1.  A background worker (`OfflineDownloadWorker`) is scheduled.
-    2.  The worker checks available device storage and stops with a notification if storage is low.
-    3.  The worker downloads the full-resolution image (`ArchivedUri`) and stores it securely in internal storage.
-*   **Offline Indicator**: Thumbnail items and detail views display a custom green "Offline Ready" cloud-check icon to verify the image is downloaded and viewable without a network connection.
+### 5. Custom App-Local Collections & Saved (Offline) Files
+*(Rewritten in Phase 5 step 5-10 to describe what exists. The earlier text promised an offline icon and a low-storage notification; neither was ever built.)*
+
+*   **Room Database**: Collections (`offline_collections`), their photos (`collection_photos`) and bookmarks (`collection_bookmarks`) are persisted in Room. A bookmark of type Image wants its file; a Folder or gallery bookmark is only a shortcut.
+*   **One owner of the files**: `OfflineStore` owns `filesDir/offline/{imageKey}.orig.{ext}` and the `offline_files` table (state PENDING, DOWNLOADING, DONE or FAILED, with a failure reason). Whether a file is still wanted is a query over `collection_photos`, Image bookmarks and a kept gallery's items (`offline_gallery_items`); the pass deletes files nothing wants. `OfflineCollections` is the write facade (save, bookmark, remove, delete a collection, keep a gallery); `OfflineReader` is the read side the screens use. Files are in app-private storage and excluded from backup.
+*   **Keep offline (galleries)**: a Switch on a gallery shortcut inside a collection. The gallery is listed (every page, by `start`), then each photo is saved like any other. A gallery downloads on Wi-Fi only by default; the per-gallery "Use mobile data too" switch (or the "Use mobile data (size)" action while it waits) lifts that for this gallery. A single photo saved by hand downloads on any network.
+*   **WorkManager**: unique work `offline-files` (any network, storage not low) and `offline-files-wifi` (unmetered, only while a Wi-Fi-only row is wanted), plus one delayed retry per network class. The worker never returns `retry()` or `failure()`; failures are rows. No foreground service, no notification. Each pass checks for 1 GiB of free space before a download and says so on the row when it is not there.
+*   **What is saved**: the original (`ArchivedUri`) with its size and MD5 checked. For a video the original is a JPEG still (the video itself is 140 MB or more), and the row says "Videos play online only. The saved copy is a still picture."
+*   **What the user sees**: each Image row says Saved on this phone, Saving to this phone, or the cause of a failure with a way out (Try again, Remove). A kept gallery shows its progress, "Waiting for Wi-Fi", or its failure. A saved photo opens from its file with no network; a kept gallery opened offline lists its saved photos under "You're offline. Showing the N photos saved on this phone." Deleting a collection that holds saved photos asks first. There is **no** thumbnail badge or "Offline Ready" icon and **no** storage notification. The words are in `OfflineMessages`.
+*   **Diagnostics**: `report.txt` has an "offline files (counts only)" section: files by state, files nothing wants, and the bytes of saved files. Never a key, title, URL or file name.
+*   Full design and the decisions behind it: `docs/design/phase-5-offline-files.md`.
 
 ---
 

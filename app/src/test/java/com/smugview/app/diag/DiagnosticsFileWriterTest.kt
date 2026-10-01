@@ -197,4 +197,43 @@ class DiagnosticsFileWriterTest {
         assertTrue(text.contains("first-marker") && text.contains("second-marker"))
         assertFalse(File(out, "report.txt.tmp").exists())
     }
+
+    /**
+     * Phase 5 (5-10): the offline counts get their own report section, and an offline row cannot leak what the
+     * report must never hold: no image key, no title, no URL, no file name (only counts and bytes).
+     */
+    @Test
+    fun offlineCounts_haveTheirOwnSection_andCarryNoKeyUrlOrFileName() = runBlocking {
+        val database = TestDb.inMemory()
+        db = database
+        val now = System.currentTimeMillis()
+        val keys = listOf("XVRvVTM", "Hk42gZp")
+        keys.forEachIndexed { i, key ->
+            database.offlineDao().insertFile(
+                com.smugview.app.data.db.OfflineFile(
+                    fileKey = "$key/orig", imageKey = key, albumKey = "FfHCms", nickname = "idzifamily",
+                    sourceUrl = "https://photos.smugmug.com/photos/i-$key/0/hash/D/i-$key-D.jpg",
+                    title = "Holiday party $key", state = if (i == 0) "DONE" else "FAILED",
+                    relPath = if (i == 0) "offline/$key.orig.jpg" else null, bytes = if (i == 0) 4_000L else null,
+                    createdAt = now, updatedAt = now
+                )
+            )
+        }
+        val w = writer(doctor = CacheDoctor(database.doctorDao()))
+
+        w.onSyncFinished()
+        val text = report()
+
+        assertTrue(text, text.contains("== offline files (counts only) =="))
+        assertTrue(text, text.contains("offline_by_state_done = 1"))
+        assertTrue(text, text.contains("offline_by_state_failed = 1"))
+        assertTrue(text, text.contains("offline_unreferenced = 2"))
+        assertTrue(text, text.contains("offline_done_bytes = 4000"))
+        val section = text.substringAfter("== offline files (counts only) ==").substringBefore("\n== ")
+        keys.forEach { assertFalse("$it in the offline section", section.contains(it)) }
+        assertFalse(section.contains("Holiday"))
+        assertFalse(section.contains("photos.smugmug.com"))
+        assertFalse(section.contains(".orig."))
+        assertFalse("offline lines are not mixed into the invariant list", text.substringAfter("== doctor ==").substringBefore("== offline files").contains("offline_by_state"))
+    }
 }
