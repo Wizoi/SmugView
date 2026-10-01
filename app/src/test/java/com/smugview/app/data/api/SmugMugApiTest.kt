@@ -46,11 +46,11 @@ class SmugMugApiTest {
                     "User & Node Metadata"
                 "testGetImage", "testGetImageExif", "testUpdateImageMetadata" -> 
                     "Image & Exif Operations"
-                "testUnlockActions", "testGetAlbumKeywords", "testVisibilityStateKeywords" -> 
+                "testUnlockActions" -> 
                     "Password Locking & Access Control"
                 "testGetUserTopKeywords", "testImagesByKeyword" -> 
                     "Search & Keywords"
-                "testPagingUserAlbums", "testPagingAlbumImages", "testPagingSearchImages", "testPagingSearchImagesUser" -> 
+                "testPagingAlbumImages", "testPagingSearchImages" -> 
                     "Paging Queries"
                 else -> "General Verification"
             }
@@ -62,7 +62,7 @@ class SmugMugApiTest {
                 "testUnlockActions", "unlockNode / unlockAlbum" -> {
                     "HTTP 200/200 Success"
                 }
-                "testPagingUserAlbums", "testPagingAlbumImages", "testPagingSearchImages", "testPagingSearchImagesUser" -> {
+                "testPagingAlbumImages", "testPagingSearchImages" -> {
                     val match = Regex("Page 1 size: (\\d+), Page 2 size: (\\d+)").find(actual)
                     if (match != null) {
                         "Page 1: ${match.groupValues[1]}, Page 2: ${match.groupValues[2]}"
@@ -657,93 +657,6 @@ class SmugMugApiTest {
     }
 
     @Test
-    fun testGetAlbumKeywords() {
-        val ctx = resolveTestContext()
-        var success = false
-        var actual = "Failed"
-        val endpoint = "album/${ctx.albumKey}"
-        val expected = "AlbumKeywordsResponse containing expansions"
-        try {
-            val response = runBlocking {
-                ctx.api.getAlbumKeywords(ctx.albumKey, ctx.apiKey)
-            }
-            assertNotNull(response)
-            actual = "Keywords response received (expansions present: ${response.expansions != null})"
-            success = true
-        } catch (e: Exception) {
-            actual = "Error: ${e.message}"
-            throw e
-        } finally {
-            logResult("getAlbumKeywords", endpoint, expected, actual, success)
-        }
-    }
-
-    @Test
-    fun testVisibilityStateKeywords() {
-        val ctx = resolveTestContext()
-        var success = false
-        var actual = "No password protected album with keywords found"
-        var endpoint = "album/${ctx.tahomaAlbumKey}?_expand=AlbumKeywords"
-        val expected = "Verify keywords redacted on anonymous request, and present after unlocking"
-        try {
-            val albums = runBlocking {
-                ctx.api.getUserAlbums(ctx.nickname, ctx.apiKey, count = 50).response.albums ?: emptyList()
-            }
-            
-            for (album in albums) {
-                val key = album.albumKey
-                val nodeId = album.nodeId ?: ""
-                
-                // 1. Initial Anonymous check
-                val response1 = runBlocking {
-                    ctx.api.getAlbumKeywords(key, ctx.apiKey)
-                }
-                val expansions1 = response1.expansions
-                val isRedactedInitially = expansions1 == null || expansions1.isEmpty()
-                
-                if (isRedactedInitially) {
-                    // Try to unlock using candidate passwords
-                    val passwordsToTry = listOf(album.passwordHint ?: "", "gallery", "before", "MVYSO", "tahoma").filter { it.isNotEmpty() }
-                    for (pass in passwordsToTry) {
-                        runBlocking {
-                            ctx.api.unlockAlbum(key, ctx.apiKey, pass, "true")
-                            ctx.api.unlockNode(nodeId, ctx.apiKey, pass, "true")
-                        }
-                        
-                        val response2 = runBlocking {
-                            ctx.api.getAlbumKeywords(key, ctx.apiKey)
-                        }
-                        val expansions2 = response2.expansions
-                        val isRestored = expansions2 != null && expansions2.isNotEmpty()
-                        
-                        if (isRestored) {
-                            success = true
-                            endpoint = "album/$key?_expand=AlbumKeywords"
-                            actual = "Initial redacted: true, Restored after unlock: true (Album: ${album.name})"
-                            break
-                        }
-                    }
-                    if (success) break
-                }
-            }
-            
-            if (!success) {
-                // No locked album with keywords in the fixture — report this as a genuine SKIP
-                // (assumption not met) rather than a false pass, so it shows up honestly.
-                actual = "Skipped visibility verification: No locked albums with keywords found."
-                org.junit.Assume.assumeTrue(
-                    "No locked album with keywords available to verify redaction", false
-                )
-            }
-        } catch (e: Exception) {
-            actual = "Error: ${e.message}"
-            throw e
-        } finally {
-            logResult("testVisibilityStateKeywords", endpoint, expected, actual, success)
-        }
-    }
-
-    @Test
     fun testGetUserTopKeywords() {
         val ctx = resolveTestContext()
         var success = false
@@ -797,46 +710,6 @@ class SmugMugApiTest {
             } catch (e: Exception) {
                 println("Failed to unlock album/node: ${e.message}")
             }
-        }
-    }
-
-    @Test
-    fun testPagingUserAlbums() {
-        val ctx = resolveTestContext()
-        var success = false
-        var actual = "Failed"
-        val endpoint = "user/${ctx.nickname}!albums?count=5"
-        val expected = "Retrieve page 1 (5 items) and page 2 (using next URL, at least 1 item)"
-        try {
-            val page1Response = runBlocking {
-                ctx.api.getUserAlbums(ctx.nickname, ctx.apiKey, count = 5)
-            }
-            val page1Albums = page1Response.response.albums ?: emptyList()
-            val nextUrl = page1Response.response.pages?.next
-            
-            if (nextUrl == null) {
-                actual = "Page 1 returned ${page1Albums.size} albums, but no next page URL was present to test page 2"
-                success = page1Albums.isNotEmpty()
-            } else {
-                Thread.sleep(250)
-                val verbosityUrl = if (nextUrl.contains("_verbosity=")) {
-                    nextUrl.replace(Regex("_verbosity=\\d+"), "_verbosity=1")
-                } else {
-                    val separator = if (nextUrl.contains("?")) "&" else "?"
-                    "$nextUrl${separator}_verbosity=1"
-                }
-                val page2Response = runBlocking {
-                    ctx.api.getUserAlbumsByUri(verbosityUrl, ctx.apiKey)
-                }
-                val page2Albums = page2Response.response.albums ?: emptyList()
-                actual = "Page 1 size: ${page1Albums.size}, Page 2 size: ${page2Albums.size}.<br/>Next URL: $verbosityUrl"
-                success = page1Albums.size == 5 && page2Albums.isNotEmpty()
-            }
-        } catch (e: Exception) {
-            actual = "Error: ${e.message}"
-            throw e
-        } finally {
-            logResult("testPagingUserAlbums", endpoint, expected, actual, success)
         }
     }
 
@@ -1030,8 +903,6 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String, ignoreErrors: String?) = delegate.unlockAlbum(albumKey, apiKey, password, ignoreErrors)
     override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest) = delegate.updateImageMetadata(imageKey, apiKey, body)
     override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, password: String?, cacheControl: String?) = delegate.getUserAlbums(nickname, apiKey, count, start, expand, filter, filterUri, verbosity, password, cacheControl)
-    override suspend fun getUserAlbumsByUri(url: String, apiKey: String) = delegate.getUserAlbumsByUri(url, apiKey)
-    override suspend fun getAlbumKeywords(albumKeys: String, apiKey: String, password: String?, expand: String, filter: String, filterUri: String, verbosity: Int) = delegate.getAlbumKeywords(albumKeys, apiKey, password, expand, filter, filterUri, verbosity)
     override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeUri: String?, verbosity: Int, password: String?) = delegate.getUserTopKeywords(nickname, apiKey, nodeUri, verbosity, password)
     override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, filterUri: String, verbosity: Int) = delegate.getImagesByKeyword(apiKey, scope, text, count, start, filter, filterUri, verbosity)
 }

@@ -279,19 +279,6 @@ data class ImagePayload(
     @SerializedName("Image") val image: AlbumImageData
 )
 
-// Album Keywords Response (optimized tag scanning)
-data class AlbumKeywordsResponse(
-    @SerializedName("Expansions") val expansions: Map<String, AlbumExpansionContainer>? = null
-)
-
-data class AlbumExpansionContainer(
-    @SerializedName("AlbumKeywords") val albumKeywords: AlbumKeywordsContainer? = null
-)
-
-data class AlbumKeywordsContainer(
-    @SerializedName("Keywords") val keywords: List<String>? = null
-)
-
 // User Top Keywords Response
 data class TopKeywordsResponse(
     @SerializedName("Response") val response: TopKeywordsPayload

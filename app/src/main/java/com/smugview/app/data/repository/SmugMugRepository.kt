@@ -1,13 +1,9 @@
 package com.smugview.app.data.repository
 import com.smugview.app.util.SmugLog
 
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
-import androidx.paging.PagingData
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.AlbumDetails
 import com.smugview.app.data.api.AlbumImagesResponse
-import com.smugview.app.data.api.AlbumKeywordsResponse
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.data.api.ImageSearchResponse
 import com.smugview.app.data.api.ExifData
@@ -462,15 +458,6 @@ class SmugMugRepository @Inject constructor(
         return api.getAlbumImagesByUri(absoluteUrl, apiKey, password)
     }
 
-    suspend fun getUserAlbumsByUri(url: String, apiKey: String): com.smugview.app.data.api.UserAlbumsResponse {
-        return api.getUserAlbumsByUri(url, apiKey)
-    }
-
-    suspend fun getAlbumKeywords(albumKeys: List<String>, apiKey: String, password: String? = null): com.smugview.app.data.api.AlbumKeywordsResponse {
-        val keysString = albumKeys.joinToString(",")
-        return api.getAlbumKeywords(keysString, apiKey, password)
-    }
-
     suspend fun getUserTopKeywords(
         nickname: String,
         apiKey: String,
@@ -481,15 +468,6 @@ class SmugMugRepository @Inject constructor(
         return api.getUserTopKeywords(nickname, apiKey, nodeUri = nodeId?.let { "/api/v2/node/$it" }, password = password)
     }
 
-    suspend fun getUserRecentImages(nickname: String, apiKey: String, count: Int = 10): List<AlbumImageData> {
-        return try {
-            val response = api.getUserRecentImages(nickname, apiKey, count = count)
-            response.response.images ?: emptyList()
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
     suspend fun getUserRecentImagesResponse(
         nickname: String,
         apiKey: String,
@@ -497,48 +475,6 @@ class SmugMugRepository @Inject constructor(
         password: String? = null
     ): com.smugview.app.data.api.ImageSearchResponse {
         return api.getUserRecentImages(nickname, apiKey, count = count, password = password)
-    }
-
-    suspend fun getImagesByKeyword(
-        scope: String?,
-        keywords: String,
-        apiKey: String,
-        count: Int = 500,
-        start: Int = 1
-    ): List<AlbumImageData> {
-        val spaceSeparatedText = keywords.replace(",", " ")
-        val allImages = mutableListOf<AlbumImageData>()
-        try {
-            var response = api.getImagesByKeyword(
-                apiKey = apiKey,
-                scope = scope,
-                text = spaceSeparatedText,
-                count = count,
-                start = start
-            )
-            response.response.images?.let { allImages.addAll(elements = it) }
-            
-            var nextUrl = response.response.pages?.next
-            var pageCount = 1
-            var nextStart = start + (response.response.images?.size ?: 0)
-            while (nextUrl != null && pageCount < maxPagesPerFetch) {
-                val overriddenUrl = overrideUrlCountAndStart(nextUrl, 500, nextStart)
-                val absoluteUrl = if (overriddenUrl.startsWith(prefix = "http")) overriddenUrl else "https://api.smugmug.com$overriddenUrl"
-                response = api.searchImagesByUri(
-                    url = absoluteUrl,
-                    apiKey = apiKey
-                )
-                val pageImages = response.response.images ?: emptyList()
-                pageImages.let { allImages.addAll(elements = it) }
-                nextUrl = response.response.pages?.next
-                nextStart += pageImages.size
-                pageCount++
-                kotlinx.coroutines.delay(100)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("SmugMugRepository", "Failed to getImagesByKeyword", e)
-        }
-        return allImages
     }
 
     suspend fun getImagesByKeywordPage(
@@ -632,22 +568,6 @@ class SmugMugRepository @Inject constructor(
         }
         return allImages
     }
-
-    // Paging flow for album photos
-    fun getAlbumImages(
-        albumKey: String,
-        apiKey: String,
-        password: String? = null
-    ): Flow<PagingData<AlbumImageData>> {
-        return Pager(
-            config = PagingConfig(
-                pageSize = 20,
-                enablePlaceholders = false
-            ),
-            pagingSourceFactory = { PhotoPagingSource(api, apiKey, albumKey, password) }
-        ).flow
-    }
-
 
     /**
      * The gallery crawl (design 3.3, findings #14/#15/#16). Publishes the persisted album index at

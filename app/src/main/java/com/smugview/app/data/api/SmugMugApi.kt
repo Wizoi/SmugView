@@ -225,23 +225,6 @@ interface SmugMugApi {
         @Header("Cache-Control") cacheControl: String? = null
     ): UserAlbumsResponse
 
-    @GET
-    suspend fun getUserAlbumsByUri(
-        @Url url: String,
-        @Query("APIKey") apiKey: String
-    ): UserAlbumsResponse
-
-    @GET("album/{album_keys}")
-    suspend fun getAlbumKeywords(
-        @Path("album_keys") albumKeys: String,
-        @Query("APIKey") apiKey: String,
-        @Query("Password") password: String? = null,
-        @Query("_expand") expand: String = "AlbumKeywords",
-        @Query("_filter") filter: String = "Uri",
-        @Query("_filteruri") filterUri: String = "",
-        @Query("_verbosity") verbosity: Int = 1
-    ): AlbumKeywordsResponse
-
     @GET("user/{nickname}!topkeywords")
     suspend fun getUserTopKeywords(
         @Path("nickname") nickname: String,

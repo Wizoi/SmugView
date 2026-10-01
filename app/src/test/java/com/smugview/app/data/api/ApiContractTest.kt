@@ -46,8 +46,7 @@ class ApiContractTest(private val method: String) {
             "getImage" to setOf("Password"),
             "getImageExif" to setOf("Password"),
             "getUserAlbums" to setOf("Password"),
-            "getUserTopKeywords" to setOf("Password"),
-            "getAlbumKeywords" to setOf("Password")
+            "getUserTopKeywords" to setOf("Password")
         )
 
         /** POST and PATCH calls: their form and body fields are not query parameters; the query is `APIKey` only. */
@@ -82,8 +81,6 @@ class ApiContractTest(private val method: String) {
             "unlockNode" to { unlockNode("2sDN5x", K, "pw", "true") },
             "unlockAlbum" to { unlockAlbum("FfHCms", K, "pw", "true") },
             "getUserAlbums" to { getUserAlbums("idzifamily", K, start = 1, password = "pw", cacheControl = "no-cache") },
-            "getUserAlbumsByUri" to { getUserAlbumsByUri("/api/v2/user/idzifamily!albums?start=101&count=100", K) },
-            "getAlbumKeywords" to { getAlbumKeywords("FfHCms", K, password = "pw") },
             "getUserTopKeywords" to { getUserTopKeywords("idzifamily", K, nodeUri = "/api/v2/node/P4BKB", password = "pw") },
             "getImagesByKeyword" to { getImagesByKeyword(K, scope = "/api/v2/node/4zqWw", text = "kentridge") },
             "updateImageMetadata" to { updateImageMetadata("N74KSKi001-0", K, UpdateImageMetadataRequest(keywords = "a;b")) }
