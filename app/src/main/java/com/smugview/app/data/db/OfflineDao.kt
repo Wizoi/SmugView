@@ -153,9 +153,15 @@ interface OfflineDao {
     )
     suspend fun countWantedWifiOnly(): Int
 
-    /** The earliest time a retryable failure is due, or null when there is none. */
-    @Query("SELECT MIN(COALESCE(nextAttemptAt, 0)) FROM offline_files WHERE state = 'FAILED' AND retryable = 1")
-    suspend fun earliestRetryAt(): Long?
+    /**
+     * The earliest time a retryable failure is due, or null when there is none. A pass on mobile data
+     * ([unmetered] false) does not count the `wifiOnly` rows it can never take, or it would reschedule itself forever.
+     */
+    @Query(
+        "SELECT MIN(COALESCE(nextAttemptAt, 0)) FROM offline_files WHERE state = 'FAILED' AND retryable = 1 " +
+            "AND (wifiOnly = 0 OR :unmetered = 1)"
+    )
+    suspend fun earliestRetryAt(unmetered: Boolean): Long?
 
     /** Rows a pass could take right now (PENDING, or a retryable failure already due). */
     @Query(

@@ -109,7 +109,7 @@ class OfflineStore(
     // The scheduler's questions (5-5).
     suspend fun countWanted(): Int = dao.countWanted()
     suspend fun countWantedWifiOnly(): Int = dao.countWantedWifiOnly()
-    suspend fun earliestRetryAt(): Long? = dao.earliestRetryAt()
+    suspend fun earliestRetryAt(unmetered: Boolean): Long? = dao.earliestRetryAt(unmetered)
     suspend fun countDue(now: Long, unmetered: Boolean): Int = dao.countDue(now, unmetered)
 
     // ---- storage ---------------------------------------------------------------------------------------------

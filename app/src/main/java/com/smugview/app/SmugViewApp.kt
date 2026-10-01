@@ -5,7 +5,12 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import com.smugview.app.data.offline.OfflineScheduler
 import com.smugview.app.diag.DiagnosticsInitializer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.Call
 import javax.inject.Inject
@@ -26,9 +31,17 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
     @Inject
     lateinit var diagnostics: DiagnosticsInitializer
 
+    @Inject
+    lateinit var offlineScheduler: OfflineScheduler
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         diagnostics.start()
+        // Files still wanted from before the process died (or from a failed retry): queue a pass. A no-op when
+        // everything is DONE. Never blocks start-up, and a database error here must not crash the app.
+        appScope.launch { runCatching { offlineScheduler.kickIfWanted() } }
     }
 
     override val workManagerConfiguration: Configuration

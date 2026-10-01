@@ -307,6 +307,14 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideOfflineScheduler(
+        @ApplicationContext context: Context,
+        store: com.smugview.app.data.offline.OfflineStore
+    ): com.smugview.app.data.offline.OfflineScheduler =
+        com.smugview.app.data.offline.OfflineScheduler(workManager = { WorkManager.getInstance(context) }, store = store)
+
+    @Provides
+    @Singleton
     fun provideCastManager(impl: com.smugview.app.data.cast.DefaultCastManager): com.smugview.app.data.cast.CastManager {
         return impl
     }
