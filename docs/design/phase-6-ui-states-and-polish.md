@@ -1,6 +1,6 @@
 # Design: Phase 6: UI states and polish (T7, T10, casting)
 
-Status: **DRAFT, needs owner sign-off (§9).** Steps **6-0** (harness and evidence), **6-1** (folder
+Status: **SIGNED OFF 2026-10-01 (§9.1: all 16 as recommended).** Was: DRAFT, needs owner sign-off (§9). Steps **6-0** (harness and evidence), **6-1** (folder
 tree walk survives a locked folder) and **6-2** (no avatar 404s) change no meaning and can start
 before sign-off. Every later step depends on at least one answer in §9 (the step table names it).
 Written 2026-10-01 by the planning agent, read-only, against `main` at `c3e1eff` (Phase 5 steps
@@ -578,6 +578,18 @@ uninstall). Read-only `adb` only, against serial `67200DLKY00226`, and only in t
 - R-44: never navigate with a blank album key.
 - The password prompt has one host composable used by three screens.
 - The fake answers a locked folder with 404 (the real code) if 6-0 shows the suite tolerates it.
+
+### 9.1 Owner sign-off (2026-10-01)
+
+The owner answered "All as recommended" to Q1-Q16: every recommended option (a) is approved as written
+(Q13 = skip the 12 to 13 migration test; Q15 = no global network switch; Q14 = delete `SiteExplorerScreen.kt`
+but ask again in the moment, per AGENTS). Steps 6-0 to 6-22 may now proceed in order, in batches of about
+three, one commit each. Q3 (what "viewed" means), Q5 (no plaintext passwords) and Q7 (what sharing sends)
+change meaning and are recorded here as explicitly approved. Phase 5 follow-ups the owner decided the same
+day: Favorites photos stay in the "Saved Photos" section; a never-kept gallery with nothing saved shows the
+offline message when opened offline; no manual per-gallery "Try again" (it retries by itself). Added to
+Phase 6 scope: after a full disk, downloads resume only on app restart or after the ~1 h retry delay, and a
+stale "needs N MB" line stays while failed rows wait (found in 5-11; not fixed).
 
 ## 10. Verified vs assumed
 
