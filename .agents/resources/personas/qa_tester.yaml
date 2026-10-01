@@ -82,7 +82,7 @@ testing_patterns_and_reliability:
   - name: Kotlin Suspend Function Mocking
     rule: |
       Do not verify suspend functions with Mockito matchers due to compiler-added Continuation parameters. 
-      Prefer testing via concrete fakes (like FakeCollectionDao) or asserting returned data/states.
+      Prefer real in-memory Room (TestDb.inMemory(); FakeCollectionDao was deleted in Phase 1c) or asserting returned data/states.
   - name: Mockito Global State Matchers Integrity
     rule: |
       Ensure all parameters in Mockito stubs or verifications use matchers (never mix matchers and concrete arguments).
