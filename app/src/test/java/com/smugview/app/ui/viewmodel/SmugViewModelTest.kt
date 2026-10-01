@@ -90,6 +90,8 @@ class SmugViewModelTest {
             .thenReturn(flowOf(emptyList()))
             
         kotlinx.coroutines.runBlocking {
+            Mockito.`when`(mockRepository.lineageOf(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(emptyList())
             Mockito.`when`(mockRepository.getAllCachedNodes())
                 .thenReturn(emptyList())
             Mockito.`when`(mockRepository.hasSearchPhotosInDb(Mockito.anyString(), Mockito.anyString()))

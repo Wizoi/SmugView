@@ -1145,9 +1145,11 @@ class SmugViewModel @Inject constructor(
                     var rootNode = repository.getNodeById(rootNodeId)
                     if (rootNode == null) {
                         val apiNode = repository.getNode(rootNodeId, apiKey)
+                        // In memory only: Uris.ParentNode is the node's own !parent link (R-01), and only a
+                        // listing may place a row, so the prompt node is not inserted.
                         rootNode = CachedNode(
                             nodeId = apiNode.nodeId,
-                            parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
+                            parentNodeId = null,
                             type = apiNode.type,
                             title = apiNode.name ?: "Folder",
                             description = apiNode.description,
@@ -1161,7 +1163,6 @@ class SmugViewModel @Inject constructor(
                             sortIndex = 0,
                             webUri = apiNode.webUri
                         )
-                        repository.insertNodes(listOf(rootNode))
                     }
                     passwordPromptNode = rootNode
                 } else {
@@ -1372,82 +1373,25 @@ class SmugViewModel @Inject constructor(
             }
         }
         
-        // 3. Traverse parent nodes to check for inherited passwords. The visited set stops a
-        // self-parented or cyclic row from spinning forever.
-        val visited = HashSet<String>()
-        while (currentId != null && visited.add(currentId)) {
-            var parentNode = repository.getNodeById(currentId)
-            
-            // If parentNode is in the DB but has parentNodeId = "search_result", resolve its real parent from the API
-            if (parentNode != null && parentNode.parentNodeId == "search_result") {
-                try {
-                    val apiNode = repository.getNode(currentId, apiKey)
-                    val realParentId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root"
-                    parentNode = parentNode.copy(parentNodeId = realParentId)
-                    repository.insertNodes(listOf(parentNode))
-                } catch (e: Exception) {
-                    // Ignore API errors
-                }
-            }
-            
-            if (parentNode == null && !currentId.startsWith("virtual:")) {
-                try {
-                    val apiNode = repository.getNode(currentId, apiKey)
-                    parentNode = CachedNode(
-                        nodeId = apiNode.nodeId,
-                        parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
-                        type = apiNode.type,
-                        title = apiNode.name ?: "Folder",
-                        description = apiNode.description,
-                        access = apiNode.securityType ?: apiNode.privacy ?: "Public",
-                        passwordHint = apiNode.passwordHint,
-                        uri = apiNode.uri,
-                        childNodesUri = apiNode.uris.childNodes,
-                        albumUri = apiNode.uris.album,
-                        highlightImageUrl = null,
-                        childCount = null,
-                        sortIndex = 0,
-                        webUri = apiNode.webUri
-                    )
-                    repository.insertNodes(listOf(parentNode))
-                } catch (e: Exception) {
-                    break
-                }
-            }
-            
-            if (parentNode == null) break
-            
-            // Check the parent node itself (both its nodeId and its albumKey)
-            val parentId = parentNode.parentNodeId
-            if (parentId == null || parentId == "root" || parentId == "search_result") break
-            
-            pw = passwordPrefs.getString(parentId, null)
-            if (pw != null) {
-                // Cache it for quick future lookup
+        // 3. Inherited passwords: walk the ancestors from the lineage (`node/{id}!parents`, or the
+        // cached rows offline). Read-only: nothing is written back to cached_nodes (R-04).
+        return inheritedPasswordFor(currentId ?: nodeId, nodeId)
+    }
+
+    /** Nearest ancestor of [lineageId] with a saved password (by NodeID or AlbumKey); caches it under [cacheKey]. */
+    private suspend fun inheritedPasswordFor(lineageId: String, cacheKey: String): String? {
+        val chain = repository.lineageOf(lineageId, apiKey)
+        for (i in 1 until chain.size) {
+            val ancestor = chain[i]
+            val found = passwordPrefs.getString(ancestor.nodeId, null)
+                ?: ancestor.getAlbumKey().takeIf { it != ancestor.nodeId }?.let { passwordPrefs.getString(it, null) }
+            if (found != null) {
                 passwordPrefs.edit()
-                    .putString(nodeId, pw)
-                    .putString(parentNode.nodeId, pw)
+                    .putString(cacheKey, found)
+                    .putString(chain[i - 1].nodeId, found)
                     .apply()
-                return pw
+                return found
             }
-            
-            // Also check by the parent's album key if applicable
-            val parentNodeObj = repository.getNodeById(parentId)
-            if (parentNodeObj != null) {
-                val parentAlbumKey = parentNodeObj.getAlbumKey()
-                if (parentAlbumKey != parentId) {
-                    pw = passwordPrefs.getString(parentAlbumKey, null)
-                    if (pw != null) {
-                        passwordPrefs.edit()
-                            .putString(nodeId, pw)
-                            .putString(parentNode.nodeId, pw)
-                            .apply()
-                        return pw
-                    }
-                }
-            }
-            
-            currentId = parentId
         }
         return null
     }
@@ -1456,56 +1400,10 @@ class SmugViewModel @Inject constructor(
         if (node == null) return null
         val galleryKey = node.getAlbumKey()
         
-        var pw = passwordPrefs.getString(galleryKey, null) ?: passwordPrefs.getString(node.nodeId, null)
+        val pw = passwordPrefs.getString(galleryKey, null) ?: passwordPrefs.getString(node.nodeId, null)
         if (pw != null) return pw
         
-        var currentId: String? = node.parentNodeId
-        if (currentId == "search_result") {
-            try {
-                val apiNode = repository.getNode(node.nodeId, apiKey)
-                val realParentId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root"
-                val updatedNode = node.copy(parentNodeId = realParentId)
-                repository.insertNodes(listOf(updatedNode))
-                currentId = realParentId
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-        
-        while (currentId != null && currentId != "root" && currentId != "search_result") {
-            pw = passwordPrefs.getString(currentId, null)
-            if (pw != null) {
-                passwordPrefs.edit().putString(node.nodeId, pw).apply()
-                return pw
-            }
-            var parentNode = repository.getNodeById(currentId)
-            if (parentNode == null) {
-                try {
-                    val apiNode = repository.getNode(currentId, apiKey)
-                    parentNode = CachedNode(
-                        nodeId = apiNode.nodeId,
-                        parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
-                        type = apiNode.type,
-                        title = apiNode.name ?: "Folder",
-                        description = apiNode.description,
-                        access = apiNode.securityType ?: apiNode.privacy ?: "Public",
-                        passwordHint = apiNode.passwordHint,
-                        uri = apiNode.uri,
-                        childNodesUri = apiNode.uris.childNodes,
-                        albumUri = apiNode.uris.album,
-                        highlightImageUrl = null,
-                        childCount = null,
-                        sortIndex = 0,
-                        webUri = apiNode.webUri
-                    )
-                    repository.insertNodes(listOf(parentNode))
-                } catch (e: Exception) {
-                    break
-                }
-            }
-            currentId = parentNode.parentNodeId
-        }
-        return null
+        return inheritedPasswordFor(node.nodeId, node.nodeId)
     }
 
     private fun cleanAlbumKey(uri: String): String {

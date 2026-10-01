@@ -37,7 +37,7 @@ interface SmugMugApi {
         @Query("Password") password: String? = null,
         @Query("count") count: Int = 100,
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl,DateModified",
-        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage,ParentNode",
+        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage",
         @Query("_verbosity") verbosity: Int = 1,
         @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): NodeListResponse
@@ -56,7 +56,7 @@ interface SmugMugApi {
         @Query("APIKey") apiKey: String,
         @Query("_expand") expand: String? = null,
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl,DateModified",
-        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage,ParentNode",
+        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage",
         @Query("_verbosity") verbosity: Int = 1,
         @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): SingleNodeResponse
@@ -180,7 +180,7 @@ interface SmugMugApi {
         @Query("Password") password: String? = null,
         @Query("_expand") expand: String = "HighlightImage",
         @Query("_filter") filter: String = "Uri,NodeID,Type,Name,Description,SecurityType,Privacy,PasswordHint,Uris,WebUri,ThumbnailUrl,DateModified",
-        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage,ParentNode",
+        @Query("_filteruri") filterUri: String = "ChildNodes,Album,HighlightImage",
         @Query("_verbosity") verbosity: Int = 1
     ): NodeListResponse
 

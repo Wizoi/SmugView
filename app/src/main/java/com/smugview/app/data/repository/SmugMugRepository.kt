@@ -660,11 +660,10 @@ class SmugMugRepository @Inject constructor(
                     val expansions = response.expansions
                     pagesFetched++
                     run?.let { r ->
-                        // Evidence for findings #1 (no LastUpdated), R-05 (ParentNode) and the password listing.
+                        // Evidence for findings #1 (no LastUpdated) and the password listing.
                         r.pagesFetched = pagesFetched
                         r.albumsSeen += albums.size
                         r.albumsNullLastUpdated += albums.count { it.dateModified == null }
-                        r.albumsWithParentNode += albums.count { it.uris?.parentNode != null }
                         r.albumsPasswordSecurity += albums.count { it.securityType == "Password" }
                     }
                     for ((albumIndex, album) in albums.withIndex()) {
@@ -697,7 +696,9 @@ class SmugMugRepository @Inject constructor(
                                 highlightImageUrl = highlightUrl,
                                 sortIndex = sortBase++,
                                 nickname = nickname,
-                                parentNodeId = album.uris?.parentNode?.let { parseNodeIdFromUri(it) }
+                                // user!albums has no ParentNode at all (R-05); IndexParentResolver (2-9)
+                                // fills this from Uris.Folder / UrlPath.
+                                parentNodeId = null
                             )
                         )
                     }
@@ -1221,81 +1222,63 @@ class SmugMugRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-    suspend fun fetchNodeFromApi(nodeId: String, apiKey: String, password: String? = null): CachedNode? {
-        if (nodeId == "root") return null
-        return try {
-            val response = api.getNode(nodeId = nodeId, apiKey = apiKey)
-            val node = response.response.node
-            val parentNodeId = node.uris.parentNode?.substringAfterLast("/")
-            val cachedNode = CachedNode(
-                nodeId = node.nodeId,
-                parentNodeId = parentNodeId,
-                type = node.type,
-                title = node.name ?: "Untitled",
-                description = node.description,
-                access = node.securityType,
-                passwordHint = node.passwordHint,
-                uri = node.uri ?: "",
-                childNodesUri = node.uris.childNodes,
-                albumUri = node.uris.album,
-                highlightImageUrl = null,
-                sortIndex = 0,
-                webUri = node.webUri,
-                dateModified = node.dateModified
-            )
-            insertNodesScoped(listOf(cachedNode))
-            cachedNode
+    /**
+     * Self-first lineage of [idOrKey] (a NodeID or an AlbumKey): the node, each ancestor, then the
+     * site root. Read from `node/{id}!parents`; when that can't be read (offline, 5xx) it falls back to
+     * the cached rows. In memory only: it never inserts or replaces a row (R-04), because a parent
+     * parsed from `Uris.ParentNode` was the node itself (R-01) and only a listing may place a row.
+     */
+    suspend fun lineageOf(idOrKey: String, apiKey: String): List<CachedNode> {
+        val chain = try {
+            readLineage(idOrKey, apiKey)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            e.printStackTrace()
             null
+        }
+        if (chain.isNullOrEmpty()) return cachedLineage(idOrKey)
+        return chain.mapIndexed { i, n ->
+            val parentId = chain.getOrNull(i + 1)?.nodeId
+            (dao.getNodeById(n.nodeId) ?: CachedNode(
+                nodeId = n.nodeId,
+                parentNodeId = parentId,
+                type = n.type ?: "Folder",
+                title = n.name ?: "Untitled",
+                description = null,
+                access = n.securityType,
+                passwordHint = null,
+                uri = n.uri ?: "",
+                childNodesUri = null,
+                albumUri = null,
+                webUri = n.webUri
+            )).copy(parentNodeId = parentId)
         }
     }
 
+    /** Read-only walk of the cached rows (self first); stops at the root, an unknown parent or a cycle. */
+    private suspend fun cachedLineage(idOrKey: String): List<CachedNode> {
+        val out = mutableListOf<CachedNode>()
+        val visited = HashSet<String>()
+        var current = dao.getNodeByIdOrKey(idOrKey)
+        while (current != null && visited.add(current.nodeId)) {
+            out += current
+            val parentId = current.parentNodeId
+            if (parentId.isNullOrEmpty() || parentId == "root" || parentId == "search_result") break
+            current = dao.getNodeById(parentId)
+        }
+        return out
+    }
+
+    /**
+     * The breadcrumb for a gallery: its ancestors, root-most first, without the gallery itself and
+     * without the site root. Nothing is written (see [lineageOf]). [password] is unused: `!parents`
+     * is anonymous-readable.
+     */
     suspend fun resolveAndCacheAlbumLineage(albumKey: String, apiKey: String, password: String? = null): List<CachedNode> {
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "resolveAndCacheAlbumLineage called: albumKey=$albumKey, hasPassword=${password != null}")
         }
-        val cachedNode = dao.getNodeById(albumKey) ?: run {
-            val allNodes = dao.getAllCachedNodes()
-            allNodes.find { it.nodeId == albumKey || it.getAlbumKey() == albumKey }
-        }
-        var currentNode = cachedNode ?: run {
-            val albumDetails = getAlbum(albumKey, apiKey, password)
-            val nId = albumDetails?.nodeId
-            if (albumDetails != null && !nId.isNullOrEmpty()) {
-                fetchNodeFromApi(nId, apiKey, password)
-            } else {
-                null
-            }
-        }
-
-        val parents = mutableListOf<CachedNode>()
-        var parentId = currentNode?.parentNodeId
-        val visitedIds = mutableSetOf<String>()
-        if (!parentId.isNullOrEmpty()) {
-            visitedIds.add(parentId)
-        }
-        while (!parentId.isNullOrEmpty() && parentId != "root") {
-            var parentNode = dao.getNodeById(parentId)
-            if (parentNode == null) {
-                parentNode = fetchNodeFromApi(parentId, apiKey, password)
-            }
-            if (parentNode != null) {
-                if (parentNode.parentNodeId != "root" && !parentNode.parentNodeId.isNullOrEmpty()) {
-                    parents.add(0, parentNode)
-                }
-                val nextParentId = parentNode.parentNodeId
-                if (nextParentId == parentId || visitedIds.contains(nextParentId)) {
-                    break
-                }
-                parentId = nextParentId
-                if (!parentId.isNullOrEmpty()) {
-                    visitedIds.add(parentId)
-                }
-            } else {
-                break
-            }
-        }
+        val parents = lineageOf(albumKey, apiKey).drop(1).dropLast(1).reversed()
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "resolveAndCacheAlbumLineage success: albumKey=$albumKey, resolvedLineageSize=${parents.size}")
         }
@@ -1529,20 +1512,8 @@ class SmugMugRepository @Inject constructor(
      * could not be read; callers must not unlock or delete anything on Unknown.
      */
     suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): RootResolution {
-        val mappedId = dao.getNodeByIdOrKey(nodeId)?.nodeId
-            ?: dao.getAlbumNodeIdByKey(nodeId)
-            ?: nodeId
-        suspend fun parentsOf(id: String): List<ParentNodeData>? =
-            api.getNodeParents(id, apiKey, ignoreErrors = "true").response.nodes
         return try {
-            val chain = try {
-                parentsOf(mappedId)
-            } catch (e: retrofit2.HttpException) {
-                if (e.code() != 404) throw e
-                // An AlbumKey that is not in the cache: ask the album for its NodeID, then retry.
-                val realId = api.getAlbum(mappedId, apiKey, ignoreErrors = "true").response.album.nodeId
-                if (realId.isNullOrEmpty() || realId == mappedId) null else parentsOf(realId)
-            }
+            val chain = readLineage(nodeId, apiKey)
             if (chain.isNullOrEmpty()) return RootResolution.Unknown
             val root = chain.firstOrNull { it.securityType == "Password" }
             if (root != null) RootResolution.Resolved(root.nodeId) else RootResolution.NotProtected
@@ -1550,6 +1521,26 @@ class SmugMugRepository @Inject constructor(
             throw e
         } catch (e: Exception) {
             RootResolution.Unknown
+        }
+    }
+
+    /**
+     * `node/{id}!parents` for a NodeID or an AlbumKey: self first, then each ancestor, then the site
+     * root. An AlbumKey is mapped to its NodeID via the cached row or the index row; an AlbumKey that
+     * is in neither is asked of `album/{key}` after the first 404. Throws on any other failure.
+     */
+    private suspend fun readLineage(idOrKey: String, apiKey: String): List<ParentNodeData>? {
+        val mappedId = dao.getNodeByIdOrKey(idOrKey)?.nodeId
+            ?: dao.getAlbumNodeIdByKey(idOrKey)
+            ?: idOrKey
+        suspend fun parentsOf(id: String): List<ParentNodeData>? =
+            api.getNodeParents(id, apiKey, ignoreErrors = "true").response.nodes
+        return try {
+            parentsOf(mappedId)
+        } catch (e: retrofit2.HttpException) {
+            if (e.code() != 404) throw e
+            val realId = api.getAlbum(mappedId, apiKey, ignoreErrors = "true").response.album.nodeId
+            if (realId.isNullOrEmpty() || realId == mappedId) null else parentsOf(realId)
         }
     }
 
@@ -1566,7 +1557,8 @@ class SmugMugRepository @Inject constructor(
             val apiNode = getNode(rootNodeId, apiKey, ignoreErrors = "true")
             val cn = CachedNode(
                 nodeId = apiNode.nodeId,
-                parentNodeId = apiNode.uris.parentNode?.substringAfterLast("/")?.substringBefore("!") ?: "root",
+                // In memory only: nothing here knows the real parent (R-01), and only a listing may place a row.
+                parentNodeId = null,
                 type = apiNode.type,
                 title = apiNode.name ?: "Folder",
                 description = apiNode.description,
@@ -1581,7 +1573,6 @@ class SmugMugRepository @Inject constructor(
                 webUri = apiNode.webUri,
                 dateModified = apiNode.dateModified
             )
-            insertNodesScoped(listOf(cn))
             cn
         } catch (e: Exception) {
             null
@@ -1635,6 +1626,7 @@ class SmugMugRepository @Inject constructor(
             SmugLog.d("SmugMugRepository") { "searchNodesRemote starting: scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query" }
             val response = api.searchNodes(apiKey, scopeUri, query, password)
             val apiNodes = response.response.nodes ?: emptyList()
+            val existingIds = HashSet<String>()
             SmugLog.d("SmugMugRepository") { "searchNodesRemote API returned ${apiNodes.size} nodes" }
             val dbNodes = apiNodes.mapIndexed { index, node ->
                 val highlightUri = node.uris.highlightImage
@@ -1644,10 +1636,11 @@ class SmugMugRepository @Inject constructor(
                     thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
                 } else null
 
+                // A listing owns where a node lives (R-04): a hit keeps the row it already has, and an
+                // unknown one is parked under "search_result" (Uris.ParentNode is its own !parent, R-01).
                 val existing = dao.getNodeById(node.nodeId)
-                val parentId = existing?.parentNodeId?.takeIf { it != "search_result" }
-                    ?: node.uris.parentNode?.substringAfterLast("/")?.substringBefore("!")
-                    ?: "search_result"
+                if (existing != null) existingIds.add(node.nodeId)
+                val parentId = existing?.parentNodeId ?: "search_result"
 
                 CachedNode(
                     nodeId = node.nodeId,
@@ -1670,8 +1663,10 @@ class SmugMugRepository @Inject constructor(
             dao.deleteSearchResultsForQueryAndType(query, scopeKey, "Album")
             SmugLog.d("SmugMugRepository") { "searchNodesRemote deleted old search results for query=$query, scopeKey=$scopeKey" }
             if (dbNodes.isNotEmpty()) {
-                insertNodesScoped(dbNodes)
-                SmugLog.d("SmugMugRepository") { "searchNodesRemote inserted ${dbNodes.size} nodes into cached_nodes" }
+                // Only rows that don't exist yet: a hit never overwrites a listed row's sortIndex, title or parent.
+                val fresh = dbNodes.filter { it.nodeId !in existingIds }
+                if (fresh.isNotEmpty()) insertNodesScoped(fresh)
+                SmugLog.d("SmugMugRepository") { "searchNodesRemote inserted ${fresh.size} new nodes into cached_nodes" }
                 val searchResults = dbNodes.mapIndexed { index, node ->
                     node.toSearchResult(query, scopeKey, index)
                 }

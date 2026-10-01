@@ -690,12 +690,12 @@ class SmugMugRepositoryTest {
     }
 
     @Test
-    fun testGalleryUpdateInvalidatesParentFolderCache() = runBlocking {
-        // Regression test for: a new/updated gallery under a folder wasn't reflected in that
-        // folder's browsable listing until a manual refresh, because getNodeChildren caches a
-        // folder's children forever and nothing ever invalidated that cache when a gallery changed
-        // server-side, even though buildInMemoryGalleryCache already does a cheap LastUpdated-based
-        // delta query at every startup that could drive that invalidation.
+    fun testGallerySync_neverTakesAParentFromUrisParentNode_andNeverEvictsAFolderListingOnAGuess() = runBlocking {
+        // Phase 2 step 2-3 (review R-01, R-05). This test used to pin "a gallery whose user!albums row
+        // carries Uris.ParentNode=/node/folder1 evicts folder1's cached listing". That cannot happen
+        // live: user!albums has no ParentNode at all, and a node's ParentNode is its OWN !parent link,
+        // not its parent. The fixture invented a payload SmugMug never sends. The real invalidation is
+        // the changed-parent relist of Phase 2 steps 2-8/2-9. Until then a sync must not guess.
 
         // Baseline: album already indexed with an older LastUpdated (as if from a previous sync).
         dao.upsertAlbums(listOf(
@@ -778,11 +778,13 @@ class SmugMugRepositoryTest {
         val updated = dao.getAlbumIndex("testuser").find { it.albumKey == "albumX" }
         assertEquals("2026-07-20T10:00:00+00:00", updated?.dateModified)
 
-        // ...and folder1's cached children were evicted so the Folders tab re-fetches fresh
-        // content next time it's opened, instead of showing the stale pre-update listing.
+        // ...the index row does not take a parent from ParentNode (R-01)...
+        assertEquals(null, updated?.parentNodeId)
+
+        // ...and folder1's cached listing is left alone: a sync has no real parent to evict by.
         assertEquals(
-            "Stale parent folder listing should be invalidated after a gallery under it changed",
-            0,
+            "A sync must not evict a listing on the strength of a ParentNode it cannot trust",
+            1,
             dao.getAllCachedNodes().count { it.parentNodeId == "folder1" }
         )
     }
@@ -952,7 +954,11 @@ class SmugMugRepositoryTest {
     }
 
     @Test
-    fun testRepositoryGetNodeCachingPrioritizesSecurityType() = runBlocking {
+    fun testUnlockRoot_isUnlockedByNodeId_andNeverInsertedIntoTheTree() = runBlocking {
+        // Phase 2 step 2-3: this used to assert the unlock root was cached with access "Password" (not
+        // privacy). The insert was the R-04 bug (a row under a parent nobody knew), so the root is now
+        // held in memory only; what matters is that the right node is unlocked and the tree is untouched.
+        val seen = java.util.Collections.synchronizedList(mutableListOf<String>())
         val mockNodeData = com.smugview.app.data.api.NodeData(
             uri = "/api/v2/node/testNodeId",
             nodeId = "testNodeId",
@@ -971,6 +977,7 @@ class SmugMugRepositoryTest {
         
         val mockInterceptor = Interceptor { chain ->
             val request = chain.request()
+            seen += "${request.method} ${request.url.encodedPath.removePrefix("/api/v2/")}"
             val json = if (request.method == "POST") {
                 "{}"
             } else if (request.url.encodedPath.endsWith("!parents")) {
@@ -990,14 +997,12 @@ class SmugMugRepositoryTest {
         val api = createMockApi(mockInterceptor)
         val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
         
-        // Call unlockInheritedPasswordRoot which fetches and caches the node
-        repository.unlockInheritedPasswordRoot("testNodeId", "dummy_key", "password")
-        
-        // Verify the node was saved into the fake database with the correct "Password" access parameter
-        // rather than the "Public" privacy parameter.
-        val cached = dao.getNodeById("testNodeId")
-        assertNotNull(cached)
-        assertEquals("Password", cached?.access)
+        val ok = repository.unlockInheritedPasswordRoot("testNodeId", "dummy_key", "password")
+
+        assertTrue(ok)
+        assertEquals(listOf("POST node/testNodeId!unlock"), seen.filter { it.startsWith("POST") })
+        assertEquals("the unlock root must not be inserted under an unknown parent", null, dao.getNodeById("testNodeId"))
+        assertEquals(emptyList<CachedNode>(), dao.getAllCachedNodes())
     }
 
     // R-21: a saved password was deleted on ANY failed unlock (offline, 429, 5xx, the synthetic 504),

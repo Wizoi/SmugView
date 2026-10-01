@@ -34,6 +34,9 @@ class FakeSmugMugServer {
     /** What a POST to `!unlock` answers. */
     var unlockCode: Int = 200
 
+    /** NodeIDs that `node!search` answers with (any query). */
+    var searchResultIds: List<String> = emptyList()
+
     private data class N(val id: String, val type: String, val name: String, val sec: String, val eff: String)
 
     private val root = N("4zqWw", "Folder", "Home", "None", "None")
@@ -96,13 +99,22 @@ class FakeSmugMugServer {
                 """{"Response":{"Album":{"Uri":"/api/v2/album/$key","AlbumKey":"$key","NodeID":"$nodeId","Name":"g"}},"Code":200}"""
             )
         }
+        if (path == "node!search") {
+            val nodes = searchResultIds.mapNotNull { lineages[it]?.first() }.joinToString(",") { n ->
+                val album = albumKeyToNodeId.entries.firstOrNull { it.value == n.id }?.key
+                    ?.let { ""","Album":"/api/v2/album/$it"""" } ?: ""
+                """{"Uri":"/api/v2/node/${n.id}","NodeID":"${n.id}","Type":"${n.type}","Name":"${n.name}",""" +
+                    """"SecurityType":"${n.sec}","Uris":{"ParentNode":"/api/v2/node/${n.id}!parent"$album}}"""
+            }
+            return json(req, 200, """{"Response":{"Node":[$nodes]},"Code":200}""")
+        }
         if (path.startsWith("node/") && !path.contains("!")) {
             val id = path.removePrefix("node/")
             val n = lineages[id]?.first() ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
             return json(
                 req, 200,
                 """{"Response":{"Node":{"Uri":"/api/v2/node/${n.id}","NodeID":"${n.id}","Type":"${n.type}","Name":"${n.name}",""" +
-                    """"SecurityType":"${n.sec}","Uris":{}}},"Code":200}"""
+                    """"SecurityType":"${n.sec}","Uris":{"ParentNode":"/api/v2/node/${n.id}!parent"}}},"Code":200}"""
             )
         }
         return json(req, 404, """{"Code":404,"Message":"unhandled in fake"}""")
