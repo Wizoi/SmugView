@@ -2,6 +2,7 @@ package com.smugview.app.scenario
 
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.data.repository.UnlockManager.Access
+import com.smugview.app.diag.SyncKind
 import com.smugview.app.ui.viewmodel.BrowserUiState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -39,7 +40,8 @@ class PasswordPromptScenarioTest {
         awaitUntil("A's root listing") { listedIds()?.contains("2sDN5x") == true }
         awaitUntil("A's syncs to end") {
             val runs = rig.reporter.runs.filter { it.nickname == "idzifamily" }
-            runs.isNotEmpty() && runs.all { it.endedAt != null }
+            // The tree walk starts only after the crawl run ends, so wait for its run too: it lists Work (and 401s).
+            runs.isNotEmpty() && runs.all { it.endedAt != null } && runs.any { it.kind == SyncKind.FolderTreeSync }
         }
     }
 

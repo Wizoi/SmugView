@@ -696,6 +696,9 @@ class SmugMugRepository @Inject constructor(
     /** One crawl at a time: a runtime-unlock crawl must wait for, then redo, a crawl that began without the session. */
     private val crawlMutex = Mutex()
 
+    /** The [UnlockManager.sessionEpoch] each site's latest crawl started under: a resync for that epoch or older is redundant. */
+    private val coveredEpoch = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     private suspend fun crawlLocked(
         nickname: String,
         apiKey: String,
@@ -706,6 +709,11 @@ class SmugMugRepository @Inject constructor(
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache starting for user=$nickname")
         }
+        // The session state this crawl starts under (design 3.6). A root that becomes Session while the
+        // crawl is in flight is invisible to the pages it already fetched, so its galleries would look
+        // deleted: such a crawl may not prune (below), and the resync that follows the unlock redoes it.
+        val startEpoch = unlocks.sessionEpoch.value
+        coveredEpoch[nickname] = startEpoch
         val actionId = com.smugview.app.diag.DiagContext.newActionId("sync")
         return kotlinx.coroutines.withContext(
             kotlinx.coroutines.Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
@@ -751,7 +759,8 @@ class SmugMugRepository @Inject constructor(
                         r.albumsPasswordSecurity = passwordSecurity
                     }
                 }
-                val written = crawl.write(nickname, fetched.albums, prune = unlock?.allSucceeded == true)
+                val sessionUnchanged = unlocks.sessionEpoch.value == startEpoch
+                val written = crawl.write(nickname, fetched.albums, prune = unlock?.allSucceeded == true && sessionUnchanged)
                 complete = true
                 pruned = written.pruned
                 pruneSkipped = written.pruneSkipped
@@ -1002,21 +1011,33 @@ class SmugMugRepository @Inject constructor(
      * roots (so the session cookie exists), then the gallery crawl, then the folder tree. Returns the
      * folders whose listing changed so the caller can reload one that is on screen.
      */
-    suspend fun runSiteSync(nickname: String, rootNodeId: String, apiKey: String): Set<String> =
-        syncSite(nickname, rootNodeId, apiKey, unlockSavedRoots(nickname, apiKey), ignoreGate = false)
+    suspend fun runSiteSync(nickname: String, rootNodeId: String, apiKey: String): Set<String> {
+        // The crawl mutex is held across the unlock AND the crawl: the unlock bumps the session epoch,
+        // and a resync triggered by that bump must queue behind this crawl (which covers it), not run
+        // first and leave this one gated and unable to prune.
+        val invalidated = crawlMutex.withLock {
+            val unlock = unlockSavedRoots(nickname, apiKey)
+            crawlLocked(nickname, apiKey, unlock, rootNodeId, false)
+        }
+        return afterCrawl(nickname, rootNodeId, apiKey, invalidated)
+    }
 
     /**
      * Crawl and tree walk again after the user unlocked a password folder or gallery while the app was
      * running: the new session cookie makes galleries visible to `user!albums` that the last crawl
-     * could not see, so the 15-minute gate does not apply. [UnlockSummary] is unknown here, so nothing is pruned.
+     * could not see, so the 15-minute gate does not apply. [UnlockSummary] is unknown here, so nothing
+     * is pruned. A no-op (no run, no tree walk) when the latest crawl already started under the current
+     * session epoch: the launch unlock bumps the epoch before the launch crawl, which covers it.
      */
-    suspend fun resyncAfterUnlock(nickname: String, rootNodeId: String, apiKey: String): Set<String> =
-        syncSite(nickname, rootNodeId, apiKey, null, ignoreGate = true)
+    suspend fun resyncAfterUnlock(nickname: String, rootNodeId: String, apiKey: String): Set<String> {
+        val invalidated = crawlMutex.withLock {
+            if (unlocks.sessionEpoch.value <= (coveredEpoch[nickname] ?: -1)) return emptySet()
+            crawlLocked(nickname, apiKey, null, rootNodeId, true)
+        }
+        return afterCrawl(nickname, rootNodeId, apiKey, invalidated)
+    }
 
-    private suspend fun syncSite(
-        nickname: String, rootNodeId: String, apiKey: String, unlock: UnlockSummary?, ignoreGate: Boolean
-    ): Set<String> {
-        val invalidated = buildInMemoryGalleryCache(nickname, apiKey, unlock, rootNodeId, ignoreGate)
+    private suspend fun afterCrawl(nickname: String, rootNodeId: String, apiKey: String, invalidated: Set<String>): Set<String> {
         syncFolderTree(nickname, rootNodeId, apiKey)
         // The tree walk may have cached folders the crawl could not match (design 3.4: again after the tree sync).
         val again = IndexParentResolver(dao, clock) { id -> relistOne(nickname, id, apiKey) }

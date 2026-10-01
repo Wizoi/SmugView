@@ -229,7 +229,8 @@ class GalleryCrawlTest {
         val before = server.albumsRequests().size
 
         now += 60_000L
-        assertTrue(runBlocking { r.unlockNode("2sDN5x", "k", "fake-pw-1") })
+        // Through UnlockManager, as every app path does: the session epoch it bumps is what a resync is for.
+        assertEquals(SmugMugRepository.UnlockResult.Success, runBlocking { r.unlocks.reauthorize("2sDN5x", "k", "fake-pw-1") })
         runBlocking { r.resyncAfterUnlock(nick, "4zqWw", "k") }
 
         assertTrue("a new crawl ran inside the gate", server.albumsRequests().size > before)

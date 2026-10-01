@@ -222,6 +222,7 @@ class SmugViewModel @Inject constructor(
         browserHost.render(BrowserState())
         treeSyncJob = null
         unlockResyncJob = null
+        unlockEpochJob = null
         unlockSubtreeIndexJob = null
         _userAlbums = null
         _exifStates.clear()
@@ -592,6 +593,7 @@ class SmugViewModel @Inject constructor(
 
     private var treeSyncJob: kotlinx.coroutines.Job? = null
     private var unlockResyncJob: kotlinx.coroutines.Job? = null
+    private var unlockEpochJob: kotlinx.coroutines.Job? = null
     private var unlockSubtreeIndexJob: kotlinx.coroutines.Job? = null
 
     fun performSearch(query: String, forceRefresh: Boolean = false) = search.performSearch(query, forceRefresh)
@@ -1168,8 +1170,9 @@ class SmugViewModel @Inject constructor(
                         pendingOpen = null
                         // Galleries under the unlocked folder are now visible: index them and refresh
                         // what the user sees, off the tap.
+                        // The resync is not started here: the session epoch this unlock bumped starts it
+                        // (see [watchUnlockEpoch]), so every unlock path gets one and none gets two.
                         if (result.rootIsFolder) indexUnlockedSubtreeInBackground(result.rootId, normalizedPassword)
-                        resyncAfterUnlock()
                         _activeNickname.value?.let { activeNick -> loadActiveSiteDetails(activeNick) }
                         if (target.type == "Folder") {
                             navigator.navigate(NavIntent.Child(target))
@@ -1203,7 +1206,26 @@ class SmugViewModel @Inject constructor(
         }
     }
 
-    /** A new session cookie makes more galleries visible to the index crawl, so crawl now, not at the next launch. */
+    /**
+     * A root became Session while this site is open: the new cookie makes more galleries visible to the
+     * index crawl, so crawl now, not at the next launch (design 3.6). Driven by the epoch, not by a
+     * caller. The value at the start is the baseline: the launch unlock bumps the epoch too, and the
+     * repository skips a resync for an epoch the launch crawl already started under. Runs in the
+     * site's session scope, so a site switch cancels it.
+     */
+    private fun watchUnlockEpoch() {
+        unlockEpochJob?.cancel()
+        unlockEpochJob = session.scope.launch {
+            var seen = repository.unlocks.sessionEpoch.value
+            repository.unlocks.sessionEpoch.collect { epoch ->
+                if (epoch != seen) {
+                    seen = epoch
+                    resyncAfterUnlock()
+                }
+            }
+        }
+    }
+
     private fun resyncAfterUnlock() {
         val nickname = _activeNickname.value ?: return
         val rootId = session.rootNodeId ?: return
@@ -2084,6 +2106,7 @@ class SmugViewModel @Inject constructor(
      */
     private fun startSiteSync(nickname: String, rootNodeId: String) {
         session.rootNodeId = rootNodeId
+        watchUnlockEpoch()
         treeSyncJob?.cancel()
         treeSyncJob = session.scope.launch {
             val invalidatedParents = repository.runSiteSync(nickname, rootNodeId, apiKey)

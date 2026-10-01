@@ -39,7 +39,7 @@ class FakeSmugMugServer {
      * A request held inside the interceptor (an OkHttp thread) until [release]. [awaitArrived] says
      * whether the first matching request reached the fake in time.
      */
-    class Gate internal constructor(internal val pathContains: String) {
+    class Gate internal constructor(internal val pathContains: String, internal val answerFirst: Boolean = false) {
         private val arrived = CountDownLatch(1)
         private val released = CountDownLatch(1)
         internal fun arrive() = arrived.countDown()
@@ -52,9 +52,11 @@ class FakeSmugMugServer {
 
     /**
      * Holds every request whose "path?query" contains [pathContains] until [Gate.release]. Requests
-     * that arrive after the release go straight through.
+     * that arrive after the release go straight through. With [answerFirst] the response is computed
+     * from the server's state when the request ARRIVES and only delivered at the release: a reply that
+     * was already in flight (and so can't see what happened while it was held).
      */
-    fun hold(pathContains: String): Gate = Gate(pathContains).also { gates += it }
+    fun hold(pathContains: String, answerFirst: Boolean = false): Gate = Gate(pathContains, answerFirst).also { gates += it }
 
     /** Lets every held request go (test teardown). */
     fun releaseAllGates() = gates.forEach { it.release() }
@@ -297,10 +299,22 @@ class FakeSmugMugServer {
         requestLog += req
         if (unlockedRoots.isNotEmpty()) requestsWithSession += "${req.method} $path"
         val target = "$path?${req.url.query.orEmpty()}"
-        gates.firstOrNull { target.contains(it.pathContains) }?.let {
+        val gate = gates.firstOrNull { target.contains(it.pathContains) }
+        if (gate != null && gate.answerFirst) {
+            val early = route(req, path, target)
+            gate.arrive()
+            try { gate.awaitRelease() } catch (e: InterruptedException) { throw IOException("held request interrupted", e) }
+            return early
+        }
+        gate?.let {
             it.arrive()
             try { it.awaitRelease() } catch (e: InterruptedException) { throw IOException("held request interrupted", e) }
         }
+        return route(req, path, target)
+    }
+
+    @Throws(IOException::class)
+    private fun route(req: Request, path: String, target: String): Response {
         throttles.firstOrNull { target.contains(it.pathContains) && it.remaining.get() > 0 }?.let {
             if (it.remaining.getAndDecrement() > 0) {
                 if (it.code != 429) return json(req, it.code, """{"Code":${it.code},"Message":"Injected"}""")
