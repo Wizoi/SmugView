@@ -33,6 +33,9 @@ interface CollectionDao {
     @Query("SELECT * FROM cached_nodes WHERE nodeId = :nodeId LIMIT 1")
     suspend fun getNodeById(nodeId: String): CachedNode?
 
+    @Query("SELECT nodeId FROM cached_albums WHERE albumKey = :albumKey LIMIT 1")
+    suspend fun getAlbumNodeIdByKey(albumKey: String): String?
+
     @Query("SELECT * FROM cached_nodes WHERE nodeId = :idOrKey OR albumUri LIKE '%' || :idOrKey LIMIT 1")
     suspend fun getNodeByIdOrKey(idOrKey: String): CachedNode?
 

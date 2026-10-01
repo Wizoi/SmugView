@@ -973,6 +973,8 @@ class SmugMugRepositoryTest {
             val request = chain.request()
             val json = if (request.method == "POST") {
                 "{}"
+            } else if (request.url.encodedPath.endsWith("!parents")) {
+                parentsDoc("testNodeId", "Password")
             } else {
                 com.google.gson.Gson().toJson(com.smugview.app.data.api.SingleNodeResponse(com.smugview.app.data.api.SingleNodePayload(mockNodeData)))
             }
@@ -1013,6 +1015,10 @@ class SmugMugRepositoryTest {
             val req = chain.request()
             if (req.method == "POST") {
                 unlockBehaviour(req)
+            } else if (req.url.encodedPath.endsWith("!parents")) {
+                Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                    .body(parentsDoc("2sDN5x", "Password").toResponseBody("application/json".toMediaTypeOrNull()))
+                    .build()
             } else {
                 Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
                     .body(com.google.gson.Gson().toJson(SingleNodeResponse(SingleNodePayload(folder)))
@@ -1024,6 +1030,10 @@ class SmugMugRepositoryTest {
         val ok = repository.unlockInheritedPasswordRoot("2sDN5x", "dummy_key", "secret")
         ok to store
     }
+
+    /** `node/{id}!parents` for a single self-first node (SmugMug never sends "Inherited", findings #19). */
+    private fun parentsDoc(id: String, security: String) =
+        """{"Response":{"Node":[{"Uri":"/api/v2/node/$id","NodeID":"$id","Type":"Folder","SecurityType":"$security"}]},"Code":200}"""
 
     private fun codeResponse(req: okhttp3.Request, code: Int) =
         Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(code).message("x")

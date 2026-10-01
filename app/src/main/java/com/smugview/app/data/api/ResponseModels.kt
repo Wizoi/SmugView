@@ -83,6 +83,24 @@ data class NodeUris(
     @SerializedName("ParentNode") val parentNode: String? = null
 )
 
+// Node lineage (`node/{id}!parents`): self first, then each ancestor up to the site root.
+data class NodeParentsResponse(
+    @SerializedName("Response") val response: NodeParentsPayload
+)
+data class NodeParentsPayload(
+    @SerializedName("Node") val nodes: List<ParentNodeData>? = null
+)
+data class ParentNodeData(
+    @SerializedName("Uri") val uri: String? = null,
+    @SerializedName("NodeID") val nodeId: String,
+    @SerializedName("Type") val type: String? = null,
+    @SerializedName("Name") val name: String? = null,
+    /** "Password", "None", ... SmugMug never sends "Inherited" (findings #19). */
+    @SerializedName("SecurityType") val securityType: String? = null,
+    @SerializedName("EffectiveSecurityType") val effectiveSecurityType: String? = null,
+    @SerializedName("WebUri") val webUri: String? = null
+)
+
 // Album Images Response
 data class AlbumImagesResponse(
     @SerializedName("Response") val response: AlbumImagesPayload,

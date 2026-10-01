@@ -13,6 +13,7 @@ import com.smugview.app.data.api.ImageSearchResponse
 import com.smugview.app.data.api.ExifData
 import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.api.NodeData
+import com.smugview.app.data.api.ParentNodeData
 import com.smugview.app.data.api.UserSearchResponse
 import com.smugview.app.data.api.UserData
 import com.smugview.app.data.db.CachedNode
@@ -1520,38 +1521,45 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
-    suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): String {
-        var currentId = nodeId
-        while (true) {
-            try {
-                val nodeResponse = api.getNode(currentId, apiKey, ignoreErrors = "true")
-                val nodeData = nodeResponse.response.node
-                if (nodeData.securityType == "Password") {
-                    return currentId
-                }
-                val parentUri = nodeData.uris.parentNode
-                if (parentUri != null && nodeData.securityType == "Inherited") {
-                    val parentId = parentUri.substringAfterLast("/").substringBefore("!")
-                    if (parentId.isNotEmpty() && parentId != currentId) {
-                        currentId = parentId
-                        continue
-                    }
-                }
-                break
-            } catch (e: Exception) {
-                break
+    /**
+     * Which node holds the password that protects [nodeId] (a NodeID or an AlbumKey)?
+     * Reads `node/{id}!parents` (self first, anonymous-readable) and returns the nearest ancestor
+     * whose own SecurityType is Password. SmugMug never sends "Inherited" (findings #19), so the old
+     * walk-while-Inherited stopped at the first sub-folder. [RootResolution.Unknown] means the lineage
+     * could not be read; callers must not unlock or delete anything on Unknown.
+     */
+    suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): RootResolution {
+        val mappedId = dao.getNodeByIdOrKey(nodeId)?.nodeId
+            ?: dao.getAlbumNodeIdByKey(nodeId)
+            ?: nodeId
+        suspend fun parentsOf(id: String): List<ParentNodeData>? =
+            api.getNodeParents(id, apiKey, ignoreErrors = "true").response.nodes
+        return try {
+            val chain = try {
+                parentsOf(mappedId)
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() != 404) throw e
+                // An AlbumKey that is not in the cache: ask the album for its NodeID, then retry.
+                val realId = api.getAlbum(mappedId, apiKey, ignoreErrors = "true").response.album.nodeId
+                if (realId.isNullOrEmpty() || realId == mappedId) null else parentsOf(realId)
             }
+            if (chain.isNullOrEmpty()) return RootResolution.Unknown
+            val root = chain.firstOrNull { it.securityType == "Password" }
+            if (root != null) RootResolution.Resolved(root.nodeId) else RootResolution.NotProtected
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RootResolution.Unknown
         }
-        return currentId
     }
 
     suspend fun unlockInheritedPasswordRoot(idOrKey: String, apiKey: String, password: String): Boolean {
         val node = dao.getNodeByIdOrKey(idOrKey)
         val nodeId = node?.nodeId ?: idOrKey
-        val rootNodeId = try {
-            resolvePasswordRootNodeId(nodeId, apiKey)
-        } catch (e: Exception) {
-            nodeId
+        val rootNodeId = when (val r = resolvePasswordRootNodeId(nodeId, apiKey)) {
+            is RootResolution.Resolved -> r.nodeId
+            RootResolution.NotProtected -> nodeId
+            RootResolution.Unknown -> return false
         }
         
         val rootNode = dao.getNodeById(rootNodeId) ?: try {

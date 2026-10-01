@@ -1139,7 +1139,8 @@ class SmugViewModel @Inject constructor(
         viewModelScope.launch {
             targetNodeToUnlockAfterSuccess = node
             try {
-                val rootNodeId = repository.resolvePasswordRootNodeId(node.nodeId, apiKey)
+                val resolution = repository.resolvePasswordRootNodeId(node.nodeId, apiKey)
+                val rootNodeId = (resolution as? com.smugview.app.data.repository.RootResolution.Resolved)?.nodeId ?: node.nodeId
                 if (rootNodeId != node.nodeId) {
                     var rootNode = repository.getNodeById(rootNodeId)
                     if (rootNode == null) {

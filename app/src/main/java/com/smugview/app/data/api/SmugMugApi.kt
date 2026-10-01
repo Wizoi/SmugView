@@ -61,6 +61,16 @@ interface SmugMugApi {
         @Header("X-Ignore-Errors") ignoreErrors: String? = null
     ): SingleNodeResponse
 
+    /** The node's lineage, SELF FIRST, then its parent, up to the site root (verified live 2026-09-30). */
+    @GET("node/{node_id}!parents")
+    suspend fun getNodeParents(
+        @Path("node_id") nodeId: String,
+        @Query("APIKey") apiKey: String,
+        @Query("_filter") filter: String = "Uri,NodeID,Type,Name,SecurityType,EffectiveSecurityType,WebUri",
+        @Query("_verbosity") verbosity: Int = 1,
+        @Header("X-Ignore-Errors") ignoreErrors: String? = null
+    ): NodeParentsResponse
+
     @GET("album/{album_key}")
     suspend fun getAlbum(
         @Path("album_key") albumKey: String,
