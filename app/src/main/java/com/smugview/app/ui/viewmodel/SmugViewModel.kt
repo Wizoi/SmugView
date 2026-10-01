@@ -1999,6 +1999,15 @@ class SmugViewModel @Inject constructor(
     fun removeBookmark(collectionId: Long, type: String, itemKey: String) =
         collections.removeBookmark(collectionId, type, itemKey)
 
+    fun keepGalleryOffline(collectionId: Long, albumKey: String, title: String?) =
+        collections.keepGalleryOffline(collectionId, albumKey, title)
+
+    fun stopKeepingGalleryOffline(collectionId: Long, albumKey: String) =
+        collections.stopKeepingGalleryOffline(collectionId, albumKey)
+
+    fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean) =
+        collections.setGalleryWifiOnly(collectionId, albumKey, wifiOnly)
+
     suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean =
         collections.isBookmarked(collectionId, type, itemKey)
 

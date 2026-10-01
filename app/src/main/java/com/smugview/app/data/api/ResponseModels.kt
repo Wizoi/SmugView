@@ -127,6 +127,9 @@ data class AlbumImageData(
     @SerializedName("OriginalWidth") val originalWidth: Int? = null,
     @SerializedName("OriginalHeight") val originalHeight: Int? = null,
     @SerializedName("OriginalSize") val originalSize: Long? = null,
+    /** What the original weighs and its MD5 (5-7): the offline download verifies both. */
+    @SerializedName("ArchivedSize") val archivedSize: Long? = null,
+    @SerializedName("ArchivedMD5") val archivedMd5: String? = null,
     @SerializedName("Format") val format: String? = null,
     @SerializedName("Uris") val uris: AlbumImageUris? = null,
     var videoUrl: String? = null

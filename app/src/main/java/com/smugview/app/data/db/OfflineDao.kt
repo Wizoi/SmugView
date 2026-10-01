@@ -21,6 +21,10 @@ interface OfflineDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertGallery(gallery: OfflineGallery)
 
+    /** Keeps a gallery: IGNORE, so asking again never resets a LISTED one (REPLACE would cascade-delete its items). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertGallery(gallery: OfflineGallery): Long
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGalleryItems(items: List<OfflineGalleryItem>)
 
@@ -169,4 +173,118 @@ interface OfflineDao {
             "AND (nextAttemptAt IS NULL OR nextAttemptAt <= :now))) AND (wifiOnly = 0 OR :unmetered = 1)"
     )
     suspend fun countDue(now: Long, unmetered: Boolean): Int
+
+    // ---- kept galleries (5-7) ---------------------------------------------------------------------------------
+
+    @Query("SELECT * FROM offline_galleries WHERE collectionId = :collectionId AND albumKey = :albumKey")
+    suspend fun getGallery(collectionId: Long, albumKey: String): OfflineGallery?
+
+    @Query("DELETE FROM offline_gallery_items WHERE collectionId = :collectionId AND albumKey = :albumKey")
+    suspend fun deleteGalleryItems(collectionId: Long, albumKey: String): Int
+
+    /** The change date the album index holds now: what a listing is compared against later. */
+    @Query("SELECT imagesLastUpdated FROM cached_albums WHERE albumKey = :albumKey")
+    suspend fun cachedImagesLastUpdated(albumKey: String): String?
+
+    /**
+     * Galleries a pass may list, oldest first: never listed (LIST_PENDING), a retryable failure that is due
+     * ([retryBefore] = now minus the retry gap, against `listedAt` = the time of the last try), or LISTED while the
+     * album index says its photos changed since (`ImagesLastUpdated` newer than the one listed). A `wifiOnly`
+     * gallery waits for an unmetered pass ([unmetered]).
+     */
+    @Query(
+        "SELECT * FROM offline_galleries g WHERE (g.state = 'LIST_PENDING' " +
+            "OR (g.state = 'FAILED' AND g.retryable = 1 AND (g.listedAt IS NULL OR g.listedAt <= :retryBefore)) " +
+            "OR (g.state = 'LISTED' AND EXISTS(SELECT 1 FROM cached_albums a WHERE a.albumKey = g.albumKey " +
+            "AND a.imagesLastUpdated IS NOT NULL AND a.imagesLastUpdated > COALESCE(g.listedIlu, '')))) " +
+            "AND (g.wifiOnly = 0 OR :unmetered = 1) ORDER BY g.collectionId, g.albumKey LIMIT :limit"
+    )
+    suspend fun galleriesToList(retryBefore: Long, unmetered: Boolean, limit: Int): List<OfflineGallery>
+
+    /** Galleries that want a listing at all (no due time, no network class): a reason to schedule a pass. */
+    @Query(
+        "SELECT COUNT(*) FROM offline_galleries g WHERE g.state = 'LIST_PENDING' " +
+            "OR (g.state = 'FAILED' AND g.retryable = 1) " +
+            "OR (g.state = 'LISTED' AND EXISTS(SELECT 1 FROM cached_albums a WHERE a.albumKey = g.albumKey " +
+            "AND a.imagesLastUpdated IS NOT NULL AND a.imagesLastUpdated > COALESCE(g.listedIlu, '')))"
+    )
+    suspend fun countGalleriesWanted(): Int
+
+    @Query(
+        "SELECT COUNT(*) FROM offline_galleries g WHERE g.wifiOnly = 1 AND (g.state = 'LIST_PENDING' " +
+            "OR (g.state = 'FAILED' AND g.retryable = 1) " +
+            "OR (g.state = 'LISTED' AND EXISTS(SELECT 1 FROM cached_albums a WHERE a.albumKey = g.albumKey " +
+            "AND a.imagesLastUpdated IS NOT NULL AND a.imagesLastUpdated > COALESCE(g.listedIlu, ''))))"
+    )
+    suspend fun countGalleriesWantedWifiOnly(): Int
+
+    /** When a retryable gallery failure is next worth trying (`listedAt` + [gapMs]); null when there is none. */
+    @Query(
+        "SELECT MIN(COALESCE(listedAt, 0) + :gapMs) FROM offline_galleries WHERE state = 'FAILED' AND retryable = 1 " +
+            "AND (wifiOnly = 0 OR :unmetered = 1)"
+    )
+    suspend fun earliestGalleryRetryAt(gapMs: Long, unmetered: Boolean): Long?
+
+    @Query(
+        "UPDATE offline_galleries SET state = 'LISTED', failure = NULL, retryable = 0, listedAt = :now, " +
+            "listedIlu = :ilu, photoCount = :count WHERE collectionId = :collectionId AND albumKey = :albumKey"
+    )
+    suspend fun markGalleryListed(collectionId: Long, albumKey: String, now: Long, ilu: String?, count: Int): Int
+
+    /** A failed try: the items of an earlier listing stay. `listedAt` becomes the time of this try (retry gap). */
+    @Query(
+        "UPDATE offline_galleries SET state = 'FAILED', failure = :failure, retryable = :retryable, listedAt = :now " +
+            "WHERE collectionId = :collectionId AND albumKey = :albumKey"
+    )
+    suspend fun markGalleryFailed(collectionId: Long, albumKey: String, failure: String, retryable: Boolean, now: Long): Int
+
+    /** A password came into session: a gallery that was permanently locked is worth listing again. */
+    @Query(
+        "UPDATE offline_galleries SET state = 'LIST_PENDING', failure = NULL, retryable = 0 " +
+            "WHERE state = 'FAILED' AND failure = 'LOCKED' AND retryable = 0"
+    )
+    suspend fun requeueLockedGalleries(): Int
+
+    @Query("UPDATE offline_galleries SET wifiOnly = :wifiOnly WHERE collectionId = :collectionId AND albumKey = :albumKey")
+    suspend fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean): Int
+
+    /**
+     * A file that is not DONE waits for Wi-Fi only when NOTHING that wants it allows mobile data: a saved photo, an
+     * Image bookmark and a gallery with `wifiOnly = 0` each do (Q3). Recomputed for the files of one gallery
+     * whenever its rule changes.
+     */
+    @Query(
+        "UPDATE offline_files SET wifiOnly = CASE WHEN " +
+            "EXISTS(SELECT 1 FROM collection_photos p WHERE p.imageKey = offline_files.imageKey) " +
+            "OR EXISTS(SELECT 1 FROM collection_bookmarks b WHERE b.type = 'Image' AND b.itemKey = offline_files.imageKey) " +
+            "OR EXISTS(SELECT 1 FROM offline_gallery_items i JOIN offline_galleries g " +
+            "ON g.collectionId = i.collectionId AND g.albumKey = i.albumKey " +
+            "WHERE i.imageKey = offline_files.imageKey AND g.wifiOnly = 0) THEN 0 ELSE 1 END, updatedAt = :now " +
+            "WHERE state != 'DONE' AND EXISTS(SELECT 1 FROM offline_gallery_items x " +
+            "WHERE x.collectionId = :collectionId AND x.albumKey = :albumKey AND x.imageKey = offline_files.imageKey)"
+    )
+    suspend fun recomputeWifiOnlyForGallery(collectionId: Long, albumKey: String, now: Long): Int
+
+    /** A row that exists and is not DONE may start using mobile data (a photo saved alone, or a looser gallery). */
+    @Query("UPDATE offline_files SET wifiOnly = 0, updatedAt = :now WHERE fileKey = :fileKey AND wifiOnly = 1 AND state != 'DONE'")
+    suspend fun loosenWifiOnly(fileKey: String, now: Long): Int
+
+    /** A fresh listing knows the source, size and MD5 better than a row made without them. */
+    @Query(
+        "UPDATE offline_files SET sourceUrl = COALESCE(:sourceUrl, sourceUrl), expectedBytes = COALESCE(:bytes, expectedBytes), " +
+            "md5 = COALESCE(:md5, md5), updatedAt = :now WHERE fileKey = :fileKey AND state IN ('PENDING', 'FAILED')"
+    )
+    suspend fun fillSource(fileKey: String, sourceUrl: String?, bytes: Long?, md5: String?, now: Long): Int
+
+    /**
+     * The photo changed on SmugMug (a DONE row whose known MD5 differs from the listed one): back to PENDING with
+     * the new source, size and MD5; the old file is replaced when the new one commits.
+     */
+    @Query(
+        "UPDATE offline_files SET state = 'PENDING', failure = NULL, retryable = 0, attempts = 0, nextAttemptAt = NULL, " +
+            "httpCode = NULL, claim = NULL, relPath = NULL, bytes = NULL, sourceUrl = COALESCE(:sourceUrl, sourceUrl), " +
+            "expectedBytes = :bytes, md5 = :md5, updatedAt = :now " +
+            "WHERE fileKey = :fileKey AND state = 'DONE' AND md5 IS NOT NULL AND md5 != :md5"
+    )
+    suspend fun resetChanged(fileKey: String, sourceUrl: String?, bytes: Long?, md5: String, now: Long): Int
 }

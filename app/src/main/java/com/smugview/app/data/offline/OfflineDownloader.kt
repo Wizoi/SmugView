@@ -2,6 +2,8 @@ package com.smugview.app.data.offline
 
 import com.smugview.app.data.api.isSyntheticCacheMiss
 import com.smugview.app.data.db.OfflineFile
+import com.smugview.app.data.db.OfflineGallery
+import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.data.repository.ImageSource
 import com.smugview.app.data.repository.SmugMugRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -50,7 +52,7 @@ data class PassResult(
 )
 
 /**
- * One pass over the wanted files (phase 5 design 2.4, photos only; galleries arrive in 5-7). Everything that can go
+ * One pass over the wanted files (phase 5 design 2.4): first the kept galleries that need listing, then the files. Everything that can go
  * wrong is mapped by [DownloadFailure]; everything that touches a file or its row goes through [OfflineStore].
  *
  *  - One process-wide [Mutex]: two works never download at once, and a second pass for the same key finds it DONE.
@@ -95,7 +97,7 @@ class OfflineDownloader(
         var bytes = 0L
         var consecutiveOffline = 0
         var stoppedFor: FailureReason? = null
-        var more = false
+        var more = listGalleries(unmetered, started, budgetMs)
         while (true) {
             val next = nextRow(unmetered, tried)
             if (next == null) break
@@ -114,6 +116,84 @@ class OfflineDownloader(
             }
         }
         PassResult(pass, downloaded, failed, bytes, more, stoppedFor)
+    }
+
+    /**
+     * Design 2.4 step 3: lists the kept galleries that need it (never listed, a retryable failure that is due, or
+     * changed since the last listing), at most [OfflineStore.GALLERIES_PER_PASS] per pass and each at most once.
+     * Returns true when more were left for the next run. A gallery's photos are listed completely or not at all
+     * (a page that fails leaves the earlier listing, if any, untouched); what the listing adds is only PENDING,
+     * never DONE (5-7: offline or 429 half-way never leaves a row Done).
+     */
+    private suspend fun listGalleries(unmetered: Boolean, started: Long, budgetMs: Long): Boolean {
+        val tried = HashSet<Pair<Long, String>>()
+        var more = false
+        var changed = false
+        while (true) {
+            val next = store.galleriesToList(unmetered, tried.size + 1)
+                .firstOrNull { (it.collectionId to it.albumKey) !in tried } ?: break
+            if (tried.size >= OfflineStore.GALLERIES_PER_PASS || clock() - started >= budgetMs) { more = true; break }
+            tried += next.collectionId to next.albumKey
+            val outcome = listOne(next)
+            if (outcome == ListOutcome.LISTED) changed = true
+            if (outcome == ListOutcome.OFFLINE) break
+        }
+        // Photos a re-listing dropped are garbage now (space comes back in the same pass).
+        if (changed) store.collectGarbage()
+        return more
+    }
+
+    private enum class ListOutcome { LISTED, FAILED, OFFLINE }
+
+    private suspend fun listOne(gallery: OfflineGallery): ListOutcome {
+        val key = gallery.albumKey
+        var sessionTransient = false
+        try {
+            val ilu = store.cachedImagesLastUpdated(key)
+            // The saved password is tried here once; a gallery under no password answers Rejected (no change) and is
+            // listed anyway. A password is never deleted by this (R-21).
+            if (repo.unlocks.ensureSession(key, apiKey()) == SmugMugRepository.UnlockResult.Transient) sessionTransient = true
+            val images = repo.getAllAlbumImages(key, apiKey(), password = null, cacheControl = "no-cache")
+            store.applyListing(
+                gallery,
+                images.map {
+                    OfflineStore.ListedImage(
+                        imageKey = it.imageKey,
+                        sourceUrl = it.archivedUri?.takeIf { u -> u.isNotEmpty() },
+                        bytes = it.archivedSize?.takeIf { s -> s > 0 },
+                        md5 = it.archivedMd5?.takeIf { m -> m.isNotEmpty() }?.lowercase(),
+                        title = it.title?.takeIf { t -> t.isNotBlank() },
+                        thumbnailUrl = it.thumbnailUrl,
+                        format = it.format,
+                        dateTaken = it.date
+                    )
+                },
+                ilu
+            )
+            return ListOutcome.LISTED
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: AlbumLockedException) {
+            store.failGallery(gallery, DownloadFailure.locked(transient = e.pendingReason != null || sessionTransient))
+            return ListOutcome.FAILED
+        } catch (e: HttpException) {
+            val code = e.code()
+            val raw = e.response()?.raw()
+            val failure = if (code == 401 || code == 403) DownloadFailure.locked(transient = false)
+            else DownloadFailure.classify(
+                code, raw?.headers, null, wroteBytes = false,
+                syntheticCacheMiss = raw?.isSyntheticCacheMiss() == true, reResolved = true, nowMs = clock()
+            ) ?: Failure(FailureReason.UNEXPECTED, retryable = false, httpCode = code)
+            store.failGallery(gallery, failure)
+            return if (failure.reason == FailureReason.OFFLINE) ListOutcome.OFFLINE else ListOutcome.FAILED
+        } catch (e: IOException) {
+            store.failGallery(gallery, DownloadFailure.classify(null, null, e, wroteBytes = false, nowMs = clock())!!)
+            return ListOutcome.OFFLINE
+        } catch (e: Exception) {
+            // A bug, not a network event: visible, not retried by itself.
+            store.failGallery(gallery, Failure(FailureReason.UNEXPECTED, retryable = false))
+            return ListOutcome.FAILED
+        }
     }
 
     /** The oldest wanted row this pass has not tried yet. */

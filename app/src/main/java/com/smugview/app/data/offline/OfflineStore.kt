@@ -3,6 +3,8 @@ package com.smugview.app.data.offline
 import androidx.room.withTransaction
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.OfflineFile
+import com.smugview.app.data.db.OfflineGallery
+import com.smugview.app.data.db.OfflineGalleryItem
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -92,8 +94,92 @@ class OfflineStore(
             retryable = false, wifiOnly = wifiOnly, createdAt = now, updatedAt = now
         )
         dao.insertFile(row)
+        // A row that exists wins (N4), except that mobile data may only ever be ALLOWED by a new wanter: a photo saved
+        // alone must not wait for Wi-Fi because a Wi-Fi-only gallery happened to list it first (5-7, design 8.1 Q3).
+        if (!wifiOnly) dao.loosenWifiOnly(row.fileKey, now)
         return dao.getFile(row.fileKey) ?: row
     }
+
+    /** What a gallery listing says about one photo. */
+    class ListedImage(
+        val imageKey: String,
+        val sourceUrl: String?,
+        val bytes: Long?,
+        val md5: String?,
+        val title: String?,
+        val thumbnailUrl: String?,
+        val format: String?,
+        val dateTaken: String?
+    )
+
+    /**
+     * Applies one complete listing of a kept gallery in ONE transaction (design 2.4 step 3): the items are replaced,
+     * a file row is `INSERT OR IGNORE`d for each photo (with its source, size and MD5, and the gallery's Wi-Fi rule),
+     * a row that exists and is not DONE learns the source, size and MD5, a DONE row whose MD5 changed goes back to
+     * PENDING, and the gallery is LISTED. Returns false when the gallery is gone (it was unbookmarked while the
+     * listing was on the wire): nothing is written then. All of it or none of it: a failed listing never gets here.
+     */
+    suspend fun applyListing(gallery: OfflineGallery, images: List<ListedImage>, ilu: String?): Boolean =
+        db.withTransaction {
+            val current = dao.getGallery(gallery.collectionId, gallery.albumKey) ?: return@withTransaction false
+            val now = clock()
+            dao.deleteGalleryItems(current.collectionId, current.albumKey)
+            val seen = HashSet<String>()
+            val items = ArrayList<OfflineGalleryItem>(images.size)
+            for (image in images) {
+                if (!seen.add(image.imageKey)) continue
+                items += OfflineGalleryItem(current.collectionId, current.albumKey, image.imageKey, items.size)
+            }
+            dao.insertGalleryItems(items)
+            for (image in images.distinctBy { it.imageKey }) {
+                val valid = isValidKey(image.imageKey)
+                val fileKey = fileKeyOf(image.imageKey)
+                dao.insertFile(
+                    OfflineFile(
+                        fileKey = fileKey, imageKey = image.imageKey, albumKey = current.albumKey, nickname = current.nickname,
+                        sourceUrl = image.sourceUrl, expectedBytes = image.bytes, md5 = image.md5, title = image.title,
+                        thumbnailUrl = image.thumbnailUrl, format = image.format, dateTaken = image.dateTaken,
+                        state = if (valid) PENDING else FAILED,
+                        failure = if (valid) null else FailureReason.NO_SOURCE.name,
+                        retryable = false, wifiOnly = current.wifiOnly, createdAt = now, updatedAt = now
+                    )
+                )
+                if (!valid) continue
+                if (image.md5 != null) dao.resetChanged(fileKey, image.sourceUrl, image.bytes, image.md5, now)
+                dao.fillSource(fileKey, image.sourceUrl, image.bytes, image.md5, now)
+                if (!current.wifiOnly) dao.loosenWifiOnly(fileKey, now)
+            }
+            dao.markGalleryListed(current.collectionId, current.albumKey, now, ilu, items.size)
+            true
+        }
+
+    /** Wants the gallery's photos: LIST_PENDING (listed by the next pass), Wi-Fi only until the user says otherwise. */
+    suspend fun keepGallery(collectionId: Long, albumKey: String, nickname: String, title: String?): Boolean =
+        dao.insertGallery(
+            OfflineGallery(collectionId, albumKey, nickname, title, LIST_PENDING, wifiOnly = true)
+        ) != -1L
+
+    /** Sets the gallery's Wi-Fi rule and re-derives the rule of its files that are not DONE. */
+    suspend fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean): Boolean =
+        db.withTransaction {
+            if (dao.setGalleryWifiOnly(collectionId, albumKey, wifiOnly) == 0) return@withTransaction false
+            dao.recomputeWifiOnlyForGallery(collectionId, albumKey, clock())
+            true
+        }
+
+    suspend fun gallery(collectionId: Long, albumKey: String): OfflineGallery? = dao.getGallery(collectionId, albumKey)
+
+    suspend fun galleriesToList(unmetered: Boolean, limit: Int): List<OfflineGallery> =
+        dao.galleriesToList(clock() - GALLERY_RETRY_GAP_MS, unmetered, limit)
+
+    suspend fun cachedImagesLastUpdated(albumKey: String): String? = dao.cachedImagesLastUpdated(albumKey)
+
+    suspend fun failGallery(gallery: OfflineGallery, failure: Failure) {
+        dao.markGalleryFailed(gallery.collectionId, gallery.albumKey, failure.reason.name, failure.retryable, clock())
+    }
+
+    /** A password came into session: permanently locked galleries are listed again. Returns how many. */
+    suspend fun requeueLockedGalleries(): Int = dao.requeueLockedGalleries()
 
     suspend fun isReferenced(imageKey: String): Boolean = dao.isReferenced(imageKey)
 
@@ -107,9 +193,10 @@ class OfflineStore(
         dao.candidates(now, unmetered, limit)
 
     // The scheduler's questions (5-5).
-    suspend fun countWanted(): Int = dao.countWanted()
-    suspend fun countWantedWifiOnly(): Int = dao.countWantedWifiOnly()
-    suspend fun earliestRetryAt(unmetered: Boolean): Long? = dao.earliestRetryAt(unmetered)
+    suspend fun countWanted(): Int = dao.countWanted() + dao.countGalleriesWanted()
+    suspend fun countWantedWifiOnly(): Int = dao.countWantedWifiOnly() + dao.countGalleriesWantedWifiOnly()
+    suspend fun earliestRetryAt(unmetered: Boolean): Long? =
+        listOfNotNull(dao.earliestRetryAt(unmetered), dao.earliestGalleryRetryAt(GALLERY_RETRY_GAP_MS, unmetered)).minOrNull()
     suspend fun countDue(now: Long, unmetered: Boolean): Int = dao.countDue(now, unmetered)
 
     // ---- storage ---------------------------------------------------------------------------------------------
@@ -160,7 +247,15 @@ class OfflineStore(
                     replaced = row!!.relPath?.takeIf { it != rel }
                     dao.markDone(write.fileKey, runId, rel, bytes, clock())
                     // If this throws, the transaction rolls back and the row stays DOWNLOADING (the caller fails it).
-                    if (!write.part.renameTo(final)) throw IOException("rename to ${final.name} failed")
+                    // REPLACE_EXISTING: a photo whose MD5 changed is committed over its old file (5-7).
+                    try {
+                        java.nio.file.Files.move(
+                            write.part.toPath(), final.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                        )
+                    } catch (e: java.nio.file.FileSystemException) {
+                        throw IOException("rename to ${final.name} failed", e)
+                    }
                     CommitResult.Done(rel, bytes)
                 }
                 replaced?.let { File(filesDir, it).delete() }
@@ -279,6 +374,14 @@ class OfflineStore(
         const val DOWNLOADING = "DOWNLOADING"
         const val DONE = "DONE"
         const val FAILED = "FAILED"
+        const val LIST_PENDING = "LIST_PENDING"
+        const val LISTED = "LISTED"
+
+        /** A retryable gallery listing failure is tried again after this long (its `listedAt` is the time of the try). */
+        const val GALLERY_RETRY_GAP_MS = 5 * 60_000L
+
+        /** At most this many galleries are listed per pass; the rest follow in the appended run. */
+        const val GALLERIES_PER_PASS = 3
 
         /** Q4: keep at least this much free (1 GiB). */
         const val FREE_FLOOR_BYTES = 1L shl 30

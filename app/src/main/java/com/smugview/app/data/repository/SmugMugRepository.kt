@@ -503,14 +503,16 @@ class SmugMugRepository @Inject constructor(
      * Every image of a gallery (Cast, Collections downloads). Page 1 keeps its password logic; every
      * page after it is the same typed call with `start` through [Pager], so `_expand=LargestVideo`
      * rides on all of them and each video gets its `videoUrl` (R-27). At most [maxPagesPerFetch] pages.
+     * [cacheControl] `no-cache` reads past the 5-minute reuse (the offline listing decides what is on the phone).
      */
     suspend fun getAllAlbumImages(
         albumKey: String,
         apiKey: String,
-        password: String? = null
+        password: String? = null,
+        cacheControl: String? = null
     ): List<AlbumImageData> {
         val allImages = mutableListOf<AlbumImageData>()
-        val first = firstImagesPage(albumKey, apiKey, password, cacheControl = null)
+        val first = firstImagesPage(albumKey, apiKey, password, cacheControl = cacheControl)
         applyVideoUrls(first.response.images ?: emptyList(), first.expansions)
         first.response.images?.let { allImages.addAll(it) }
         val next = first.toPage(1).nextStart()
@@ -520,7 +522,7 @@ class SmugMugRepository @Inject constructor(
                 first = next,
                 pageSize = ALBUM_IMAGES_PAGE,
                 fetch = { start, count ->
-                    val res = api.getAlbumImages(albumKey, apiKey, count = count, start = start)
+                    val res = api.getAlbumImages(albumKey, apiKey, count = count, start = start, cacheControl = cacheControl)
                     applyVideoUrls(res.response.images ?: emptyList(), res.expansions)
                     res.toPage(start)
                 },

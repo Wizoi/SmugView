@@ -93,6 +93,25 @@ class CollectionsController(
         }
     }
 
+    /** "Keep offline" for a bookmarked gallery: Wi-Fi only until [setGalleryWifiOnly] says otherwise (5-7; the UI is 5-9). */
+    fun keepGalleryOffline(collectionId: Long, albumKey: String, title: String?) {
+        scope.launch {
+            offline.keepGalleryOffline(collectionId, albumKey, getActiveNickname() ?: "", title)
+        }
+    }
+
+    fun stopKeepingGalleryOffline(collectionId: Long, albumKey: String) {
+        scope.launch {
+            offline.stopKeepingGalleryOffline(collectionId, albumKey)
+        }
+    }
+
+    fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean) {
+        scope.launch {
+            offline.setGalleryWifiOnly(collectionId, albumKey, wifiOnly)
+        }
+    }
+
     suspend fun isBookmarked(collectionId: Long, type: String, itemKey: String): Boolean {
         return repository.isBookmarked(collectionId, type, itemKey)
     }

@@ -72,6 +72,29 @@ class OfflineCollections(
         if (isImage) kick()
     }
 
+    /**
+     * "Keep offline" for a bookmarked gallery (Q1 (a)): the gallery is wanted LIST_PENDING and Wi-Fi only (Q3). The
+     * next pass lists it and downloads its photos. Asking again changes nothing (a LISTED gallery stays LISTED).
+     */
+    suspend fun keepGalleryOffline(collectionId: Long, albumKey: String, nickname: String, title: String?) {
+        store.keepGallery(collectionId, albumKey, nickname, title)
+        kick()
+    }
+
+    /**
+     * Stops keeping a gallery: its row and items go in one transaction with no network (R-41), and what only it
+     * referenced is collected at once. The bookmark stays (a shortcut). Nothing here touches a saved password (R-21).
+     */
+    suspend fun stopKeepingGalleryOffline(collectionId: Long, albumKey: String) {
+        dao.deleteOfflineGalleryRowAndItems(collectionId, albumKey)
+        afterRemoval()
+    }
+
+    /** The user's per-gallery "Use mobile data" choice (design 8.1 Q3). A looser rule kicks the any-network work. */
+    suspend fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean) {
+        if (store.setGalleryWifiOnly(collectionId, albumKey, wifiOnly)) kickIfWanted()
+    }
+
     suspend fun removePhoto(imageKey: String, collectionId: Long) {
         dao.removePhotoFromCollection(imageKey, collectionId)
         afterRemoval()

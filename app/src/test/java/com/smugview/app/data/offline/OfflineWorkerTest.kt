@@ -374,4 +374,54 @@ class OfflineWorkerTest {
         assertTrue(infos(OfflineScheduler.NAME_RETRY).isEmpty())
         assertNull(row(a).relPath)
     }
+
+    // ---- galleries (5-7, Q3: a gallery is Wi-Fi only unless the user allows mobile data for it) -----------------
+
+    private fun keepGallery(wifiOnly: Boolean) = runBlocking {
+        fake.imageCounts[OfflineFixture.GALLERY_ALBUM_KEY] = 3
+        sql.execSQL("DELETE FROM offline_galleries")
+        store.keepGallery(2, OfflineFixture.GALLERY_ALBUM_KEY, OfflineFixture.SITE, "New School Year")
+        if (!wifiOnly) assertTrue(store.setGalleryWifiOnly(2, OfflineFixture.GALLERY_ALBUM_KEY, false))
+    }
+
+    @Test fun aWifiOnlyGallery_isNotListedOrDownloadedByTheMobileWorker_andIsByTheWifiOne() = runBlocking<Unit> {
+        keepGallery(wifiOnly = true)
+
+        assertEquals(ListenableWorker.Result.success(), run(NetworkClass.ANY))
+
+        assertEquals("LIST_PENDING", runBlocking { store.gallery(2, OfflineFixture.GALLERY_ALBUM_KEY) }!!.state)
+        assertEquals(0, fake.requests.count { it.contains("!images") })
+        assertEquals(0, cdn.requests.size)
+        assertTrue("it is not a reason to come back on mobile data", infos(OfflineScheduler.NAME_RETRY).isEmpty())
+
+        assertEquals(ListenableWorker.Result.success(), run(NetworkClass.UNMETERED))
+
+        assertEquals("LISTED", runBlocking { store.gallery(2, OfflineFixture.GALLERY_ALBUM_KEY) }!!.state)
+        for (k in fake.imageKeysOf(OfflineFixture.GALLERY_ALBUM_KEY)) assertDone(k)
+    }
+
+    @Test fun aGalleryThatMayUseMobileData_isListedAndDownloadedByTheMobileWorker() = runBlocking<Unit> {
+        keepGallery(wifiOnly = false)
+
+        assertEquals(ListenableWorker.Result.success(), run(NetworkClass.ANY))
+
+        assertEquals("LISTED", runBlocking { store.gallery(2, OfflineFixture.GALLERY_ALBUM_KEY) }!!.state)
+        for (k in fake.imageKeysOf(OfflineFixture.GALLERY_ALBUM_KEY)) assertDone(k)
+    }
+
+    @Test fun kick_addsTheUnmeteredWork_forAWifiOnlyGallery_butNotForOneThatMayUseMobileData() = runBlocking<Unit> {
+        keepGallery(wifiOnly = true)
+        scheduler.kick()
+        assertEquals(1, infos(OfflineScheduler.NAME).size)
+        assertEquals("the gallery needs the unmetered chain", 1, infos(OfflineScheduler.NAME_WIFI).size)
+        assertEquals(NetworkType.UNMETERED, infos(OfflineScheduler.NAME_WIFI).single().constraints.requiredNetworkType)
+
+        wm.cancelAllWork().result.get()
+        wm.pruneWork().result.get()
+        keepGallery(wifiOnly = false)
+        scheduler.kick()
+
+        assertEquals(1, infos(OfflineScheduler.NAME).size)
+        assertTrue(infos(OfflineScheduler.NAME_WIFI).isEmpty())
+    }
 }

@@ -217,6 +217,13 @@ interface CollectionDao {
     @Query("DELETE FROM offline_galleries WHERE collectionId = :collectionId AND albumKey = :albumKey")
     suspend fun deleteOfflineGalleryRow(collectionId: Long, albumKey: String)
 
+    /** Stops keeping a gallery (the bookmark stays): items first, then the row, in one transaction. */
+    @androidx.room.Transaction
+    suspend fun deleteOfflineGalleryRowAndItems(collectionId: Long, albumKey: String) {
+        deleteOfflineGalleryItems(collectionId, albumKey)
+        deleteOfflineGalleryRow(collectionId, albumKey)
+    }
+
     @Query("DELETE FROM offline_gallery_items WHERE albumKey = :albumKey")
     suspend fun deleteOfflineGalleryItemsByKey(albumKey: String)
 

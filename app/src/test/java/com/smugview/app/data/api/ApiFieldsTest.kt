@@ -1,5 +1,6 @@
 package com.smugview.app.data.api
 
+import com.smugview.app.data.repository.FakeOriginals
 import com.smugview.app.data.repository.FakeSmugMugServer
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
@@ -8,6 +9,7 @@ import okhttp3.Request
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -40,6 +42,27 @@ class ApiFieldsTest {
 
         assertNotNull("Uris.ImageSizeDetails", image.uris?.imageSizeDetails)
         assertEquals("/api/v2/image/${image.imageKey}-0!sizedetails", image.uris?.imageSizeDetails)
+    }
+
+    /** Red on the old filter: the album listing did not ask for ArchivedSize/ArchivedMD5, so they were null (5-7). */
+    @Test fun `an album's photos carry the size and MD5 of the original`() = runBlocking {
+        val image = api.getAlbumImages("N74KSK", "test-key").response.images!!.first()
+
+        assertEquals("ArchivedSize", FakeOriginals.size(image.imageKey, false), image.archivedSize)
+        assertEquals("ArchivedMD5", FakeOriginals.md5(image.imageKey, false), image.archivedMd5)
+        assertTrue("_filter lists both", requested("_filter").containsAll(listOf("ArchivedSize", "ArchivedMD5")))
+    }
+
+    /** A real `album!images` answer (read-only, live, 2026-10-01) parses into the new fields. */
+    @Test fun `a real album listing parses ArchivedSize and ArchivedMD5`() {
+        val json = ApiFieldsTest::class.java.classLoader!!
+            .getResourceAsStream("api-contract/album-images-public-archived.json")!!.bufferedReader().readText()
+        val parsed = com.google.gson.Gson().fromJson(json, AlbumImagesResponse::class.java)
+        val first = parsed.response.images!!.first()
+
+        assertEquals(688974L, first.archivedSize)
+        assertEquals("8c4fd4347948ac7cf89e7ce44ee96926", first.archivedMd5)
+        assertTrue(parsed.response.images!!.all { it.archivedSize != null && it.archivedMd5 != null })
     }
 
     @Test fun `search results carry the ImageSizeDetails link`() = runBlocking {
