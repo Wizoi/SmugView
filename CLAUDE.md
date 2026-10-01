@@ -60,7 +60,13 @@ before starting on a bug.
   (≈ `ImagesLastUpdated`). They differ by days. Pick one per comparison (findings #15).
 - A folder's `DateModified` is not a "something new inside" signal. It doesn't bump when its
   galleries change (findings #17), yet it does bump on site-wide events (findings #2).
-- `RetryingCallFactory` retries every 5xx, including OkHttp's synthetic 504 from `only-if-cached`.
+- `RetryingCallFactory` retries 429 and 5xx, but not OkHttp's synthetic 504 from `only-if-cached`
+  (`isSyntheticCacheMiss`). Coil gets its own cache-less client (R-37), so photos don't evict API
+  responses.
+- Never follow `Pages.NextPage`: it drops `_expand`/`_verbosity`. Page by `start` through `Pager`.
+  Caps: albums 100, children 200, images 500, search 100.
+- `OPTIONS` on an endpoint lists its accepted params. `ApiContractTest` checks every request
+  against that list, so a param the server would ignore fails the build (R-27).
 - **`Uris.ParentNode` is the node's *own* `!parent` link** (`/node/{SELF}!parent`), not its
   parent's ID. Never parse a parent out of it (review R-01). `user!albums` has no `ParentNode` at
   all; an album's parent comes from `Uris.Folder` or `UrlPath` (R-05).

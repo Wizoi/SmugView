@@ -33,7 +33,7 @@ To maintain a resilient and high-performing integration, any future changes or o
 ## 📡 API Authentication & Access Control
 
 * **Public-Key Access**: Since this application operates in read-only guest browsing mode, full OAuth 1.0a signature flows are not required. The client authenticates successfully simply by appending the developer API Key as a query parameter: `?APIKey=YOUR_API_KEY`.
-* **Guest Password Protections**: Password-protected folders and albums are unlocked by appending `&Password=YOUR_PASSWORD` directly to the request query parameters.
+* **Guest Password Protections**: No GET honours a `Password=` parameter (R-23, verified live). Password-protected folders and galleries are unlocked only by `POST node/{id}!unlock` / `POST album/{key}!unlock`, which sets a session cookie (see section 5). The app keeps that cookie in an in-memory jar, so it is empty at every launch.
 
 ---
 
@@ -80,27 +80,15 @@ To maintain a resilient and high-performing integration, any future changes or o
 ### 1. The HTTP 200 OK "False Success" on Password Album Queries
 * **Problem**: Calling `GET album/{album_key}!images` with a wrong or missing password returns an `HTTP 200 OK` response status instead of throwing an error (like `401 Unauthorized` or `404 Not Found`).
 * **Symptom**: Standard try-catch exception blocks pass validation as successful, caching the incorrect password and rendering empty image grids to the user.
-* **Solution**: The API excludes the `"AlbumImage"` key entirely from the JSON payload when locked. Validation logic must inspect the parsed body to ensure the images array is not null:
-  ```kotlin
-  val response = api.getAlbumImages(albumKey, apiKey, password)
-  val isPasswordCorrect = response.response.images != null
-  ```
+* **Solution**: Do not infer "locked" from the shape of `!images`. A locked gallery has no `AlbumImage` key and `Pages.Total` 0, but so can an empty public one. The app reads `GET album/{key}` and checks `ResponseLevel == "Password"` (always returned), then prompts for the password (Phase 4, R-32).
 
 ### 2. HTTP 404 Not Found on Password Folder Queries
-* **Behavior**: Unlike albums, calling `GET node/{node_id}!children` with an invalid password throws an `HTTP 404 Not Found` exception.
+* **Behavior**: Unlike albums, calling `GET node/{node_id}!children` on a locked folder without a session throws an `HTTP 404 Not Found` exception.
 * **Handling**: Catch the HTTP exception to invalidate incorrect password credentials and trigger user password entry prompts.
 
 ### 3. Nested Sub-resource Lock Propagation
 * **Problem**: Querying EXIF metadata (`image/{image_key}!metadata`) for photos inside a password-protected album fails with 401/404 errors, even if the photo's direct CDN image URL is accessible.
-* **Solution**: You must pass the password query parameter downstream to the metadata call:
-  ```kotlin
-  @GET("image/{image_key}!metadata")
-  suspend fun getImageExif(
-      @Path("image_key") imageKey: String,
-      @Query("APIKey") apiKey: String,
-      @Query("Password") password: String? = null
-  ): ExifResponse
-  ```
+* **Solution**: None needed in the request. The metadata call carries no password; access comes only from the session cookie from `!unlock` (R-23), and the app reads photo details and EXIF from the canonical `-0` image key so they also work offline (Phase 4, 4-9). Password-gallery CDN image URLs need no session at all (R-53).
 
 ### 4. Profile Avatar Fallback Flow
 * **Behavior**: SmugMug hosts user bio and avatar media in different endpoints. Implement a multi-tier loading chain:
@@ -112,7 +100,7 @@ To maintain a resilient and high-performing integration, any future changes or o
 
 ### 5. POST-based `!unlock` Action & Cookie Persistence Requirements
 * **Problem**: Passing a `Password` query parameter directly to `GET node/{node_id}!children` does not unlock the resource — the server ignores it and returns a `404 Not Found` response when the node is password-protected.
-* **Nuance — Code vs. Server Behavior**: The Android client *does* still send `Password` as a query param on the first attempt (defensively, in case SmugMug changes behavior or a future endpoint variant accepts it). The code then detects the 401/404 failure and falls back to the POST unlock pattern. Do not confuse the code's defensive pass-through with the API actually honoring it.
+* **Nuance — Code vs. Server Behavior**: Since Phase 4 (4-7) no GET sends `Password=` at all (R-23); the `!unlock` session cookie is the only credential. Earlier versions sent it defensively; that was dead weight and is gone.
 * **Album images behave differently**: `GET album/{album_key}!images` with a wrong or missing password returns **HTTP 200 OK** with an empty images array — not a 404. The unlock retry logic for albums therefore detects a null images array as the failure signal, not an HTTP error code.
 * **Findings**: Under the hood, SmugMug's REST API requires a **POST** request to the endpoint's respective unlock action to establish a session:
   - **Folders/Nodes**: `POST node/{node_id}!unlock` (POST body parameters: `Password=xxx`)
@@ -130,19 +118,21 @@ To maintain a resilient and high-performing integration, any future changes or o
 > endpoints on purpose (`SmugMugRepository.searchImages` -> `image!search`, and a user-scoped
 > `user!imagesearch`, whose Retrofit method was deleted in Phase 4 as dead code). Treat `DESIGN.md` §D as canonical.
 
-* **`GET user/{nickname}!imagesearch` (primary, scoped)**: user-scoped and supports the `Password`
-  parameter. Required for searching inside password-protected or `Searchable: No` albums. This is
-  the main search path for the SmugView use case.
+* **`GET user/{nickname}!imagesearch` (historical)**: user-scoped search. Its Retrofit method was
+  deleted in Phase 4 as dead code. Do not rely on it, and do not assume it honours `Password=`
+  (no GET does, R-23). The app searches with `image!search` and a `Scope`, below.
 * **`GET image!search` (secondary, global index)**: queries SmugMug's global search index. Does
   **not** return results from albums marked `Searchable: No` or password-protected albums, even if
   unlocked in the session.
-* **Scope Requirement**: Pass the user's root node URI (e.g. `/api/v2/node/4zqWw`) to the `Scope`
-  query parameter to query the whole account. Passing a specific gallery/folder node URI restricts
-  the search to that container.
+* **Scope Requirement**: Pass `Scope=/api/v2/user/{nickname}` to query the whole account. This is
+  what the app sends (R-33). The user scope returned the same counts as the user's root-node scope
+  live (284 = 284 photos, 4 = 4 nodes), and it needs no root-node lookup, so it works before the
+  node tree is cached. A node URI (e.g. `/api/v2/node/4zqWw`) restricts the search to that
+  container. Keep the slashes in `Scope` raw: a percent-encoded value returns 400.
 
 ### 7. Scoped Searches and Password Access
-* **Problem**: Scoped searches on password-protected folders or galleries (even if unlocked via `!unlock` previously in the session) fail or return 0 images if the password query parameter is omitted on the search call.
-* **Solution**: Retrieve the cached folder/gallery password from local session preferences (using the gallery key, node ID, or parent folder node ID) and explicitly supply it via the `Password` parameter to `searchImages`.
+* **Problem**: Scoped searches inside a password-protected folder or gallery return nothing unless the `!unlock` session cookie is present.
+* **Solution**: Establish the session with `POST !unlock` first. Do **not** add a `Password` parameter to the search call: no GET honours it (R-23), and a password in a query string is also a leak.
 
 ### 8. Custom Header `X-Ignore-Errors` for Silent Verification
 * **Problem**: When the user is typing a nickname in the explorer view, incomplete inputs trigger immediate API checks. These requests often fail with `404 Not Found` responses, causing our standard network error interceptor to pop up disruptive "Not Found" Toast messages.
@@ -268,7 +258,7 @@ We reviewed the `SmugMugCore.Net` library codebase in `C:\src\kidzi\GitHub\SmugM
 
 ### 2. Client Architecture & Querying Patterns
 *   **OAuth 1.0a Access Token Flow**: The SDK implements full access token authentication via RestSharp's `OAuth1Authenticator.ForAccessToken(apiKey, apiSecret, userAuthToken, userAuthSecret)`.
-*   **Progressive Page Traversal**: Similar to the Android app, the C# SDK uses a progressive `while` loop that parses `Response.Pages.NextPage` from the returned JSON payload to continuously fetch subsequent pages in paged searches.
+*   **Progressive Page Traversal**: The C# SDK uses a progressive `while` loop that parses `Response.Pages.NextPage` from the returned JSON payload to continuously fetch subsequent pages in paged searches. **The Android app does not copy this: it never follows `Pages.NextPage` (it drops `_expand`, and pagination via `start` is deterministic). It pages by `start` through `Pager`, with the endpoint caps (albums 100, children 200, images 500, search 100) taken from the OPTIONS oracle.**
 *   **Field Filtering (`_filter` & `_filterurl`)**: The C# code uses parameter filtering to limit the fields returned, reducing download bandwidth and parsing times.
 
 ### 3. Metadata Discovery (`ContentMetadataService.cs`)
@@ -289,12 +279,12 @@ We reviewed the `SmugMugCore.Net` library codebase in `C:\src\kidzi\GitHub\SmugM
 
 We implemented a set of deep optimizations to protect the SmugMug API and CDN resource limits while dramatically improving overall application response speeds.
 
-### 1. HTTP Cache Control & ETag Validation
+### 1. HTTP Cache Control (no ETag validation)
 *   **Network Interceptor Overrides**: Configured a custom OkHttp `cacheInterceptor` that intercepts GET responses and adds `Cache-Control: public, max-age=300` (5 minutes) if the response is missing cache headers or marked with `no-store` or `no-cache`.
-*   **ETag Caching**: Combined with OkHttp's `Cache` directory, this enables automatic conditional HTTP validation using standard ETags (`If-None-Match`). If the data has not changed on the server, the SmugMug API responds with `304 Not Modified`, saving user bandwidth and processing power.
+*   **No conditional requests**: API responses carry no `ETag` and no `Last-Modified` (live 2026-10-01: `Cache-Control: private, no-store, no-cache, max-age=0, must-revalidate` only), so there is no `If-None-Match` and no `304 Not Modified` from the API. Freshness is the `max-age=300` rewrite above plus the app's own `CachePolicy` (fresh, refresh, offline). Earlier versions of this file described ETag/304 validation; that never happened.
 
 ### 2. Aggressive Image Loading Cache (Coil)
-*   **Coil ImageLoader Factory**: Implemented `ImageLoaderFactory` on `SmugViewApp` to hook Coil up to the Hilt-provided singleton `OkHttpClient`. This routes all image file queries through the same caching interceptors and retry policies used by Retrofit.
+*   **Cache-less image client**: `SmugViewApp` implements `ImageLoaderFactory` and hands Coil the `@Named("images")` `Call.Factory` (`buildImageCallFactory`): the singleton client with `.cache(null)` (`forFileDownloads()`), still wrapped in `RetryingCallFactory`. Photos therefore no longer fill the API's 50 MB OkHttp cache and evict API responses (R-37). Retrofit keeps the unqualified, caching `Call.Factory`. Offline thumbnails now come from Coil's own disk cache only.
 *   **Ignore Restrictive Cache Headers**: Set `.respectCacheHeaders(false)` on Coil's `ImageLoader` configuration. This forces Coil to cache downloaded image bytes aggressively in its own local disk cache directory, ignoring any guest/temporary Cache-Control restrictions returned by the SmugMug CDN.
 *   **Avoid Cache Invalidation on Rotation**: Removed the `onDestroy()` cache clearing calls (`diskCache?.clear()`) inside `MainActivity`. Since Android destroys and recreates activities on screen rotation, clearing the cache on destroy forced a re-download of every visible photo.
 *   **Loader Instance Sharing**: Refactored Palette extraction features to query `context.imageLoader` instead of spawning new local `ImageLoader` instances, ensuring all previews are served instantly from the shared cache.
@@ -324,24 +314,23 @@ This section provides a structured guide to all Retrofit endpoint definitions, q
 |:---|:---|:---|:---|
 | **GET** | `user/{nickname}` | `getUserProfile` | Fetches the user profile details. Resolves root node and bio avatar image.<br>• *Params*: `nickname`, `apiKey`, `expand = "BioImage"`, `verbosity = 1` |
 | **GET** | `user/{nickname}!bioimage` | `getUserBioImage` | Retrieves user profile bio image reference if not expanded in profile.<br>• *Params*: `nickname`, `apiKey`, `verbosity = 1` |
-| **GET** | `node/{node_id}!children` | `getNodeChildren` | Lists folders, albums, and children subnodes.<br>• *Params*: `nodeId`, `apiKey`, `password` (optional), `filter`, `verbosity = 1` |
+| **GET** | `node/{node_id}!children` | `getNodeChildren` | Lists folders, albums, and children subnodes.<br>• *Params*: `nodeId`, `apiKey`, `count = 100` (server cap 200), `start`, `filter`, `verbosity = 1` |
 | **GET** | `node/{node_id}` | `getNode` | Fetches metadata for a single node.<br>• *Params*: `nodeId`, `apiKey`, `verbosity = 1` |
-| **GET** | `album/{album_key}` | `getAlbum` | Fetches details (title, security hint, key) for a gallery.<br>• *Params*: `albumKey`, `apiKey`, `password` (optional), `verbosity = 1` |
-| **GET** | `album/{album_key}!images` | `getAlbumImages` | Retrieves paginated images in a gallery (up to 500/request).<br>• *Params*: `albumKey`, `apiKey`, `password` (optional), `count = 500`, `start` (page 2+ is the same call with `start`; `Pages.NextPage` is never followed, it drops `_expand`), `expand = "LargestVideo"`, `filter`, `verbosity = 1` |
-| **GET** | `image!search` | `searchImages` | Performs global public image search (scoped or unscoped).<br>• *Params*: `apiKey`, `scope`, `text` (search term), `sortMethod`, `sortDirection`, `count = 500`, `start = 1`, `filter`, `expand`, `verbosity = 1` |
-| **GET** | `node!search` | `searchNodes` | Finds folders and galleries matching a keyword.<br>• *Params*: `apiKey`, `scope`, `text`, `password` (optional), `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
-| **GET** | `image/{image_key}` | `getImage` | Fetches details and metadata for a single photo.<br>• *Params*: `imageKey`, `apiKey`, `password` (optional), `expand`, `filter`, `verbosity = 1` |
-| **GET** | `image/{image_key}!metadata` | `getImageExif` | Fetches EXIF/camera metadata for a photo.<br>• *Params*: `imageKey`, `apiKey`, `password` (optional), `verbosity = 1` |
+| **GET** | `album/{album_key}` | `getAlbum` | Fetches details (title, security hint, key) for a gallery.<br>• *Params*: `albumKey`, `apiKey`, `verbosity = 1` |
+| **GET** | `album/{album_key}!images` | `getAlbumImages` | Retrieves paginated images in a gallery (page cap 500; other caps: albums 100, children 200, search 100; `OPTIONS` on an endpoint lists its accepted params, and `ApiContractTest` checks every request against that).<br>• *Params*: `albumKey`, `apiKey`, `count = 500`, `start` (page 2+ is the same call with `start`; `Pages.NextPage` is never followed, it drops `_expand`), `expand = "LargestVideo"`, `filter`, `verbosity = 1` |
+| **GET** | `image!search` | `searchImages` | Performs global public image search (scoped or unscoped).<br>• *Params*: `apiKey`, `scope`, `text` (search term), `sortMethod`, `sortDirection`, `count = 500` (the server clamps to 100; the app pages by `start`), `start = 1`, `filter`, `expand`, `verbosity = 1` |
+| **GET** | `node!search` | `searchNodes` | Finds folders and galleries matching a keyword.<br>• *Params*: `apiKey`, `scope`, `text`, `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
+| **GET** | `image/{image_key}` | `getImage` | Fetches details and metadata for a single photo.<br>• *Params*: `imageKey`, `apiKey`, `expand`, `filter`, `verbosity = 1` |
+| **GET** | `image/{image_key}!metadata` | `getImageExif` | Fetches EXIF/camera metadata for a photo.<br>• *Params*: `imageKey`, `apiKey`, `verbosity = 1` |
 | **POST** | `node/{node_id}!unlock` | `unlockNode` | Submits folder/node password for authentication session.<br>• *Params*: `nodeId`, `apiKey`, `@Field("Password") password`, `X-Ignore-Errors` header (always sent — unlock attempts must never pop the generic error Toast). |
 | **POST** | `album/{album_key}!unlock` | `unlockAlbum` | Submits gallery/album password for authentication session.<br>• *Params*: `albumKey`, `apiKey`, `@Field("Password") password`, `X-Ignore-Errors` header (always sent, same reason). |
 | **PATCH** | `image/{image_key}` | `updateImageMetadata` | Modifies keywords/tags list for a photo.<br>• *Params*: `imageKey`, `apiKey`, `@Body body: UpdateImageMetadataRequest` |
-| **GET** | `user/{nickname}!albums` | `getUserAlbums` | Lists all galleries/albums in the user account.<br>• *Params*: `nickname`, `apiKey`, `count = 500`, `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
-| **GET** | *(Dynamic Url)* | `getUserAlbumsByUri` | Traverses subsequent pages of all user albums.<br>• *Params*: `url`, `apiKey` only — no other params (baked into `pages.next`). |
-| **GET** | `album/{album_keys}` | `getAlbumKeywords` | Fetches keywords for one or more galleries (comma-separated keys).<br>• *Params*: `albumKeys`, `apiKey`, `password` (optional), `expand = "AlbumKeywords"`, `filter = "Uri"`, `verbosity = 1` |
+| **GET** | `user/{nickname}!albums` | `getUserAlbums` | Lists all galleries/albums in the user account.<br>• *Params*: `nickname`, `apiKey`, `count = 100` (the server cap; the crawl pages by `start = 1, 101, ...`), `expand = "HighlightImage"`, `filter`, `verbosity = 1` |
+| **GET** | `album/{album_keys}` | `getAlbumKeywords` | Fetches keywords for one or more galleries (comma-separated keys).<br>• *Params*: `albumKeys`, `apiKey`, `expand = "AlbumKeywords"`, `filter = "Uri"`, `verbosity = 1` |
 | **GET** | `user/{nickname}!topkeywords` | `getUserTopKeywords` | Aggregates most used keywords/tags in user profile or folder node.<br>• *Params*: `nickname`, `apiKey`, `nodeId` (optional), `verbosity = 1` |
 | **GET** | `image!search` | `getImagesByKeyword` | Specifically optimized query for keyword tags searching.<br>• *Params*: `apiKey`, `scope`, `text` (space-separated tag query), `count = 500`, `start = 1`, `filter`, `verbosity = 1` |
 | **GET** | `user!search` | `searchUsers` | Looks up public SmugMug accounts by nickname/name fragment (site explorer autocomplete).<br>• *Params*: `apiKey`, `q` (query text — **not** `Text`), `verbosity = 1` |
-| **GET** | `user/{nickname}!recentimages` | `getUserRecentImages` | Fetches the account's most recently added images (seeds the Home/Hub tab).<br>• *Params*: `nickname`, `apiKey`, `count = 4`, `password` (optional), `filter = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,Uris"`, `filterUri = "ImageAlbum"`, `verbosity = 1` |
+| **GET** | `user/{nickname}!recentimages` | `getUserRecentImages` | Fetches the account's most recently added images (seeds the Home/Hub tab).<br>• *Params*: `nickname`, `apiKey`, `count = 4`, `filter = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,Uris"`, `filterUri = "ImageAlbum"`, `verbosity = 1` |
 
 ### 2. Core Application Enums
 
