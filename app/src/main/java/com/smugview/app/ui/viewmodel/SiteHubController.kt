@@ -130,7 +130,8 @@ class SiteHubController(
                                     imageCount = album.imageCount ?: 0,
                                     dateModified = album.dateModified,
                                     access = album.securityType,
-                                    passwordHint = album.passwordHint
+                                    passwordHint = album.passwordHint,
+                                    nodeId = album.nodeId
                                 )
                             }
                         } catch (e: Exception) {
@@ -150,7 +151,8 @@ class SiteHubController(
                                         imageCount = node.childCount ?: 0,
                                         dateModified = node.dateModified,
                                         access = node.access,
-                                        passwordHint = node.passwordHint
+                                        passwordHint = node.passwordHint,
+                                        nodeId = node.nodeId
                                     )
                                 }
                         }

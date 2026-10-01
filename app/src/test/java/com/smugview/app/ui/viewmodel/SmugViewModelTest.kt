@@ -210,6 +210,47 @@ class SmugViewModelTest {
         job.cancel()
     }
 
+    // Phase 2 step 2-11 (findings #5): Home compared AlbumKey with a set of NodeIDs, so a Featured
+    // gallery never got its dot (AlbumKey FfHCms != NodeID LCdk7F).
+    @Test
+    fun homeFeaturedGallery_isDottedByNodeId_notByAlbumKey() = runTest {
+        val albums = com.smugview.app.data.api.UserAlbumsResponse(
+            response = com.smugview.app.data.api.UserAlbumsPayload(
+                albums = listOf(
+                    com.smugview.app.data.api.AlbumDetails(
+                        uri = "/api/v2/album/FfHCms", albumKey = "FfHCms", nodeId = "LCdk7F", name = "New School Year",
+                        dateModified = "2026-09-28T12:00:00+00:00", imageCount = 12
+                    )
+                )
+            )
+        )
+        kotlinx.coroutines.runBlocking {
+            Mockito.`when`(mockRepository.getUserAlbumsResponse(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java)))
+                .thenReturn(albums)
+            Mockito.`when`(mockRepository.getUserRecentImagesResponse(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.nullable(String::class.java)))
+                .thenReturn(com.smugview.app.data.api.ImageSearchResponse(
+                    response = com.smugview.app.data.api.ImageSearchPayload(images = emptyList())
+                ))
+            Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
+                .thenReturn(com.smugview.app.data.api.TopKeywordsResponse(
+                    response = com.smugview.app.data.api.TopKeywordsPayload(
+                        userTopKeywords = com.smugview.app.data.api.UserTopKeywordsContainer(keywords = emptyList())
+                    )
+                ))
+        }
+        val load = SmugViewModel::class.java.getDeclaredMethod("loadActiveSiteDetails", String::class.java)
+        load.isAccessible = true
+        load.invoke(viewModel, "idzifamily")
+        advanceUntilIdle()
+
+        val item = viewModel.activeSiteAlbums.value.single()
+        assertEquals("FfHCms", item.albumKey)
+        assertEquals("the hub item carries the gallery's NodeID", "LCdk7F", item.nodeId)
+        assertTrue("dotted when the dot set holds the NodeID", item.hasActiveUpdate(setOf("LCdk7F", "P4BKB", "2sDN5x")))
+        assertFalse("the AlbumKey is not a node", item.hasActiveUpdate(setOf("FfHCms")))
+        assertFalse("an unrelated set lights nothing", item.hasActiveUpdate(setOf("sXQz4G")))
+    }
+
     // R-03: a self-parented cached row (SmugMug's ParentNode is the node's own !parent link) made the
     // inherited-password walk spin forever, which froze opening any gallery under that row.
     @Test(timeout = 15_000)

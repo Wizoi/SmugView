@@ -921,7 +921,7 @@ fun HomeTabView(
                                     val unlockedIds by viewModel.unlockedNodeIds.collectAsState()
                                     val isUnlocked = album.albumKey in unlockedIds
                                     val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
-                                    if (album.albumKey in activeUpdates) {
+                                    if (album.hasActiveUpdate(activeUpdates)) {
                                         Box(
                                             modifier = Modifier
                                                 .align(Alignment.TopStart)

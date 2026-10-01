@@ -2122,6 +2122,11 @@ data class HubAlbumItem(
     val imageCount: Int,
     val dateModified: String?,
     val access: String? = null,
-    val passwordHint: String? = null
-)
+    val passwordHint: String? = null,
+    /** The gallery's NodeID (AlbumKey is only an API handle): what the dot set and viewed table hold. */
+    val nodeId: String? = null
+) {
+    /** Whether this gallery carries a "new" dot: [activeNodeIds] are NodeIDs (design 3.5, findings #5). */
+    fun hasActiveUpdate(activeNodeIds: Set<String>): Boolean = nodeId != null && nodeId in activeNodeIds
+}
 
