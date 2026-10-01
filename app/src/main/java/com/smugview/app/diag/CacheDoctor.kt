@@ -72,6 +72,7 @@ class CacheDoctor(
         check("dup_album_uri", "Duplicate albumUri among nodes", Severity.WARN, dao::countDupAlbumUri)
         check("dup_index_urlpath", "Duplicate urlPath in the album index", Severity.WARN, dao::countDupIndexUrlPath)
         check("empty_nickname_nodes", "Nodes with an empty nickname", Severity.WARN, dao::countEmptyNicknameNodes)
+        check("cross_site_rows", "Nodes whose parent row belongs to another site (R-10)", Severity.WARN, dao::countCrossSiteRows)
         check("empty_nickname_index", "Index albums with an empty nickname", Severity.WARN, dao::countEmptyNicknameIndex)
         check("index_parent_set", "Index albums with a parent set (R-05: the sync never sets it)", Severity.INFO, dao::countIndexParentSet)
         check("index_null_date", "Index albums with no LastUpdated (#1)", Severity.INFO, dao::countIndexNullDate)

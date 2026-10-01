@@ -86,21 +86,19 @@ class SmugMugRepository @Inject constructor(
         activeNickname = nickname.orEmpty()
     }
 
-    /** Stamps the active site nickname onto nodes before persisting them. */
-    private suspend fun insertNodesScoped(nodes: List<CachedNode>) {
-        val site = activeNickname
-        val scoped = if (site.isEmpty()) {
+    /** Stamps [nickname], the site of the work that issued the write, onto nodes before persisting them (R-10). */
+    private suspend fun insertNodesScoped(nickname: String, nodes: List<CachedNode>) {
+        val scoped = if (nickname.isEmpty()) {
             nodes
         } else {
-            nodes.map { if (it.nickname == site) it else it.copy(nickname = site) }
+            nodes.map { if (it.nickname == nickname) it else it.copy(nickname = nickname) }
         }
         dao.insertNodes(scoped)
     }
 
-    /** A listing result for [parentId]: replaces that parent's cached children (R-07), stamped with the active site. */
-    private suspend fun replaceChildrenScoped(parentId: String, nodes: List<CachedNode>) {
-        val site = activeNickname
-        val scoped = if (site.isEmpty()) nodes else nodes.map { if (it.nickname == site) it else it.copy(nickname = site) }
+    /** A listing result for [parentId]: replaces that parent's cached children (R-07), stamped with [nickname]. */
+    private suspend fun replaceChildrenScoped(nickname: String, parentId: String, nodes: List<CachedNode>) {
+        val scoped = if (nickname.isEmpty()) nodes else nodes.map { if (it.nickname == nickname) it else it.copy(nickname = nickname) }
         dao.replaceChildren(parentId, scoped)
     }
 
@@ -188,6 +186,7 @@ class SmugMugRepository @Inject constructor(
     }
 
     fun getNodeChildren(
+        nickname: String,
         nodeId: String,
         apiKey: String,
         forceRefresh: Boolean = false,
@@ -223,7 +222,7 @@ class SmugMugRepository @Inject constructor(
             }
 
             try {
-                val dbNodes = fetchAndStoreChildren(nodeId, apiKey, forceRefresh, password, ignoreErrors)
+                val dbNodes = fetchAndStoreChildren(nickname, nodeId, apiKey, forceRefresh, password, ignoreErrors)
                 emit(Result.success(dbNodes))
             } catch (e: CancellationException) {
                 throw e
@@ -245,6 +244,7 @@ class SmugMugRepository @Inject constructor(
      * [forceRefresh] adds `Cache-Control: no-cache` so a forced listing reaches the server (R-35).
      */
     private suspend fun fetchAndStoreChildren(
+        nickname: String,
         nodeId: String,
         apiKey: String,
         forceRefresh: Boolean,
@@ -326,13 +326,13 @@ class SmugMugRepository @Inject constructor(
         }
 
         // Save to database. The listing is the truth for this parent: children it no longer has go (R-07).
-        if (nodeId.startsWith("virtual:")) insertNodesScoped(dbNodes) else replaceChildrenScoped(nodeId, dbNodes)
+        if (nodeId.startsWith("virtual:")) insertNodesScoped(nickname, dbNodes) else replaceChildrenScoped(nickname, nodeId, dbNodes)
         dao.updateChildCount(nodeId, dbNodes.size)
         // Any Album-type children (e.g. galleries revealed by unlocking a password-protected
         // parent folder) also need to land in the flat gallery index, since search matches
         // galleries exclusively against it (see buildInMemoryGalleryCache) — otherwise a
         // freshly-unlocked folder's galleries are cached here but stay invisible to search.
-        mergeAlbumsIntoIndex(dbNodes)
+        mergeAlbumsIntoIndex(nickname, dbNodes)
         return dbNodes
     }
 
@@ -749,7 +749,7 @@ class SmugMugRepository @Inject constructor(
 
                 // 4. Parents from the folder paths (relisting the nearest cached ancestor of a recent
                 // gallery whose folder is new).
-                val resolved = IndexParentResolver(dao, clock) { id -> relistOne(id, apiKey) }
+                val resolved = IndexParentResolver(dao, clock) { id -> relistOne(nickname, id, apiKey) }
                     .resolve(nickname, rootNodeId, fetched.folderPaths, MAX_RELIST)
                 parentsResolved = resolved.resolved
                 unresolved = resolved.unresolved
@@ -762,6 +762,7 @@ class SmugMugRepository @Inject constructor(
                 val parentOf = dao.getAlbumIndex(nickname).associate { it.albumKey to it.parentNodeId }
                 val relisted = LinkedHashSet<String>(resolved.relisted)
                 relisted += relistFolders(
+                    nickname,
                     written.changed.mapNotNull { parentOf[it.albumKey] }.distinct()
                         .filter { it !in relisted },
                     apiKey, MAX_RELIST - relisted.size
@@ -797,21 +798,21 @@ class SmugMugRepository @Inject constructor(
      * never opened has nothing stale to refresh). A folder that cannot be listed (locked, offline) is
      * skipped. Returns the folders actually relisted.
      */
-    private suspend fun relistFolders(folderIds: List<String>, apiKey: String, limit: Int = MAX_RELIST): Set<String> {
+    private suspend fun relistFolders(nickname: String, folderIds: List<String>, apiKey: String, limit: Int = MAX_RELIST): Set<String> {
         val relisted = LinkedHashSet<String>()
         for (id in folderIds) {
             if (relisted.size >= limit) break
             if (dao.getCachedNodesByParent(id).first().isEmpty()) continue
-            if (relistOne(id, apiKey)) relisted.add(id)
+            if (relistOne(nickname, id, apiKey)) relisted.add(id)
         }
         return relisted
     }
 
     /** One forced listing of [id] (under its node lock); false when it failed. Pauses afterwards. */
-    private suspend fun relistOne(id: String, apiKey: String): Boolean {
+    private suspend fun relistOne(nickname: String, id: String, apiKey: String): Boolean {
         var ok = false
         try {
-            nodeLocks.getOrPut(id) { Mutex() }.withLock { fetchAndStoreChildren(id, apiKey, true, null, "true") }
+            nodeLocks.getOrPut(id) { Mutex() }.withLock { fetchAndStoreChildren(nickname, id, apiKey, true, null, "true") }
             ok = true
         } catch (e: CancellationException) {
             throw e
@@ -993,7 +994,7 @@ class SmugMugRepository @Inject constructor(
         val invalidated = buildInMemoryGalleryCache(nickname, apiKey, unlock, rootNodeId, ignoreGate)
         syncFolderTree(nickname, rootNodeId, apiKey)
         // The tree walk may have cached folders the crawl could not match (design 3.4: again after the tree sync).
-        val again = IndexParentResolver(dao, clock) { id -> relistOne(id, apiKey) }
+        val again = IndexParentResolver(dao, clock) { id -> relistOne(nickname, id, apiKey) }
             .resolve(nickname, rootNodeId, emptyMap(), MAX_RELIST, invalidated)
         if (again.resolved > 0 || again.relisted.isNotEmpty()) {
             _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
@@ -1045,9 +1046,9 @@ class SmugMugRepository @Inject constructor(
                     try {
                         val children: List<CachedNode> = if (forced) {
                             val lock = nodeLocks.getOrPut(id) { Mutex() }
-                            lock.withLock { fetchAndStoreChildren(id, apiKey, true, null, "true") }
+                            lock.withLock { fetchAndStoreChildren(nickname, id, apiKey, true, null, "true") }
                         } else {
-                            getNodeChildren(id, apiKey, forceRefresh = false, password = null, ignoreErrors = "true")
+                            getNodeChildren(nickname, id, apiKey, forceRefresh = false, password = null, ignoreErrors = "true")
                                 .first().getOrThrow()
                         }
                         listed++
@@ -1091,10 +1092,10 @@ class SmugMugRepository @Inject constructor(
      * the crawl so a pathologically large hierarchy can't turn one password entry into an unbounded
      * background fetch.
      */
-    suspend fun unlockAndIndexSubtree(rootNodeId: String, apiKey: String, password: String, maxNodes: Int = 300) {
+    suspend fun unlockAndIndexSubtree(nickname: String, rootNodeId: String, apiKey: String, password: String, maxNodes: Int = 300) {
         val actionId = com.smugview.app.diag.DiagContext.newActionId("subtree")
         kotlinx.coroutines.withContext(com.smugview.app.diag.DiagContext.element(actionId)) {
-            val run = syncReporter.begin(com.smugview.app.diag.SyncKind.SubtreeIndex, activeNickname, actionId)
+            val run = syncReporter.begin(com.smugview.app.diag.SyncKind.SubtreeIndex, nickname, actionId)
             var nodesFetched = 0
             var skipped = 0
             if (activeSubtreeIndexJobs.incrementAndGet() == 1) {
@@ -1108,7 +1109,7 @@ class SmugMugRepository @Inject constructor(
                     val currentNodeId = queue.removeAt(0)
                     nodesFetched++
                     try {
-                        getNodeChildren(currentNodeId, apiKey, forceRefresh = true, password = password, ignoreErrors = "true")
+                        getNodeChildren(nickname, currentNodeId, apiKey, forceRefresh = true, password = password, ignoreErrors = "true")
                             .first()
                             .onSuccess { children ->
                                 for (child in children) {
@@ -1151,10 +1152,9 @@ class SmugMugRepository @Inject constructor(
      * they're searchable, and refreshes the in-memory cache. Existing metadata we don't have from a
      * node-children fetch (urlPath, galleryStyle) is preserved from the prior index entry if present.
      */
-    private suspend fun mergeAlbumsIntoIndex(nodes: List<CachedNode>) {
+    private suspend fun mergeAlbumsIntoIndex(nickname: String, nodes: List<CachedNode>) {
         val albums = nodes.filter { it.type == "Album" }
         if (albums.isEmpty()) return
-        val nickname = activeNickname
         val existingByKey = dao.getAlbumIndex(nickname).associateBy { it.albumKey }
         val toUpsert = albums.map { node ->
             val albumKey = node.getAlbumKey()
@@ -1335,7 +1335,7 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
-    suspend fun fetchAlbumsInScopeRemote(scopeNodeId: String, apiKey: String, password: String? = null): List<CachedNode> {
+    suspend fun fetchAlbumsInScopeRemote(nickname: String, scopeNodeId: String, apiKey: String, password: String? = null): List<CachedNode> {
         val albums = mutableListOf<CachedNode>()
         val queue = ArrayDeque<Pair<String, String?>>() // (nodeId, password for this node)
         queue.add(Pair(scopeNodeId, password))
@@ -1388,7 +1388,7 @@ class SmugMugRepository @Inject constructor(
                 }
                 
                 if (dbNodes.isNotEmpty()) {
-                    insertNodesScoped(dbNodes)
+                    insertNodesScoped(nickname, dbNodes)
                 }
                 
                 for (node in dbNodes) {
@@ -1414,13 +1414,13 @@ class SmugMugRepository @Inject constructor(
     }
 
     /**
-     * Same as [getAllCachedNodes] but scoped to the active site via [dao.getCachedNodesForNickname]
+     * Same as [getAllCachedNodes] but scoped to [nickname]'s site via [dao.getCachedNodesForNickname]
      * (uses the existing nickname index) instead of every node cached across every site the user
      * has ever browsed. Prefer this for in-memory scan fallbacks (webUri path matching, etc.) —
      * see the "getAllCachedNodes() full-table scan" rule in AGENTS.md.
      */
-    suspend fun getCachedNodesForActiveSite(): List<CachedNode> {
-        val dbNodes = dao.getCachedNodesForNickname(activeNickname)
+    suspend fun getCachedNodesForSite(nickname: String): List<CachedNode> {
+        val dbNodes = dao.getCachedNodesForNickname(nickname)
         val memNodes = albumsCache.value
         return (dbNodes + memNodes).distinctBy { it.nodeId }
     }
@@ -1615,7 +1615,7 @@ class SmugMugRepository @Inject constructor(
     suspend fun getNodeById(nodeId: String): CachedNode? = dao.getNodeById(nodeId)
     suspend fun getNodeByIdOrKey(idOrKey: String): CachedNode? = dao.getNodeByIdOrKey(idOrKey)
 
-    suspend fun insertNodes(nodes: List<CachedNode>) {
+    suspend fun insertNodes(nickname: String, nodes: List<CachedNode>) {
         val safeNodes = nodes.map { node ->
             val existing = dao.getNodeById(node.nodeId)
             if (existing != null && 
@@ -1631,7 +1631,7 @@ class SmugMugRepository @Inject constructor(
                 node
             }
         }
-        insertNodesScoped(safeNodes)
+        insertNodesScoped(nickname, safeNodes)
     }
 
     suspend fun getBookmarkByItemKey(itemKey: String): CollectionBookmark? = dao.getBookmarkByItemKey(itemKey)
@@ -1793,7 +1793,7 @@ class SmugMugRepository @Inject constructor(
      * offline. Unlike [getNodeChildren], which only resolves highlight images for a folder's
      * *children*, the homepage banner needs the root folder's own highlight image.
      */
-    suspend fun refreshSiteHeaderNode(rootNodeId: String, apiKey: String, ignoreErrors: String? = null): CachedNode? {
+    suspend fun refreshSiteHeaderNode(nickname: String, rootNodeId: String, apiKey: String, ignoreErrors: String? = null): CachedNode? {
         return try {
             val response = api.getNode(rootNodeId, apiKey, expand = "HighlightImage", ignoreErrors = ignoreErrors)
             val node = response.response.node
@@ -1821,7 +1821,7 @@ class SmugMugRepository @Inject constructor(
                 webUri = node.webUri,
                 dateModified = node.dateModified
             )
-            insertNodes(listOf(cachedNode))
+            insertNodes(nickname, listOf(cachedNode))
             cachedNode
         } catch (e: Exception) {
             // Offline or the call failed — fall back to whatever we already have cached, if anything.
@@ -1941,6 +1941,7 @@ class SmugMugRepository @Inject constructor(
     }
 
     fun searchNodesRemote(
+        nickname: String,
         scopeUri: String,
         scopeKey: String,
         query: String,
@@ -1990,7 +1991,7 @@ class SmugMugRepository @Inject constructor(
             if (dbNodes.isNotEmpty()) {
                 // Only rows that don't exist yet: a hit never overwrites a listed row's sortIndex, title or parent.
                 val fresh = dbNodes.filter { it.nodeId !in existingIds }
-                if (fresh.isNotEmpty()) insertNodesScoped(fresh)
+                if (fresh.isNotEmpty()) insertNodesScoped(nickname, fresh)
                 SmugLog.d("SmugMugRepository") { "searchNodesRemote inserted ${fresh.size} new nodes into cached_nodes" }
                 val searchResults = dbNodes.mapIndexed { index, node ->
                     node.toSearchResult(query, scopeKey, index)

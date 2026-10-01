@@ -521,11 +521,11 @@ class SmugViewModel @Inject constructor(
     private val _siteHeaderImageUrl = MutableStateFlow<String?>(null)
     val siteHeaderImageUrl: StateFlow<String?> = _siteHeaderImageUrl.asStateFlow()
 
-    private fun loadSiteHeaderImage(rootId: String) {
+    private fun loadSiteHeaderImage(nickname: String, rootId: String) {
         // Show whatever's cached immediately (works offline), then refresh from the network.
         viewModelScope.launch {
             repository.getNodeById(rootId)?.highlightImageUrl?.let { _siteHeaderImageUrl.value = it }
-            repository.refreshSiteHeaderNode(rootId, apiKey)?.highlightImageUrl?.let {
+            repository.refreshSiteHeaderNode(nickname, rootId, apiKey)?.highlightImageUrl?.let {
                 _siteHeaderImageUrl.value = it
             }
         }
@@ -665,7 +665,7 @@ class SmugViewModel @Inject constructor(
 
                         loadFolderContents(rootId)
                         startSiteSync(nickname, rootId)
-                        loadSiteHeaderImage(rootId)
+                        loadSiteHeaderImage(nickname, rootId)
 
                         // Fetch active site recent images and top keywords in parallel
                         loadActiveSiteDetails(nickname)
@@ -730,7 +730,7 @@ class SmugViewModel @Inject constructor(
                         }
                         loadFolderContents(rootId)
                         startSiteSync(normalizedNickname, rootId)
-                        loadSiteHeaderImage(rootId)
+                        loadSiteHeaderImage(normalizedNickname, rootId)
 
                         // Fetch active site details for the hub dashboard in parallel
                         loadActiveSiteDetails(normalizedNickname)
@@ -789,9 +789,10 @@ class SmugViewModel @Inject constructor(
             android.util.Log.d("SmugViewModel", "loadFolderContents called: nodeId=$nodeId, forceRefresh=$forceRefresh")
         }
         _browserState.value = BrowserUiState.Loading
+        val nickname = _activeNickname.value.orEmpty()
         viewModelScope.launch(com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("folder"))) {
             val password = getUnlockedPassword(nodeId)
-            repository.getNodeChildren(nodeId, apiKey, forceRefresh, password).collect { result ->
+            repository.getNodeChildren(nickname, nodeId, apiKey, forceRefresh, password).collect { result ->
                 result.fold(
                     onSuccess = { nodes ->
                         if (BuildConfig.DEBUG) {
@@ -1178,7 +1179,7 @@ class SmugViewModel @Inject constructor(
             val isUnlocked = repository.unlockNode(node.nodeId, apiKey, password)
             if (isUnlocked) {
                 try {
-                    repository.getNodeChildren(node.nodeId, apiKey, true, password).first()
+                    repository.getNodeChildren(_activeNickname.value.orEmpty(), node.nodeId, apiKey, true, password).first()
                 } catch (e: Exception) {
                     // Ignore pre-fetch failures if unlock succeeded
                 }
@@ -1221,8 +1222,9 @@ class SmugViewModel @Inject constructor(
      */
     private fun indexUnlockedSubtreeInBackground(rootNodeId: String, password: String) {
         unlockSubtreeIndexJob?.cancel()
+        val nickname = _activeNickname.value.orEmpty()
         unlockSubtreeIndexJob = viewModelScope.launch(defaultDispatcher) {
-            repository.unlockAndIndexSubtree(rootNodeId, apiKey, password)
+            repository.unlockAndIndexSubtree(nickname, rootNodeId, apiKey, password)
         }
     }
 
@@ -1752,7 +1754,7 @@ class SmugViewModel @Inject constructor(
                             val partBefore = finalThumbnailUrl.substringBefore(delimiter)
                             val albumSegment = partBefore.substringAfterLast('/')
                             if (albumSegment.isNotEmpty()) {
-                                val allNodes = repository.getCachedNodesForActiveSite()
+                                val allNodes = repository.getCachedNodesForSite(_activeNickname.value.orEmpty())
                                 val matchedNode = allNodes.find { it.webUri?.contains(albumSegment) == true }
                                 resolvedKey = matchedNode?.getAlbumKey() ?: matchedNode?.nodeId
                             }
@@ -2029,7 +2031,7 @@ class SmugViewModel @Inject constructor(
         } ?: return null
 
         val segments = path.trim('/').split('/')
-        val allNodes = repository.getCachedNodesForActiveSite()
+        val allNodes = repository.getCachedNodesForSite(_activeNickname.value.orEmpty())
         
         for (i in segments.indices.reversed()) {
             val parentPath = segments.subList(0, i + 1).joinToString("/").lowercase()
@@ -2067,7 +2069,7 @@ class SmugViewModel @Inject constructor(
         } ?: return null
 
         val segments = path.trim('/').split('/')
-        val allNodes = repository.getCachedNodesForActiveSite()
+        val allNodes = repository.getCachedNodesForSite(_activeNickname.value.orEmpty())
         
         for (i in segments.indices.reversed()) {
             val parentPath = segments.subList(0, i + 1).joinToString("/").lowercase()

@@ -123,6 +123,13 @@ interface DoctorDao {
     @Query("SELECT COUNT(*) FROM cached_nodes WHERE nickname = ''")
     suspend fun countEmptyNicknameNodes(): Int
 
+    /** Children stamped with another site's nickname than their cached parent row (R-10). Unstamped rows are not counted. */
+    @Query(
+        "SELECT COUNT(*) FROM cached_nodes c JOIN cached_nodes p ON c.parentNodeId = p.nodeId " +
+            "WHERE c.nickname != '' AND p.nickname != '' AND c.nickname != p.nickname"
+    )
+    suspend fun countCrossSiteRows(): Int
+
     @Query("SELECT COUNT(*) FROM cached_albums WHERE nickname = ''")
     suspend fun countEmptyNicknameIndex(): Int
 

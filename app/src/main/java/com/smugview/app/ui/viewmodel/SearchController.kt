@@ -325,7 +325,7 @@ class SearchController(
                     try {
                         // Note: searchNodesRemote still fetches folders if available from SmugMug search API.
                         // Galleries are exclusively handled by the in-memory cache.
-                        repository.searchNodesRemote(apiScopeUri, scopeKey, query, apiKey, password).collect {}
+                        repository.searchNodesRemote(nickname, apiScopeUri, scopeKey, query, apiKey, password).collect {}
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }

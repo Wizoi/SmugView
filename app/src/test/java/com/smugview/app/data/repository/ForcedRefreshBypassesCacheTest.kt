@@ -106,8 +106,8 @@ class ForcedRefreshBypassesCacheTest {
     @Test fun forcedListings_twiceWithinFiveMinutes_bothReachTheServer() {
         val repository = repo(api())
         runBlocking {
-            repository.getNodeChildren("P4BKB", "k", forceRefresh = true).toList()
-            repository.getNodeChildren("P4BKB", "k", forceRefresh = true).toList()
+            repository.getNodeChildren("idzifamily", "P4BKB", "k", forceRefresh = true).toList()
+            repository.getNodeChildren("idzifamily", "P4BKB", "k", forceRefresh = true).toList()
         }
         assertEquals("both forced fetches must hit the network: $hits", 2, hits.size)
         assertTrue(hits.all { it.startsWith("GET /api/v2/node/P4BKB!children") })
@@ -116,8 +116,8 @@ class ForcedRefreshBypassesCacheTest {
     @Test fun unforcedListing_isStillServedFromRoom_withNoRequestAtAll() {
         val repository = repo(api())
         runBlocking {
-            repository.getNodeChildren("P4BKB", "k", forceRefresh = true).toList()
-            repository.getNodeChildren("P4BKB", "k").toList()
+            repository.getNodeChildren("idzifamily", "P4BKB", "k", forceRefresh = true).toList()
+            repository.getNodeChildren("idzifamily", "P4BKB", "k").toList()
         }
         assertEquals(1, hits.size)
     }

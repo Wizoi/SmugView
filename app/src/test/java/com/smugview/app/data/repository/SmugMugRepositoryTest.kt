@@ -136,7 +136,7 @@ class SmugMugRepositoryTest {
         assertTrue(initialAlbums.isEmpty())
 
         // 2. Trigger remote fetch for scope folder1
-        val fetched = repository.fetchAlbumsInScopeRemote("folder1", "dummy_key")
+        val fetched = repository.fetchAlbumsInScopeRemote("testUser", "folder1", "dummy_key")
         
         // Should have found 1 album directly under folder1
         assertEquals(1, fetched.size)
@@ -598,7 +598,7 @@ class SmugMugRepositoryTest {
 
         // Simulate the unlock flow's post-unlock prefetch (SmugViewModel.apiTestFetch calls
         // getNodeChildren(node.nodeId, apiKey, forceRefresh = true, password) on success).
-        val result = repository.getNodeChildren("folder1", "dummy_key", forceRefresh = true, password = "gallery").first()
+        val result = repository.getNodeChildren("testUser", "folder1", "dummy_key", forceRefresh = true, password = "gallery").first()
         assertTrue(result.isSuccess)
 
         // The revealed gallery must now be in the searchable in-memory index...
@@ -607,7 +607,7 @@ class SmugMugRepositoryTest {
         assertEquals("albumX", indexed?.nodeId)
 
         // ...and persisted, so it survives process death / the next cache load.
-        val persisted = dao.getAlbumIndex("").find { it.albumKey == "albumX" }
+        val persisted = dao.getAlbumIndex("testUser").find { it.albumKey == "albumX" }
         assertNotNull("Unlocked gallery should be persisted into cached_albums", persisted)
     }
 
@@ -782,7 +782,7 @@ class SmugMugRepositoryTest {
 
         assertTrue(repository.albumsCache.value.isEmpty())
 
-        repository.unlockAndIndexSubtree("family", "dummy_key", "gallery")
+        repository.unlockAndIndexSubtree("testUser", "family", "dummy_key", "gallery")
 
         // Fetching "family"'s direct children alone would only see the "school" sub-folder, not
         // the gallery underneath it. The recursive walk must have descended into "school" too.
@@ -816,7 +816,7 @@ class SmugMugRepositoryTest {
 
         assertFalse("Should be idle before any indexing starts", repository.isIndexingSubtree.value)
 
-        val job = launch { repository.unlockAndIndexSubtree("folderA", "dummy_key", "pw") }
+        val job = launch { repository.unlockAndIndexSubtree("testUser", "folderA", "dummy_key", "pw") }
         yield() // let the job run up to its first suspension point
         assertTrue("Flag should be true while indexing is in progress", repository.isIndexingSubtree.value)
 
@@ -865,8 +865,8 @@ class SmugMugRepositoryTest {
         val api = createMockApi(mockInterceptor)
         val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
 
-        val shortJob = launch { repository.unlockAndIndexSubtree("shortFolder", "dummy_key", "pw1") }
-        val longJob = launch { repository.unlockAndIndexSubtree("longFolder", "dummy_key", "pw2") }
+        val shortJob = launch { repository.unlockAndIndexSubtree("testUser", "shortFolder", "dummy_key", "pw1") }
+        val longJob = launch { repository.unlockAndIndexSubtree("testUser", "longFolder", "dummy_key", "pw2") }
         yield()
         assertTrue(repository.isIndexingSubtree.value)
 

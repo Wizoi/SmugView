@@ -173,6 +173,7 @@ class SmugViewModelTest {
         // gallery (or the explicit long-press "Mark as Viewed") may clear a dot.
         Mockito.`when`(
             mockRepository.getNodeChildren(
+                Mockito.anyString(),
                 Mockito.anyString(), Mockito.anyString(), Mockito.anyBoolean(),
                 Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)
             )
@@ -299,7 +300,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.hasSearchPhotosInDb("Sunset", "site:testUser"))
             .thenReturn(false)
             
-        Mockito.`when`(mockRepository.searchNodesRemote("/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
+        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
             .thenReturn(flowOf(Result.success(emptyList())))
             
         // Mock getPagedSearchPhotos to return a dummy PagingSource
@@ -365,7 +366,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockRepository.hasSearchPhotosInDb("Family", "site:testUser")).thenReturn(false)
         Mockito.`when`(
             mockRepository.searchNodesRemote(
-                Mockito.anyString(), Mockito.anyString(), Mockito.anyString(),
+                Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString(),
                 Mockito.anyString(), Mockito.nullable(String::class.java)
             )
         ).thenReturn(flowOf(Result.success(emptyList())))
@@ -493,7 +494,7 @@ class SmugViewModelTest {
         Mockito.`when`(mockPrefs.getLong("site:testUser_Sunset_ts", 0L))
             .thenReturn(0L)
             
-        Mockito.`when`(mockRepository.searchNodesRemote("/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
+        Mockito.`when`(mockRepository.searchNodesRemote("testUser", "/api/v2/node/4zqWw", "site:testUser", "Sunset", BuildConfig.SMUGMUG_API_KEY, null))
             .thenReturn(flowOf(Result.success(emptyList())))
             
         // Mock getPagedSearchPhotos to return a dummy PagingSource
@@ -663,7 +664,7 @@ class SmugViewModelTest {
             createTestNode(nodeId = "album1", parentNodeId = "folder1", type = "Album", title = "Album 1")
         )
         
-        Mockito.`when`(mockRepository.getNodeChildren("folder1", BuildConfig.SMUGMUG_API_KEY, false, null))
+        Mockito.`when`(mockRepository.getNodeChildren("testUser", "folder1", BuildConfig.SMUGMUG_API_KEY, false, null))
             .thenReturn(flowOf(Result.success(grandChildren)))
             
         viewModel.navigateToChildFolder(childNode)
@@ -691,7 +692,7 @@ class SmugViewModelTest {
         val synthetic = retrofit2.HttpException(
             retrofit2.Response.error<Any>(okhttp3.ResponseBody.create(null, ""), raw)
         )
-        Mockito.`when`(mockRepository.getNodeChildren("folder1", BuildConfig.SMUGMUG_API_KEY, false, null))
+        Mockito.`when`(mockRepository.getNodeChildren("testUser", "folder1", BuildConfig.SMUGMUG_API_KEY, false, null))
             .thenReturn(flowOf(Result.failure(synthetic)))
 
         viewModel.navigateToChildFolder(childNode)
@@ -769,7 +770,7 @@ class SmugViewModelTest {
             webUri = "https://gallery.idzifamily.com/Family/School/2026-06-13--Laurel-Graduation-Day"
         )
         
-        Mockito.`when`(mockRepository.getCachedNodesForActiveSite())
+        Mockito.`when`(mockRepository.getCachedNodesForSite(Mockito.anyString()))
             .thenReturn(listOf(albumNode))
         Mockito.`when`(mockRepository.getNodeByIdOrKey(testAlbumKey))
             .thenReturn(albumNode)
@@ -838,7 +839,7 @@ class SmugViewModelTest {
             webUri = "https://gallery.idzifamily.com/Family/School/2026-06-13--Laurel-Graduation-Day"
         )
 
-        Mockito.`when`(mockRepository.getCachedNodesForActiveSite()).thenReturn(listOf(albumNode))
+        Mockito.`when`(mockRepository.getCachedNodesForSite(Mockito.anyString())).thenReturn(listOf(albumNode))
         Mockito.`when`(mockRepository.getNodeByIdOrKey(testAlbumKey)).thenReturn(albumNode)
 
         // A password belonging to a completely different album.
@@ -1088,7 +1089,7 @@ class SmugViewModelTest {
                 .thenReturn(mockRecentImagesResponse)
             Mockito.`when`(mockRepository.getUserTopKeywords(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
                 .thenReturn(mockTopKeywords)
-            Mockito.`when`(mockRepository.getNodeChildren(Mockito.anyString(), Mockito.anyString(), Mockito.anyBoolean(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
+            Mockito.`when`(mockRepository.getNodeChildren(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyBoolean(), Mockito.nullable(String::class.java), Mockito.nullable(String::class.java)))
                 .thenReturn(flowOf(Result.success(emptyList())))
         }
         
@@ -1142,12 +1143,13 @@ class SmugViewModelTest {
                 mockRepository.getNodeChildren(
                     Mockito.anyString(),
                     Mockito.anyString(),
+                    Mockito.anyString(),
                     Mockito.anyBoolean(),
                     Mockito.nullable(String::class.java),
                     Mockito.nullable(String::class.java)
                 )
             ).thenAnswer { invocation ->
-                val nodeId = invocation.arguments[0] as String
+                val nodeId = invocation.arguments[1] as String
                 if (nodeId == "syncRootId") {
                     flowOf(Result.success(listOf(lockedNode)))
                 } else if (nodeId == "lockedNodeId") {
@@ -1213,6 +1215,7 @@ class SmugViewModelTest {
                 .thenReturn(com.smugview.app.data.api.TopKeywordsResponse(com.smugview.app.data.api.TopKeywordsPayload(com.smugview.app.data.api.UserTopKeywordsContainer(emptyList()))))
             Mockito.`when`<Flow<Result<List<CachedNode>>>>(
                 mockRepository.getNodeChildren(
+                    Mockito.anyString(),
                     Mockito.anyString(),
                     Mockito.anyString(),
                     Mockito.anyBoolean(),

@@ -123,6 +123,7 @@ class CacheDoctorTest {
         assertEquals("rows_cached_albums", 4, r.count("rows_cached_albums"))
         assertEquals("rows_viewed_gallery_updates", 0, r.count("rows_viewed_gallery_updates"))
         assertEquals("site_root_row", 1, r.count("site_root_row"))
+        assertEquals("cross_site_rows", 0, r.count("cross_site_rows"))
 
         assertEquals(Severity.ERROR, r.severity("self_parent"))
         assertEquals(Severity.WARN, r.severity("orphan_rows"))
@@ -146,6 +147,22 @@ class CacheDoctorTest {
         dao.insertViewedUpdates(listOf(com.smugview.app.data.db.ViewedGalleryUpdate("NDVIEW1", daysAgo(2))))
 
         assertEquals(1, CacheDoctor(db.doctorDao()).run(null).count("recent_index_invisible_to_dot"))
+    }
+
+    @Test
+    fun crossSiteRows_countsAChildStampedWithAnotherSitesNicknameThanItsParent() = runBlocking {
+        dao.insertNodes(
+            listOf(
+                node("SITE01", null),
+                node("2sDN5x", "SITE01"),
+                node("LCdk7F", "2sDN5x", "Album", daysAgo(2), nickname = "siteb"),   // written late by A's sync
+                node("OLDROW", "SITE01", nickname = ""),                           // unstamped: not counted here
+                node("LONELY", "MISSING1", nickname = "siteb")                     // parent not cached: not counted
+            )
+        )
+        val r = CacheDoctor(db.doctorDao()).run(null)
+        assertEquals(1, r.count("cross_site_rows"))
+        assertEquals(Severity.WARN, r.severity("cross_site_rows"))
     }
 
     @Test

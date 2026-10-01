@@ -275,7 +275,7 @@ class SyncReportTest {
                 reply(chain, 403, """{"Code":403,"Message":"Forbidden"}""")
             }
         }
-        repository.unlockAndIndexSubtree("2sDN5x", "FAKEKEY1234", "pw-not-logged-1")
+        repository.unlockAndIndexSubtree("idzifamily", "2sDN5x", "FAKEKEY1234", "pw-not-logged-1")
         reporter.flush(2000)
 
         val run = lastRun()

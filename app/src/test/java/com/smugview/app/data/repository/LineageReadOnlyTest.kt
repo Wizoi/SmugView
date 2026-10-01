@@ -98,7 +98,7 @@ class LineageReadOnlyTest {
         seedFixtureTree()
         val before = runBlocking { dao.getNodeById("LCdk7F") }!!
         server.searchResultIds = listOf("LCdk7F")
-        val result = runBlocking { repo().searchNodesRemote("/api/v2/node/4zqWw", "4zqWw", "school", "k").first() }
+        val result = runBlocking { repo().searchNodesRemote("idzifamily", "/api/v2/node/4zqWw", "4zqWw", "school", "k").first() }
         assertEquals(listOf("LCdk7F"), result.getOrThrow().map { it.nodeId })
         val after = runBlocking { dao.getNodeById("LCdk7F") }!!
         assertEquals("P4BKB", after.parentNodeId)
@@ -109,7 +109,7 @@ class LineageReadOnlyTest {
 
     @Test fun searchHit_forAnUnknownNode_isParkedAsSearchResult_neverUnderItself() {
         server.searchResultIds = listOf("LCdk7F")
-        runBlocking { repo().searchNodesRemote("/api/v2/node/4zqWw", "4zqWw", "school", "k").first() }
+        runBlocking { repo().searchNodesRemote("idzifamily", "/api/v2/node/4zqWw", "4zqWw", "school", "k").first() }
         val stored = runBlocking { dao.getNodeById("LCdk7F") }!!
         assertNotEquals("LCdk7F", stored.parentNodeId)
         assertEquals("search_result", stored.parentNodeId)
