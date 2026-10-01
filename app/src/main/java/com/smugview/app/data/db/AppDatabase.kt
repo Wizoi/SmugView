@@ -14,9 +14,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SearchHistory::class,
         SearchResult::class,
         ViewedGalleryUpdate::class,
-        CachedAlbum::class
+        CachedAlbum::class,
+        OfflineFile::class,
+        OfflineGallery::class,
+        OfflineGalleryItem::class
     ],
-    version = 16,
+    version = 17,
     // Schemas are exported to app/schemas (see the KSP room.schemaLocation arg in
     // build.gradle.kts) so migrations can be validated with MigrationTestHelper.
     exportSchema = true
@@ -24,6 +27,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 abstract class AppDatabase : RoomDatabase() {
     abstract fun collectionDao(): CollectionDao
     abstract fun doctorDao(): DoctorDao
+    abstract fun offlineDao(): OfflineDao
 
     companion object {
         /**
@@ -129,6 +133,77 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE cached_albums ADD COLUMN imagesLastUpdated TEXT")
                 db.execSQL("DELETE FROM cached_nodes WHERE parentNodeId = nodeId OR instr(parentNodeId, '!') > 0")
                 db.execSQL("UPDATE cached_albums SET parentNodeId = NULL")
+            }
+        }
+
+        /**
+         * v16 -> v17 (phase 5, design 2.2 and 6.1): the offline tables. Purely additive.
+         *
+         * What changes: three new tables (`offline_files`, `offline_galleries`, `offline_gallery_items`) and their
+         * indexes, backfilled from today's rows: one file row per image key held in `collection_photos` (whatever the
+         * number of collections) or as an Image bookmark, and one gallery row per Album bookmark (state `LEGACY`,
+         * `wifiOnly = 1` by the owner's sign-off, design 8.1).
+         *
+         * What is NOT touched: every existing table, row and column. `collection_photos.localFilePath` and
+         * `isDownloaded` stay and are not read here: R-40 made them wrong, so whether a file exists is decided by
+         * looking at the file (step 5-8), never by that flag. No file is written or deleted. Every backfilled file
+         * starts `PENDING` with `legacyPath = 'offline_photos/{key}.jpg'`.
+         */
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `offline_files` (`fileKey` TEXT NOT NULL, `imageKey` TEXT NOT NULL, " +
+                        "`albumKey` TEXT, `nickname` TEXT NOT NULL DEFAULT '', `sourceUrl` TEXT, `expectedBytes` INTEGER, " +
+                        "`md5` TEXT, `title` TEXT, `thumbnailUrl` TEXT, `format` TEXT, `dateTaken` TEXT, " +
+                        "`state` TEXT NOT NULL, `failure` TEXT, `retryable` INTEGER NOT NULL DEFAULT 0, " +
+                        "`attempts` INTEGER NOT NULL DEFAULT 0, `nextAttemptAt` INTEGER, `httpCode` INTEGER, " +
+                        "`wifiOnly` INTEGER NOT NULL DEFAULT 0, `claim` TEXT, `relPath` TEXT, `bytes` INTEGER, " +
+                        "`legacyPath` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`fileKey`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_files_imageKey` ON `offline_files` (`imageKey`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_files_state` ON `offline_files` (`state`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `offline_galleries` (`collectionId` INTEGER NOT NULL, `albumKey` TEXT NOT NULL, " +
+                        "`nickname` TEXT NOT NULL DEFAULT '', `title` TEXT, `state` TEXT NOT NULL, `failure` TEXT, " +
+                        "`retryable` INTEGER NOT NULL DEFAULT 0, `listedAt` INTEGER, `listedIlu` TEXT, `photoCount` INTEGER, " +
+                        "`wifiOnly` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`collectionId`, `albumKey`), " +
+                        "FOREIGN KEY(`collectionId`) REFERENCES `offline_collections`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_galleries_collectionId` ON `offline_galleries` (`collectionId`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `offline_gallery_items` (`collectionId` INTEGER NOT NULL, `albumKey` TEXT NOT NULL, " +
+                        "`imageKey` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`collectionId`, `albumKey`, `imageKey`), " +
+                        "FOREIGN KEY(`collectionId`, `albumKey`) REFERENCES `offline_galleries`(`collectionId`, `albumKey`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_gallery_items_imageKey` ON `offline_gallery_items` (`imageKey`)")
+
+                val now = System.currentTimeMillis()
+                // Photos of the Favorites path: one file row per key, whatever the number of collections.
+                db.execSQL(
+                    "INSERT OR IGNORE INTO offline_files (fileKey, imageKey, albumKey, nickname, sourceUrl, title, thumbnailUrl, " +
+                        "dateTaken, state, retryable, attempts, wifiOnly, legacyPath, createdAt, updatedAt) " +
+                        "SELECT cp.imageKey || '/orig', cp.imageKey, MAX(cp.albumKey), MAX(c.siteNickname), " +
+                        "MAX(NULLIF(cp.archivedUri, '')), MAX(cp.title), MAX(cp.thumbnailUrl), MAX(cp.dateTaken), " +
+                        "'PENDING', 0, 0, 0, 'offline_photos/' || cp.imageKey || '.jpg', $now, $now " +
+                        "FROM collection_photos cp JOIN offline_collections c ON c.id = cp.collectionId GROUP BY cp.imageKey"
+                )
+                // Image bookmarks (source unknown: resolved later with image/{key}-0). A key already above wins.
+                db.execSQL(
+                    "INSERT OR IGNORE INTO offline_files (fileKey, imageKey, albumKey, nickname, sourceUrl, title, thumbnailUrl, " +
+                        "dateTaken, state, retryable, attempts, wifiOnly, legacyPath, createdAt, updatedAt) " +
+                        "SELECT b.itemKey || '/orig', b.itemKey, MAX(b.albumKey), MAX(c.siteNickname), NULL, MAX(b.title), " +
+                        "MAX(b.thumbnailUrl), NULL, 'PENDING', 0, 0, 0, 'offline_photos/' || b.itemKey || '.jpg', $now, $now " +
+                        "FROM collection_bookmarks b JOIN offline_collections c ON c.id = b.collectionId " +
+                        "WHERE b.type = 'Image' GROUP BY b.itemKey"
+                )
+                // Gallery bookmarks: resolved once in Kotlin by step 5-8 (the "finished" flag is in SharedPreferences).
+                db.execSQL(
+                    "INSERT OR IGNORE INTO offline_galleries (collectionId, albumKey, nickname, title, state, retryable, wifiOnly) " +
+                        "SELECT b.collectionId, b.itemKey, c.siteNickname, b.title, 'LEGACY', 0, 1 " +
+                        "FROM collection_bookmarks b JOIN offline_collections c ON c.id = b.collectionId WHERE b.type = 'Album'"
+                )
             }
         }
     }

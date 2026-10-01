@@ -223,3 +223,92 @@ fun SearchResult.toAlbumImageData(): com.smugview.app.data.api.AlbumImageData {
         videoUrl = this.videoUrl
     )
 }
+
+// --- Phase 5 (migration 16 -> 17): saved files, kept galleries, what a kept gallery held. See
+// docs/design/phase-5-offline-files.md 2.2. Nothing reads or writes these until step 5-3.
+
+/** One file on disk, or wanted on disk. `fileKey` is "{imageKey}/orig". `state`: PENDING | DOWNLOADING | DONE | FAILED. */
+@Entity(
+    tableName = "offline_files",
+    indices = [Index(value = ["imageKey"]), Index(value = ["state"])]
+)
+data class OfflineFile(
+    @PrimaryKey val fileKey: String,
+    val imageKey: String,
+    val albumKey: String? = null,
+    @ColumnInfo(defaultValue = "") val nickname: String = "",
+    /** NULL means: resolve it with `image/{key}-0` first. */
+    val sourceUrl: String? = null,
+    val expectedBytes: Long? = null,
+    val md5: String? = null,
+    val title: String? = null,
+    val thumbnailUrl: String? = null,
+    val format: String? = null,
+    val dateTaken: String? = null,
+    val state: String,
+    val failure: String? = null,
+    @ColumnInfo(defaultValue = "0") val retryable: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val attempts: Int = 0,
+    val nextAttemptAt: Long? = null,
+    val httpCode: Int? = null,
+    @ColumnInfo(defaultValue = "0") val wifiOnly: Boolean = false,
+    /** This process's run id while DOWNLOADING. */
+    val claim: String? = null,
+    /** Set iff DONE, relative to `filesDir`. */
+    val relPath: String? = null,
+    val bytes: Long? = null,
+    /** `offline_photos/{key}.jpg` for a row that came from the pre-17 code; adopted or repaired by 5-8. */
+    val legacyPath: String? = null,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+/** A gallery kept offline in a collection. `state`: LIST_PENDING | LISTED | FAILED | LEGACY (migration only). */
+@Entity(
+    tableName = "offline_galleries",
+    primaryKeys = ["collectionId", "albumKey"],
+    foreignKeys = [
+        ForeignKey(
+            entity = OfflineCollection::class,
+            parentColumns = ["id"],
+            childColumns = ["collectionId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["collectionId"])]
+)
+data class OfflineGallery(
+    val collectionId: Long,
+    val albumKey: String,
+    @ColumnInfo(defaultValue = "") val nickname: String = "",
+    val title: String? = null,
+    val state: String,
+    val failure: String? = null,
+    @ColumnInfo(defaultValue = "0") val retryable: Boolean = false,
+    val listedAt: Long? = null,
+    val listedIlu: String? = null,
+    val photoCount: Int? = null,
+    /** The user's Wi-Fi rule for this gallery (Q3, design 8.1): 1 = Wi-Fi only, the default; 0 = any network. */
+    @ColumnInfo(defaultValue = "1") val wifiOnly: Boolean = true
+)
+
+/** What a kept gallery held when last listed. */
+@Entity(
+    tableName = "offline_gallery_items",
+    primaryKeys = ["collectionId", "albumKey", "imageKey"],
+    foreignKeys = [
+        ForeignKey(
+            entity = OfflineGallery::class,
+            parentColumns = ["collectionId", "albumKey"],
+            childColumns = ["collectionId", "albumKey"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["imageKey"])]
+)
+data class OfflineGalleryItem(
+    val collectionId: Long,
+    val albumKey: String,
+    val imageKey: String,
+    val sortIndex: Int
+)

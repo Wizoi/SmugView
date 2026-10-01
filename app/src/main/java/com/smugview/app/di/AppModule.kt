@@ -251,8 +251,8 @@ object AppModule {
             AppDatabase::class.java,
             "smugview_db"
         )
-            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16)
-            // v12 -> v13 .. v15 -> v16 have real migrations above, so users keep their data.
+            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17)
+            // v12 -> v13 .. v16 -> v17 have real migrations above, so users keep their data.
             //
             // Versions 1..11 (all prior production releases) shipped with
             // fallbackToDestructiveMigration(), so there is NO real migration path from
