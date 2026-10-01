@@ -80,7 +80,9 @@ data class NodeUris(
     @SerializedName("ChildNodes") val childNodes: String? = null,
     @SerializedName("Album") val album: String? = null,
     @SerializedName("HighlightImage") val highlightImage: String? = null,
-    @SerializedName("ParentNode") val parentNode: String? = null
+    @SerializedName("ParentNode") val parentNode: String? = null,
+    /** Present on `user!albums` galleries: `/api/v2/folder/user/{nick}/{path}` of the containing folder. */
+    @SerializedName("Folder") val folder: String? = null
 )
 
 // Node lineage (`node/{id}!parents`): self first, then each ancestor up to the site root.
@@ -228,7 +230,9 @@ data class AlbumDetails(
     @SerializedName("SecurityType") val securityType: String? = null,
     @SerializedName("PasswordHint") val passwordHint: String? = null,
     @SerializedName("Uris") val uris: NodeUris? = null,
-    @SerializedName("LastUpdated") val dateModified: String? = null
+    @SerializedName("LastUpdated") val dateModified: String? = null,
+    /** When the photos in the gallery last changed: the one "is it new?" date (design Q3). */
+    @SerializedName("ImagesLastUpdated") val imagesLastUpdated: String? = null
 )
 
 data class UserAlbumsResponse(

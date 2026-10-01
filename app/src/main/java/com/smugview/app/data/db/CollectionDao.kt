@@ -33,9 +33,18 @@ interface CollectionDao {
     @Query("SELECT * FROM cached_albums WHERE nickname = :nickname OR nickname = '' ORDER BY sortIndex ASC")
     suspend fun getAlbumIndex(nickname: String): List<CachedAlbum>
 
-    /** Most-recent LastUpdated we have cached — the stop marker for the incremental sync. */
-    @Query("SELECT MAX(dateModified) FROM cached_albums WHERE nickname = :nickname OR nickname = ''")
-    suspend fun getLatestAlbumDateModified(nickname: String): String?
+    /**
+     * The crawl's single write (design 3.3): upserts and prunes in one transaction, so a failure
+     * leaves the index as it was. Keys are deleted in chunks (SQLite's variable limit).
+     */
+    @androidx.room.Transaction
+    suspend fun applyCrawl(upserts: List<CachedAlbum>, pruneKeys: List<String>) {
+        if (upserts.isNotEmpty()) upsertAlbums(upserts)
+        pruneKeys.chunked(500).forEach { deleteAlbumsByKeys(it) }
+    }
+
+    @Query("DELETE FROM cached_albums WHERE albumKey IN (:albumKeys)")
+    suspend fun deleteAlbumsByKeys(albumKeys: List<String>)
 
     @Query("SELECT COUNT(*) FROM cached_albums WHERE nickname = :nickname OR nickname = ''")
     suspend fun getAlbumIndexCount(nickname: String): Int
@@ -57,11 +66,6 @@ interface CollectionDao {
 
     @Query("DELETE FROM cached_nodes")
     suspend fun clearAllCachedNodes()
-
-    /** Evicts a folder's cached child listing so the next [getCachedNodesByParent] read misses
-     *  cache and `getNodeChildren` refetches from the API instead of serving stale data. */
-    @Query("DELETE FROM cached_nodes WHERE parentNodeId = :parentNodeId")
-    suspend fun deleteNodesByParent(parentNodeId: String)
 
     @Query("""
         WITH RECURSIVE descendants(nodeId) AS (

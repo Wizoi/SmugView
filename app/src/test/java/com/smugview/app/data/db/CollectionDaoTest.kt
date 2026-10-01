@@ -214,7 +214,7 @@ class CollectionDaoTest {
     )
 
     @Test
-    fun albumIndex_upsertReplacesByKey_andLatestDateDrivesIncrementalStop() = runBlocking {
+    fun albumIndex_upsertReplacesByKey() = runBlocking {
         dao.upsertAlbums(
             listOf(
                 album("a1", "2024-01-01T00:00:00+00:00"),
@@ -222,8 +222,6 @@ class CollectionDaoTest {
             )
         )
         assertEquals(2, dao.getAlbumIndexCount("site1"))
-        // The stop-marker for the incremental sync is the newest LastUpdated we hold.
-        assertEquals("2024-06-01T00:00:00+00:00", dao.getLatestAlbumDateModified("site1"))
 
         // Upsert a changed a2 (newer date) + a brand-new a3 — REPLACE keeps the index deduped by key.
         dao.upsertAlbums(
@@ -233,7 +231,18 @@ class CollectionDaoTest {
             )
         )
         assertEquals(3, dao.getAlbumIndexCount("site1"))
-        assertEquals("2025-03-03T00:00:00+00:00", dao.getLatestAlbumDateModified("site1"))
+    }
+
+    @Test
+    fun applyCrawl_upsertsAndPrunesInOneCall_beyondSqlitesVariableLimit() = runBlocking {
+        // 1,200 stale keys exceed SQLite's 999-variable limit if deleted in one statement.
+        val stale = (0 until 1200).map { album("old$it", "2024-01-01T00:00:00+00:00") }
+        dao.upsertAlbums(stale + album("keep", "2024-01-01T00:00:00+00:00"))
+
+        dao.applyCrawl(listOf(album("keep", "2025-01-01T00:00:00+00:00"), album("new", "2025-01-01T00:00:00+00:00")), stale.map { it.albumKey })
+
+        assertEquals(listOf("keep", "new"), dao.getAlbumIndex("site1").map { it.albumKey }.sorted())
+        assertEquals("2025-01-01T00:00:00+00:00", dao.getAlbumIndex("site1").first { it.albumKey == "keep" }.dateModified)
     }
 
     @Test

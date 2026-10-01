@@ -649,7 +649,7 @@ class SmugMugRepositoryTest {
                     "DateModified": "2026-07-20T10:00:00+00:00",
                     "Uris": {
                       "Album": "/api/v2/album/albumX",
-                      "ParentNode": "/api/v2/node/folder1"
+                      "ParentNode": "/api/v2/node/decoyParent"
                     }
                   }
                 ]
@@ -695,7 +695,9 @@ class SmugMugRepositoryTest {
         // carries Uris.ParentNode=/node/folder1 evicts folder1's cached listing". That cannot happen
         // live: user!albums has no ParentNode at all, and a node's ParentNode is its OWN !parent link,
         // not its parent. The fixture invented a payload SmugMug never sends. The real invalidation is
-        // the changed-parent relist of Phase 2 steps 2-8/2-9. Until then a sync must not guess.
+        // the changed-parent relist of Phase 2 steps 2-8/2-9. A sync must not guess a parent.
+        // Step 2-8: the crawl KEEPS the row's existing parentNodeId (the resolver, step 2-9, owns it),
+        // so the decoy ParentNode below must change nothing.
 
         // Baseline: album already indexed with an older LastUpdated (as if from a previous sync).
         dao.upsertAlbums(listOf(
@@ -778,8 +780,8 @@ class SmugMugRepositoryTest {
         val updated = dao.getAlbumIndex("testuser").find { it.albumKey == "albumX" }
         assertEquals("2026-07-20T10:00:00+00:00", updated?.dateModified)
 
-        // ...the index row does not take a parent from ParentNode (R-01)...
-        assertEquals(null, updated?.parentNodeId)
+        // ...the index row does not take a parent from ParentNode (R-01); it keeps what it had...
+        assertEquals("folder1", updated?.parentNodeId)
 
         // ...and folder1's cached listing is left alone: a sync has no real parent to evict by.
         assertEquals(

@@ -76,10 +76,10 @@ class SyncReportTest {
         append(""""Uris":{"Folder":"/api/v2/folder/user/nick/Family/School","HighlightImage":"/api/v2/highlight/album/$key"}}""")
     }
 
-    private fun albumsPage(albums: List<String>, next: String?) = buildString {
+    private fun albumsPage(albums: List<String>, next: String?, total: Int = 9) = buildString {
         append("""{"Response":{"Uri":"/api/v2/user/nick!albums","Album":[""")
         append(albums.joinToString(","))
-        append("""],"Pages":{"Start":1,"Count":${albums.size},"Total":9""")
+        append("""],"Pages":{"Start":1,"Count":${albums.size},"Total":$total""")
         if (next != null) append(""","NextPage":"$next"""")
         append("}},\"Code\":200,\"Message\":\"Ok\"}")
     }
@@ -100,11 +100,11 @@ class SyncReportTest {
     private fun lastRun(): SyncRun = reporter.recent(1).single()
 
     @Test
-    fun twoPagesNoMarker_stopsWithNoNextPage() = runBlocking {
+    fun twoPages_crawlBothAndStopWithNoNextPage() = runBlocking {
         val repository = repo { chain ->
             val url = chain.request().url.toString()
-            if (url.contains("start=")) {
-                reply(chain, 200, albumsPage(listOf(albumJson("AAAAAA", "N3", daysAgo(5))), next = null))
+            if (chain.request().url.queryParameter("start") == "101") {
+                reply(chain, 200, albumsPage(listOf(albumJson("AAAAAA", "N3", daysAgo(5))), next = null, total = 104))
             } else {
                 reply(
                     chain, 200,
@@ -114,7 +114,8 @@ class SyncReportTest {
                             albumJson("NoDate", "N2", null),
                             albumJson("PwAlbm", "N4", daysAgo(9), security = "Password")
                         ),
-                        next = "/api/v2/user/nick!albums?start=4&count=100"
+                        next = "/api/v2/user/nick!albums?start=101&count=100",
+                        total = 104
                     )
                 )
             }
@@ -140,7 +141,9 @@ class SyncReportTest {
     }
 
     @Test
-    fun knownMarkerOnFirstPage_stopsWithReachedKnown() = runBlocking {
+    fun knownAlbumsOnPageOne_doNotStopTheCrawl() = runBlocking {
+        // findings #14: user!albums is not sorted by any date it returns, so a known album on page 1
+        // says nothing about page 2. (This was knownMarkerOnFirstPage_stopsWithReachedKnown.)
         val known = daysAgo(10)
         db.collectionDao().upsertAlbums(
             listOf(
@@ -153,45 +156,52 @@ class SyncReportTest {
             )
         )
         val repository = repo { chain ->
-            reply(
-                chain, 200,
-                albumsPage(
-                    listOf(
-                        albumJson("New1", "N1", daysAgo(1)),
-                        albumJson("New2", "N2", daysAgo(2)),
-                        albumJson("New3", "N3", daysAgo(3)),
-                        albumJson("OldKey", "OldNode", known),
-                        albumJson("Older", "N9", daysAgo(40))
-                    ),
-                    next = "/api/v2/user/nick!albums?start=6&count=100"
+            if (chain.request().url.queryParameter("start") == "101") {
+                reply(chain, 200, albumsPage(listOf(albumJson("Page2", "N7", daysAgo(1))), next = null, total = 101))
+            } else {
+                reply(
+                    chain, 200,
+                    albumsPage(
+                        listOf(
+                            albumJson("New1", "N1", daysAgo(1)),
+                            albumJson("New2", "N2", daysAgo(2)),
+                            albumJson("New3", "N3", daysAgo(3)),
+                            albumJson("OldKey", "OldNode", known),
+                            albumJson("Older", "N9", daysAgo(40))
+                        ),
+                        next = "/api/v2/user/nick!albums?start=101&count=100",
+                        total = 101
+                    )
                 )
-            )
+            }
         }
 
         repository.buildInMemoryGalleryCache("nick", "FAKEKEY1234")
         reporter.flush(2000)
 
         val run = lastRun()
-        assertEquals(StopReason.ReachedKnown, run.stop)
-        assertEquals("page=1 index=3", run.stopDetail)
+        assertEquals(StopReason.NoNextPage, run.stop)
+        assertEquals(null, run.stopDetail)
         assertEquals(false, run.isFirstSync)
         assertEquals(1, run.persistedCount)
-        assertEquals(known, run.stopMarker)
-        assertEquals(1, run.pagesFetched)
-        assertEquals(3, run.changedCount)
+        assertEquals(2, run.pagesFetched)
+        assertEquals(6, run.albumsSeen)
+        // New to the index: New1..3, Older and Page2. OldKey is known and unchanged.
+        assertEquals(5, run.changedCount)
     }
 
     @Test
     fun http429OnPageTwo_isRecordedAsError() = runBlocking {
         val repository = repo { chain ->
-            if (chain.request().url.toString().contains("start=")) {
+            if (chain.request().url.queryParameter("start") == "101") {
                 reply(chain, 429, """{"Code":429,"Message":"Too Many Requests"}""")
             } else {
                 reply(
                     chain, 200,
                     albumsPage(
                         listOf(albumJson("FfHCms", "LCdk7F", daysAgo(2))),
-                        next = "/api/v2/user/nick!albums?start=2&count=100"
+                        next = "/api/v2/user/nick!albums?start=101&count=100",
+                        total = 150
                     )
                 )
             }

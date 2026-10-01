@@ -637,17 +637,20 @@ class SmugMugRepository @Inject constructor(
 
 
     /**
-     * Loads the persisted album index instantly, then refreshes it incrementally.
+     * The gallery crawl (design 3.3, findings #14/#15/#16). Publishes the persisted album index at
+     * once, then (at most once per [CRAWL_GATE_MS], and only after a crawl that fetched every page)
+     * reads EVERY page of `user!albums`, because the listing is not sorted by any date it returns and
+     * no early stop is safe. Pages accumulate in memory and one transaction writes them, so a failed
+     * crawl changes nothing and does not stamp the gate. Index rows the listing no longer holds are
+     * pruned only after a complete crawl ([unlock] says every password root unlocked: otherwise their
+     * galleries are merely invisible) and never when that would drop more than `max(20, 5%)` of the
+     * index. Folders that already have a cached listing and hold new or changed galleries are then
+     * relisted (forced, at most [MAX_RELIST]); their ids are returned so the caller can reload the one
+     * on screen. Only gallery *metadata* is synced; contents load on demand.
      *
-     * - Persisted albums (from a previous sync) are loaded from Room and published immediately, so
-     *   the app never blocks on a network crawl at launch.
-     * - The refresh fetches albums sorted by LastUpdated (newest first) and stops as soon as it
-     *   reaches an album we already have cached — so only new/changed galleries are fetched. The
-     *   first-ever sync is the only full crawl; after that it's a light delta.
-     * - Only gallery *metadata* (incl. the cover thumbnail) is synced. Gallery contents (photos)
-     *   are still loaded on demand when a gallery is opened.
+     * [unlock] is the summary of this launch's unlock ([runSiteSync]); null (unknown) never prunes.
      */
-    suspend fun buildInMemoryGalleryCache(nickname: String, apiKey: String): Set<String> {
+    suspend fun buildInMemoryGalleryCache(nickname: String, apiKey: String, unlock: UnlockSummary? = null): Set<String> {
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache starting for user=$nickname")
         }
@@ -656,6 +659,10 @@ class SmugMugRepository @Inject constructor(
             kotlinx.coroutines.Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
         ) {
             val run = syncReporter.begin(com.smugview.app.diag.SyncKind.GallerySync, nickname, actionId)
+            var complete = false
+            var pruned = 0
+            var pruneSkipped = 0
+            var relistedCount = 0
             try {
                 // 1. Instant: publish the persisted index (if any) so UI/search can proceed.
                 val persisted = dao.getAlbumIndex(nickname)
@@ -669,102 +676,46 @@ class SmugMugRepository @Inject constructor(
                     _isAlbumsCacheLoaded.value = false
                 }
 
-                // 2. Incremental delta: newest-first, stop once we reach known data.
-                val latestKnown = dao.getLatestAlbumDateModified(nickname)
-                run?.stopMarker = latestKnown
-                var response = api.getUserAlbums(
-                    nickname, apiKey,
-                    sortMethod = "LastUpdated", sortDirection = "Descending"
-                )
-                var sortBase = 0
-                val changed = mutableListOf<CachedAlbum>()
-                var reachedKnown = false
-                var pagesFetched = 0
-                while (true) {
-                    val albums = response.response.albums ?: emptyList()
-                    val expansions = response.expansions
-                    pagesFetched++
-                    run?.let { r ->
-                        // Evidence for findings #1 (no LastUpdated) and the password listing.
-                        r.pagesFetched = pagesFetched
-                        r.albumsSeen += albums.size
-                        r.albumsNullLastUpdated += albums.count { it.dateModified == null }
-                        r.albumsPasswordSecurity += albums.count { it.securityType == "Password" }
-                    }
-                    for ((albumIndex, album) in albums.withIndex()) {
-                        val lastUpdated = album.dateModified
-                        if (!isFirstSync && latestKnown != null && lastUpdated != null &&
-                            lastUpdated <= latestKnown
-                        ) {
-                            reachedKnown = true
-                            run?.stop = com.smugview.app.diag.StopReason.ReachedKnown
-                            run?.stopDetail = "page=$pagesFetched index=$albumIndex"
-                            break
-                        }
-                        val highlightUri = album.uris?.highlightImage
-                        val highlightUrl = highlightUri?.let { expansions?.get(it)?.image?.thumbnailUrl }
-                            ?.replace("/Th/", "/M/")?.replace("/th/", "/m/")
-                            ?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
-                        changed.add(
-                            CachedAlbum(
-                                albumKey = album.albumKey,
-                                nodeId = album.nodeId ?: album.albumKey,
-                                name = album.name,
-                                securityType = album.securityType,
-                                passwordHint = album.passwordHint,
-                                uri = album.uri,
-                                webUri = album.webUri,
-                                urlPath = album.urlPath,
-                                imageCount = album.imageCount,
-                                dateModified = lastUpdated,
-                                galleryStyle = album.galleryStyle,
-                                highlightImageUrl = highlightUrl,
-                                sortIndex = sortBase++,
-                                nickname = nickname,
-                                // user!albums has no ParentNode at all (R-05); IndexParentResolver (2-9)
-                                // fills this from Uris.Folder / UrlPath.
-                                parentNodeId = null
-                            )
-                        )
-                    }
-                    if (reachedKnown) break
-                    val nextUrl = response.response.pages?.next
-                    if (nextUrl == null) {
-                        run?.stop = com.smugview.app.diag.StopReason.NoNextPage
-                        break
-                    }
-                    kotlinx.coroutines.delay(100)
-                    response = api.getUserAlbumsByUri(overrideUrlCount(nextUrl, 100), apiKey)
+                // 2. Gate: a crawl that fetched every page less than 15 minutes ago is fresh enough.
+                val gateKey = "lastFullCrawlAt.$nickname"
+                val lastCrawl = syncState.getLong(gateKey)
+                val ageMs = clock() - lastCrawl
+                if (lastCrawl > 0 && ageMs in 0 until CRAWL_GATE_MS) {
+                    run?.stop = com.smugview.app.diag.StopReason.Completed
+                    run?.notes = "gated ageMin=${ageMs / 60_000}"
+                    return@withContext emptySet<String>()
                 }
 
-                if (changed.isNotEmpty()) {
-                    dao.upsertAlbums(changed)
-                    run?.changedCount = changed.size
-                    _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
-                    if (com.smugview.app.BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugMugRepository", "album index synced: ${changed.size} new/changed, total=${_albumsCache.value.size}")
+                // 3. Every page, all or nothing.
+                val crawl = GalleryCrawl(api, dao)
+                val fetched = crawl.fetchAll(nickname, apiKey) { pages, seen, nullLastUpdated, passwordSecurity ->
+                    run?.let { r ->
+                        r.pagesFetched = pages
+                        r.albumsSeen = seen
+                        r.albumsNullLastUpdated = nullLastUpdated
+                        r.albumsPasswordSecurity = passwordSecurity
                     }
-                    // A gallery that's new or whose LastUpdated moved means its parent folder's
-                    // cached child listing (cached_nodes, used by the Folders tab) may be stale —
-                    // evict it so the next visit re-fetches from the API instead of showing old
-                    // content until a manual refresh. Skipped on the first-ever sync since nothing
-                    // was cached yet to go stale.
-                    if (!isFirstSync) {
-                        val staleParents = changed.mapNotNull { it.parentNodeId }.distinct()
-                        for (parentId in staleParents) {
-                            dao.deleteNodesByParent(parentId)
-                        }
-                        run?.invalidatedParents = staleParents.size
-                        staleParents.toSet()
-                    } else {
-                        emptySet()
-                    }
-                } else {
-                    if (isFirstSync) {
-                        _albumsCache.value = emptyList()
-                    }
-                    emptySet()
                 }
+                val written = crawl.write(nickname, fetched.albums, prune = unlock?.allSucceeded == true)
+                complete = true
+                pruned = written.pruned
+                pruneSkipped = written.pruneSkipped
+                syncState.putLong(gateKey, clock())
+                run?.stop = com.smugview.app.diag.StopReason.NoNextPage
+                run?.changedCount = written.changed.size
+                _albumsCache.value = dao.getAlbumIndex(nickname).map { it.toCachedNode() }
+                if (com.smugview.app.BuildConfig.DEBUG) {
+                    android.util.Log.d("SmugMugRepository", "album index crawled: ${written.changed.size} new/changed, total=${_albumsCache.value.size}")
+                }
+
+                // 4. A new or changed gallery means its parent folder's cached listing (the Folders
+                // tab) may be stale: relist the folders that already have one.
+                val relisted = relistFolders(
+                    written.changed.mapNotNull { it.parentNodeId }.distinct(), apiKey
+                )
+                relistedCount = relisted.size
+                run?.invalidatedParents = relisted.size
+                relisted
             } catch (e: Exception) {
                 SmugLog.e("SmugMugRepository", "Failed to sync gallery cache", e)
                 // Recorded, not rethrown: swallowing (cancellation included) is today's behaviour.
@@ -778,10 +729,49 @@ class SmugMugRepository @Inject constructor(
                 emptySet()
             } finally {
                 _isAlbumsCacheLoaded.value = true
-                run?.let { syncReporter.finish(it) }
+                if (run != null) {
+                    if (run.notes == null) {
+                        run.notes = "complete=$complete pruned=$pruned pruneSkipped=$pruneSkipped relisted=$relistedCount"
+                    }
+                    syncReporter.finish(run)
+                }
             }
         }
     }
+
+    /**
+     * Forced relist of up to [MAX_RELIST] of [folderIds] that already have a cached listing (a folder
+     * never opened has nothing stale to refresh). A folder that cannot be listed (locked, offline) is
+     * skipped. Returns the folders actually relisted.
+     */
+    private suspend fun relistFolders(folderIds: List<String>, apiKey: String): Set<String> {
+        val relisted = LinkedHashSet<String>()
+        for (id in folderIds) {
+            if (relisted.size >= MAX_RELIST) break
+            if (dao.getCachedNodesByParent(id).first().isEmpty()) continue
+            try {
+                nodeLocks.getOrPut(id) { Mutex() }.withLock { fetchAndStoreChildren(id, apiKey, true, null, "true") }
+                relisted.add(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SmugLog.w("sync", "relist skip $id: ${e.javaClass.simpleName}")
+            }
+            if (treeSyncDelayMs > 0) kotlinx.coroutines.delay(treeSyncDelayMs)
+        }
+        return relisted
+    }
+
+    companion object {
+        /** A crawl that fetched every page this recently is not repeated (design 3.3). */
+        const val CRAWL_GATE_MS = 15 * 60_000L
+
+        /** Most folders one crawl relists. */
+        const val MAX_RELIST = 30
+    }
+
+    /** Wall clock for the crawl gate; tests move it. */
+    internal var clock: () -> Long = System::currentTimeMillis
 
     /** Pause between unlock calls in [unlockSavedRoots]; tests set it to 0. */
     internal var unlockDelayMs: Long = 400L
@@ -927,8 +917,8 @@ class SmugMugRepository @Inject constructor(
      * folders whose listing changed so the caller can reload one that is on screen.
      */
     suspend fun runSiteSync(nickname: String, rootNodeId: String, apiKey: String): Set<String> {
-        unlockSavedRoots(nickname, apiKey)
-        val invalidated = buildInMemoryGalleryCache(nickname, apiKey)
+        val unlock = unlockSavedRoots(nickname, apiKey)
+        val invalidated = buildInMemoryGalleryCache(nickname, apiKey, unlock)
         syncFolderTree(nickname, rootNodeId, apiKey)
         return invalidated
     }
@@ -1101,12 +1091,15 @@ class SmugMugRepository @Inject constructor(
                 webUri = node.webUri ?: existing?.webUri,
                 urlPath = existing?.urlPath,
                 imageCount = node.childCount ?: existing?.imageCount,
-                dateModified = node.dateModified ?: existing?.dateModified,
+                // A node's DateModified is not the album's LastUpdated (findings #15): it is never written
+                // here, so the index date stays the crawl's.
+                dateModified = existing?.dateModified,
                 galleryStyle = existing?.galleryStyle,
                 highlightImageUrl = node.highlightImageUrl ?: existing?.highlightImageUrl,
                 sortIndex = existing?.sortIndex ?: node.sortIndex,
                 nickname = nickname,
-                parentNodeId = node.parentNodeId ?: existing?.parentNodeId
+                parentNodeId = node.parentNodeId ?: existing?.parentNodeId,
+                imagesLastUpdated = existing?.imagesLastUpdated
             )
         }
         dao.upsertAlbums(toUpsert)

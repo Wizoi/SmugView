@@ -68,6 +68,71 @@ class FakeSmugMugServer {
         requestLog.filter { it.url.encodedPath.endsWith("node/$nodeId!children") }.map { it.header("Cache-Control") }
     }
 
+    /**
+     * One entry of the `user!albums` listing (V1/V6 shapes: `_verbosity=1` strings, no ParentNode,
+     * `Uris.Folder` = the containing folder). [needsSession] galleries sit under the password folder
+     * and are listed only once the session cookie exists (R-68), when [cookieGate] is on.
+     */
+    data class FakeAlbum(
+        val albumKey: String,
+        val nodeId: String,
+        val name: String,
+        val urlPath: String,
+        val lastUpdated: String,
+        val imagesLastUpdated: String?,
+        val needsSession: Boolean = false,
+        val security: String = "None"
+    ) {
+        val folderPath: String get() = urlPath.substringBeforeLast('/')
+    }
+
+    /** SmugMug's date shape, e.g. `2026-09-28T10:00:00+00:00`, relative to now (findings #9). */
+    fun daysAgo(days: Long, extraSeconds: Long = 0): String =
+        java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).minusDays(days).plusSeconds(extraSeconds)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx"))
+
+    /** What `user!albums` lists, in listing order. Default: fixture F's two galleries. */
+    var albums: List<FakeAlbum> = listOf(
+        FakeAlbum(
+            "FfHCms", "LCdk7F", "New School Year", "/Family/School/2026-09-01--New-School-Year",
+            lastUpdated = daysAgo(6), imagesLastUpdated = daysAgo(2), needsSession = true, security = "None"
+        ),
+        FakeAlbum(
+            "N74KSK", "sXQz4G", "Public Gallery", "/Kentridge/Public",
+            lastUpdated = daysAgo(40), imagesLastUpdated = daysAgo(40)
+        )
+    )
+
+    /** Replaces the answer to a `user!albums` page: return a Response, throw, or null to fall through. */
+    var albumsOverride: ((start: Int, req: Request) -> Response?)? = null
+
+    /** The `user!albums` requests, in order. */
+    fun albumsRequests(): List<Request> = synchronized(requestLog) {
+        requestLog.filter { it.url.encodedPath.endsWith("!albums") }
+    }
+
+    private fun albumsPage(req: Request, nickname: String): Response {
+        val start = req.url.queryParameter("start")?.toIntOrNull() ?: 1
+        albumsOverride?.invoke(start, req)?.let { return it }
+        val count = (req.url.queryParameter("count")?.toIntOrNull() ?: 100).coerceAtMost(100)
+        val visible = albums.filter { !(cookieGate && it.needsSession && family.id !in unlockedRoots) }
+        val page = visible.drop(start - 1).take(count)
+        val body = page.joinToString(",") {
+            val ilu = it.imagesLastUpdated?.let { v -> ""","ImagesLastUpdated":"$v"""" } ?: ""
+            """{"Uri":"/api/v2/album/${it.albumKey}","AlbumKey":"${it.albumKey}","NodeID":"${it.nodeId}","Name":"${it.name}",""" +
+                """"UrlPath":"${it.urlPath}","WebUri":"https://gallery.idzifamily.com${it.urlPath}","SecurityType":"${it.security}",""" +
+                """"ImageCount":12,"LastUpdated":"${it.lastUpdated}"$ilu,""" +
+                """"Uris":{"Folder":"/api/v2/folder/user/$nickname${it.folderPath}"}}"""
+        }
+        // Like the live API, NextPage drops _expand and _verbosity (design V3).
+        val next = if (start - 1 + page.size < visible.size)
+            ""","NextPage":"/api/v2/user/$nickname!albums?count=$count&start=${start + count}"""" else ""
+        return json(
+            req, 200,
+            """{"Response":{"Album":[$body],"Pages":{"Start":$start,"Count":${page.size},"Total":${visible.size}$next}},"Code":200}"""
+        )
+    }
+
     private data class N(
         val id: String, val type: String, val name: String, val sec: String, val eff: String, val web: String
     )
@@ -149,7 +214,7 @@ class FakeSmugMugServer {
             return resp
         }
         if (req.method == "GET" && path.startsWith("user/") && path.endsWith("!albums")) {
-            return json(req, 200, """{"Response":{"Album":[],"Pages":{"Start":1,"Count":0,"Total":0}},"Code":200}""")
+            return albumsPage(req, path.removePrefix("user/").removeSuffix("!albums"))
         }
         if (path.startsWith("node/") && path.endsWith("!parents")) {
             parentsOverride?.let { return it(req) }

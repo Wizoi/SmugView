@@ -228,15 +228,15 @@ interface SmugMugApi {
         @Path("nickname") nickname: String,
         @Query("APIKey") apiKey: String,
         @Query("count") count: Int = 100,
+        // The crawl builds start=1,101,... itself: Pages.NextPage drops _expand and _verbosity (V3).
+        // There is deliberately no SortMethod/SortDirection: user!albums does not sort by any date
+        // it returns, so no early stop is safe (findings #14).
+        @Query("start") start: Int? = null,
         @Query("_expand") expand: String = "HighlightImage",
-        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated",
-        @Query("_filteruri") filterUri: String = "HighlightImage",
+        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,GalleryStyle,UrlPath,WebUri,SecurityType,Privacy,PasswordHint,ImageCount,Uris,LastUpdated,ImagesLastUpdated",
+        @Query("_filteruri") filterUri: String = "HighlightImage,Folder",
         @Query("_verbosity") verbosity: Int = 1,
         @Query("Password") password: String? = null,
-        // Sorting by last-modified (newest first) enables the incremental album-index sync:
-        // fetch newest-first and stop once we reach an album we already have cached.
-        @Query("SortMethod") sortMethod: String? = null,
-        @Query("SortDirection") sortDirection: String? = null,
         @Header("Cache-Control") cacheControl: String? = null
     ): UserAlbumsResponse
 
