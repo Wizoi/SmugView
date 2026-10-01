@@ -251,6 +251,18 @@ class SmugViewModelTest {
         assertFalse("an unrelated set lights nothing", item.hasActiveUpdate(setOf("sXQz4G")))
     }
 
+    // The Home tab lock icon compared the AlbumKey with a set of NodeIDs (findings #5, same mix as the dot):
+    // a gallery unlocked through its folder (NodeID in the set, AlbumKey not) still showed a closed lock.
+    @Test fun hubItem_underAnUnlockedFolder_showsAnOpenLock() {
+        val item = com.smugview.app.ui.viewmodel.HubAlbumItem(
+            albumKey = "FfHCms", title = "New School Year", coverUrl = null, imageCount = 3,
+            dateModified = null, access = "Password", nodeId = "LCdk7F"
+        )
+        assertTrue("the NodeID is unlocked through its folder", item.isUnlocked(setOf("2sDN5x", "P4BKB", "LCdk7F")))
+        assertTrue("a directly saved AlbumKey also counts", item.isUnlocked(setOf("FfHCms")))
+        assertFalse("an unrelated set leaves it locked", item.isUnlocked(setOf("sXQz4G")))
+    }
+
     // R-03: a self-parented cached row (SmugMug's ParentNode is the node's own !parent link) made the
     // inherited-password walk spin forever, which froze opening any gallery under that row.
     @Test(timeout = 15_000)

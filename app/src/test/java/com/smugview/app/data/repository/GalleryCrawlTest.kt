@@ -219,6 +219,35 @@ class GalleryCrawlTest {
         assertEquals(6, server.albumsRequests().size)
     }
 
+    @Test fun unlockWhileRunning_crawlsAgainInsideTheGate_andTheLockedGalleryAppears() {
+        // The user types the Family password at runtime. The launch crawl (no session) ran a minute ago,
+        // so the 15-minute gate would skip the crawl and the dots under Family would wait for a later launch.
+        server.cookieGate = true
+        val r = repo()
+        runBlocking { r.runSiteSync(nick, "4zqWw", "k") }
+        assertEquals("anonymous crawl: only the public gallery", listOf("N74KSK"), runBlocking { dao.getAlbumIndex(nick) }.map { it.albumKey })
+        val before = server.albumsRequests().size
+
+        now += 60_000L
+        assertTrue(runBlocking { r.unlockNode("2sDN5x", "k", "fake-pw-1") })
+        runBlocking { r.resyncAfterUnlock(nick, "4zqWw", "k") }
+
+        assertTrue("a new crawl ran inside the gate", server.albumsRequests().size > before)
+        assertEquals(
+            listOf("FfHCms", "N74KSK"), runBlocking { dao.getAlbumIndex(nick) }.map { it.albumKey }.sorted()
+        )
+        assertTrue(crawlRun().notes!!, crawlRun().notes!!.startsWith("complete=true"))
+    }
+
+    @Test fun unlockWhileRunning_neverPrunes() {
+        val stale = fillers(3, "St")
+        runBlocking { dao.upsertAlbums(stale.map { row(it) }) }
+
+        runBlocking { repo().resyncAfterUnlock(nick, "4zqWw", "k") }
+
+        assertEquals(3, runBlocking { dao.getAlbumIndex(nick) }.count { it.albumKey.startsWith("St") })
+    }
+
     @Test fun crawl_storesImagesLastUpdated_neverMovesItBack_andKeepsLastUpdatedSeparate() {
         val f = server.albums.first { it.albumKey == "FfHCms" }
         val newer = server.daysAgo(1) // local ILU is newer than the 15-minute-old listing's

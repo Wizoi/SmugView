@@ -919,7 +919,7 @@ fun HomeTabView(
                                     }
                                     
                                     val unlockedIds by viewModel.unlockedNodeIds.collectAsState()
-                                    val isUnlocked = album.albumKey in unlockedIds
+                                    val isUnlocked = album.isUnlocked(unlockedIds)
                                     val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
                                     if (album.hasActiveUpdate(activeUpdates)) {
                                         Box(

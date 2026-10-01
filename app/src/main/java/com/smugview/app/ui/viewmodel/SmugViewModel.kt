@@ -469,6 +469,8 @@ class SmugViewModel @Inject constructor(
     fun updateKeywordPhotosSortOrder(order: String) = tag.updateKeywordPhotosSortOrder(order)
 
     private var treeSyncJob: kotlinx.coroutines.Job? = null
+    private var unlockResyncJob: kotlinx.coroutines.Job? = null
+    private var siteRootNodeId: String? = null
     private var unlockSubtreeIndexJob: kotlinx.coroutines.Job? = null
 
     fun performSearch(query: String, forceRefresh: Boolean = false) = search.performSearch(query, forceRefresh)
@@ -1186,13 +1188,26 @@ class SmugViewModel @Inject constructor(
                 // folder itself now shows as unlocked. Index the rest of the subtree in the
                 // background so unlocking doesn't block navigation into the folder just opened.
                 indexUnlockedSubtreeInBackground(node.nodeId, password)
+                resyncAfterUnlock()
                 true
             } else {
                 false
             }
         } else {
             val albumKey = node.getAlbumKey()
-            repository.verifyAlbumPassword(albumKey, apiKey, password)
+            repository.verifyAlbumPassword(albumKey, apiKey, password).also { if (it) resyncAfterUnlock() }
+        }
+    }
+
+    /** A new session cookie makes more galleries visible to the index crawl, so crawl now, not at the next launch. */
+    private fun resyncAfterUnlock() {
+        val nickname = _activeNickname.value ?: return
+        val rootId = siteRootNodeId ?: return
+        unlockResyncJob?.cancel()
+        unlockResyncJob = viewModelScope.launch(defaultDispatcher) {
+            val invalidated = repository.resyncAfterUnlock(nickname, rootId, apiKey)
+            val open = currentFolderId
+            if (open != null && open in invalidated) loadFolderContents(open, forceRefresh = true)
         }
     }
 
@@ -2098,6 +2113,7 @@ class SmugViewModel @Inject constructor(
      * folder on screen, it is reloaded so a new gallery is not stuck behind a manual refresh.
      */
     private fun startSiteSync(nickname: String, rootNodeId: String) {
+        siteRootNodeId = rootNodeId
         treeSyncJob?.cancel()
         treeSyncJob = viewModelScope.launch {
             val invalidatedParents = repository.runSiteSync(nickname, rootNodeId, apiKey)
@@ -2128,5 +2144,8 @@ data class HubAlbumItem(
 ) {
     /** Whether this gallery carries a "new" dot: [activeNodeIds] are NodeIDs (design 3.5, findings #5). */
     fun hasActiveUpdate(activeNodeIds: Set<String>): Boolean = nodeId != null && nodeId in activeNodeIds
+
+    /** Whether the lock shows open; [unlockedIds] holds NodeIDs of everything under an unlocked root, plus saved keys. */
+    fun isUnlocked(unlockedIds: Set<String>): Boolean = albumKey in unlockedIds || (nodeId != null && nodeId in unlockedIds)
 }
 

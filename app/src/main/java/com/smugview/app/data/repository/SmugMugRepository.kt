@@ -671,7 +671,21 @@ class SmugMugRepository @Inject constructor(
         nickname: String,
         apiKey: String,
         unlock: UnlockSummary? = null,
-        rootNodeId: String? = null
+        rootNodeId: String? = null,
+        ignoreGate: Boolean = false
+    ): Set<String> = crawlMutex.withLock {
+        crawlLocked(nickname, apiKey, unlock, rootNodeId, ignoreGate)
+    }
+
+    /** One crawl at a time: a runtime-unlock crawl must wait for, then redo, a crawl that began without the session. */
+    private val crawlMutex = Mutex()
+
+    private suspend fun crawlLocked(
+        nickname: String,
+        apiKey: String,
+        unlock: UnlockSummary?,
+        rootNodeId: String?,
+        ignoreGate: Boolean
     ): Set<String> {
         if (com.smugview.app.BuildConfig.DEBUG) {
             android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache starting for user=$nickname")
@@ -705,7 +719,7 @@ class SmugMugRepository @Inject constructor(
                 val gateKey = "lastFullCrawlAt.$nickname"
                 val lastCrawl = syncState.getLong(gateKey)
                 val ageMs = clock() - lastCrawl
-                if (lastCrawl > 0 && ageMs in 0 until CRAWL_GATE_MS) {
+                if (!ignoreGate && lastCrawl > 0 && ageMs in 0 until CRAWL_GATE_MS) {
                     run?.stop = com.smugview.app.diag.StopReason.Completed
                     run?.notes = "gated ageMin=${ageMs / 60_000}"
                     return@withContext emptySet<String>()
@@ -962,9 +976,21 @@ class SmugMugRepository @Inject constructor(
      * roots (so the session cookie exists), then the gallery crawl, then the folder tree. Returns the
      * folders whose listing changed so the caller can reload one that is on screen.
      */
-    suspend fun runSiteSync(nickname: String, rootNodeId: String, apiKey: String): Set<String> {
-        val unlock = unlockSavedRoots(nickname, apiKey)
-        val invalidated = buildInMemoryGalleryCache(nickname, apiKey, unlock, rootNodeId)
+    suspend fun runSiteSync(nickname: String, rootNodeId: String, apiKey: String): Set<String> =
+        syncSite(nickname, rootNodeId, apiKey, unlockSavedRoots(nickname, apiKey), ignoreGate = false)
+
+    /**
+     * Crawl and tree walk again after the user unlocked a password folder or gallery while the app was
+     * running: the new session cookie makes galleries visible to `user!albums` that the last crawl
+     * could not see, so the 15-minute gate does not apply. [UnlockSummary] is unknown here, so nothing is pruned.
+     */
+    suspend fun resyncAfterUnlock(nickname: String, rootNodeId: String, apiKey: String): Set<String> =
+        syncSite(nickname, rootNodeId, apiKey, null, ignoreGate = true)
+
+    private suspend fun syncSite(
+        nickname: String, rootNodeId: String, apiKey: String, unlock: UnlockSummary?, ignoreGate: Boolean
+    ): Set<String> {
+        val invalidated = buildInMemoryGalleryCache(nickname, apiKey, unlock, rootNodeId, ignoreGate)
         syncFolderTree(nickname, rootNodeId, apiKey)
         // The tree walk may have cached folders the crawl could not match (design 3.4: again after the tree sync).
         val again = IndexParentResolver(dao, clock) { id -> relistOne(id, apiKey) }
