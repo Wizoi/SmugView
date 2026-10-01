@@ -1,0 +1,164 @@
+{
+  "Options": {
+    "Methods": [
+      "GET"
+    ],
+    "ParameterDescription": {
+      "Select": "Select one option. Options should pass only the \"Value\"."
+    },
+    "Parameters": {
+      "GET": [
+        {
+          "Name": "Type",
+          "Required": false,
+          "ReadOnly": false,
+          "Default": "All",
+          "Type": "Select",
+          "OPTIONS": [
+            "All",
+            "Folder Album Page",
+            "Folder",
+            "Album",
+            "Page",
+            "System Album"
+          ],
+          "MIN_COUNT": 1,
+          "MAX_COUNT": 1
+        },
+        {
+          "Name": "SortMethod",
+          "Required": false,
+          "ReadOnly": false,
+          "Default": "Organizer",
+          "Type": "Select",
+          "OPTIONS": [
+            "DateAdded",
+            "DateModified",
+            "Name",
+            "Organizer"
+          ],
+          "MIN_COUNT": 1,
+          "MAX_COUNT": 1
+        },
+        {
+          "Name": "SortDirection",
+          "Required": false,
+          "ReadOnly": false,
+          "Default": "Ascending",
+          "Type": "Select",
+          "OPTIONS": [
+            "Ascending",
+            "Descending"
+          ],
+          "MIN_COUNT": 1,
+          "MAX_COUNT": 1
+        }
+      ]
+    }
+  },
+  "Response": {
+    "Uri": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage&start=4",
+    "Locator": "Node",
+    "LocatorType": "Objects",
+    "Node": [
+      {
+        "Description": "",
+        "Name": "2026-09-16 - KR XC - AR, KC at North SeaTac Park",
+        "PasswordHint": "",
+        "SecurityType": "None",
+        "Type": "Album",
+        "DateModified": "2026-09-17T23:41:17+00:00",
+        "NodeID": "4ZGDxS",
+        "Uri": "/api/v2/node/4ZGDxS",
+        "WebUri": "https://gallery.idzifamily.com/Kentridge-Cross-Country/2026-09-16--KR-XC--AR-KC-at-North-SeaTac-Park",
+        "Uris": {
+          "Album": {
+            "Uri": "/api/v2/album/PwkFGc",
+            "Locator": "Album",
+            "LocatorType": "Object",
+            "UriDescription": "Album by key",
+            "EndpointType": "Album"
+          },
+          "HighlightImage": {
+            "Uri": "/api/v2/highlight/node/4ZGDxS",
+            "Locator": "Image",
+            "LocatorType": "Object",
+            "UriDescription": "Highlight image for a folder, album, or page",
+            "EndpointType": "HighlightImage"
+          }
+        },
+        "ResponseLevel": "Public"
+      },
+      {
+        "Description": "",
+        "Name": "2026-09-12 -KR XC Lake Wilderness",
+        "PasswordHint": "",
+        "SecurityType": "None",
+        "Type": "Album",
+        "DateModified": "2026-09-14T06:41:36+00:00",
+        "NodeID": "ztnqC8",
+        "Uri": "/api/v2/node/ztnqC8",
+        "WebUri": "https://gallery.idzifamily.com/Kentridge-Cross-Country/2026-09-12-KR-XC-Lake-Wilderness",
+        "Uris": {
+          "Album": {
+            "Uri": "/api/v2/album/LM9fpd",
+            "Locator": "Album",
+            "LocatorType": "Object",
+            "UriDescription": "Album by key",
+            "EndpointType": "Album"
+          },
+          "HighlightImage": {
+            "Uri": "/api/v2/highlight/node/ztnqC8",
+            "Locator": "Image",
+            "LocatorType": "Object",
+            "UriDescription": "Highlight image for a folder, album, or page",
+            "EndpointType": "HighlightImage"
+          }
+        },
+        "ResponseLevel": "Public"
+      },
+      {
+        "Description": "",
+        "Name": "2025-11-01 - KR XC Westside Classic",
+        "PasswordHint": "",
+        "SecurityType": "None",
+        "Type": "Album",
+        "DateModified": "2026-03-11T04:19:43+00:00",
+        "NodeID": "r3qj3R",
+        "Uri": "/api/v2/node/r3qj3R",
+        "WebUri": "https://gallery.idzifamily.com/Kentridge-Cross-Country/2025-11-01-KR-XC-Westside-Classic",
+        "Uris": {
+          "Album": {
+            "Uri": "/api/v2/album/cpK3jd",
+            "Locator": "Album",
+            "LocatorType": "Object",
+            "UriDescription": "Album by key",
+            "EndpointType": "Album"
+          },
+          "HighlightImage": {
+            "Uri": "/api/v2/highlight/node/r3qj3R",
+            "Locator": "Image",
+            "LocatorType": "Object",
+            "UriDescription": "Highlight image for a folder, album, or page",
+            "EndpointType": "HighlightImage"
+          }
+        },
+        "ResponseLevel": "Public"
+      }
+    ],
+    "UriDescription": "Child nodes of the given node.",
+    "EndpointType": "ChildNodes",
+    "Pages": {
+      "Total": 18,
+      "Start": 4,
+      "Count": 3,
+      "RequestedCount": 3,
+      "FirstPage": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage&start=1",
+      "LastPage": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage&start=16",
+      "PrevPage": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage&start=1",
+      "NextPage": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage&start=7"
+    }
+  },
+  "Code": 200,
+  "Message": "Ok"
+}

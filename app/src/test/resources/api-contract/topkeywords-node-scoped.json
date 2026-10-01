@@ -1,0 +1,16 @@
+{
+  "Response": {
+    "Uri": "/api/v2/user/idzifamily!topkeywords?NodeURI=%2Fapi%2Fv2%2Fnode%2FSSH6Wc&NumKeywords=2",
+    "Locator": "UserTopKeywords",
+    "LocatorType": "Object",
+    "UserTopKeywords": {
+      "TopKeywords": [
+        "activity",
+        "band"
+      ],
+      "Uri": "/api/v2/user/idzifamily!topkeywords?NodeURI=%2Fapi%2Fv2%2Fnode%2FSSH6Wc&NumKeywords=2"
+    }
+  },
+  "Code": 200,
+  "Message": "Ok"
+}

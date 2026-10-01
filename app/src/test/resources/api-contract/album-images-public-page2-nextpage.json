@@ -1,0 +1,128 @@
+{
+  "Options": {
+    "Methods": [
+      "GET"
+    ],
+    "ParameterDescription": {
+      "Varchar": "Variable length text from MIN_CHARS to MAX_CHARS (MAX_CHARS = INFINITY meaning arbitrary length)",
+      "Integer": "Integer value in the range MIN_VALUE to MAX_VALUE, inclusive"
+    },
+    "Parameters": {
+      "GET": [
+        {
+          "Name": "FileNames",
+          "Required": false,
+          "ReadOnly": false,
+          "Default": "",
+          "Description": "A list of filenames (percent-encoded and comma-separated); if used, an image will only be included in the result set if its file name is in the list",
+          "Type": "Varchar",
+          "MIN_CHARS": 0,
+          "MAX_CHARS": "INFINITY"
+        },
+        {
+          "Name": "SkuId",
+          "Required": false,
+          "ReadOnly": false,
+          "Default": null,
+          "Description": "An optional SKU ID filter. Only images that are valid for this SKU will be returned",
+          "Type": "Integer",
+          "MIN_VALUE": 0,
+          "MAX_VALUE": "POSITIVE_INFINITY"
+        }
+      ]
+    }
+  },
+  "Response": {
+    "Uri": "/api/v2/album/N74KSK!images?count=3&_filter=ImageKey%2CTitle%2CCaption%2CThumbnailUrl%2CArchivedUri%2CDate%2CDateTime%2CFileName%2CFormat%2COriginalWidth%2COriginalHeight%2COriginalSize%2CKeywords%2CKeywordArray%2CUris&_filteruri=LargestVideo%2CAlbum&start=4",
+    "Locator": "AlbumImage",
+    "LocatorType": "Objects",
+    "AlbumImage": [
+      {
+        "Title": "",
+        "Caption": "",
+        "Keywords": "",
+        "KeywordArray": [],
+        "ThumbnailUrl": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge/i-ZhRZF5b/0/KX3mdjVr7FgsQBhDjGN6XbgcczDzKHF5NcLkcP4CT/Th/2026-09%20KR%20XC%20THREE%20COURSE%20CHALLENGE%20-%2004-Th.jpg",
+        "FileName": "2026-09 KR XC THREE COURSE CHALLENGE - 04.JPG",
+        "Date": "2026-09-28T03:13:05+00:00",
+        "Format": "JPG",
+        "OriginalHeight": 1518,
+        "OriginalWidth": 2244,
+        "OriginalSize": 573697,
+        "ImageKey": "ZhRZF5b",
+        "ArchivedUri": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge/i-ZhRZF5b/0/M4qKNBcVWhvWkzWLWd2DTzKzhdpG4w5P4nWZtQ3Lr/D/2026-09%20KR%20XC%20THREE%20COURSE%20CHALLENGE%20-%2004-D.jpg",
+        "Uris": {
+          "Album": {
+            "Uri": "/api/v2/album/N74KSK",
+            "Locator": "Album",
+            "LocatorType": "Object",
+            "UriDescription": "Album by key",
+            "EndpointType": "Album"
+          }
+        }
+      },
+      {
+        "Title": "",
+        "Caption": "",
+        "Keywords": "",
+        "KeywordArray": [],
+        "ThumbnailUrl": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge/i-MJ9jkwr/0/M65bCbWFbMrgLVtW95m8pmH5jhFXwqZcwk7PrTs7C/Th/2026-09%20KR%20XC%20THREE%20COURSE%20CHALLENGE%20-%2005-Th.jpg",
+        "FileName": "2026-09 KR XC THREE COURSE CHALLENGE - 05.JPG",
+        "Date": "2026-09-28T03:13:03+00:00",
+        "Format": "JPG",
+        "OriginalHeight": 1441,
+        "OriginalWidth": 1208,
+        "OriginalSize": 382939,
+        "ImageKey": "MJ9jkwr",
+        "ArchivedUri": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge/i-MJ9jkwr/0/MGcJMZVj353QnvzsHxMWmJ7NkdbmwCxgpMjzqPV9D/D/2026-09%20KR%20XC%20THREE%20COURSE%20CHALLENGE%20-%2005-D.jpg",
+        "Uris": {
+          "Album": {
+            "Uri": "/api/v2/album/N74KSK",
+            "Locator": "Album",
+            "LocatorType": "Object",
+            "UriDescription": "Album by key",
+            "EndpointType": "Album"
+          }
+        }
+      },
+      {
+        "Title": "",
+        "Caption": "",
+        "Keywords": "",
+        "KeywordArray": [],
+        "ThumbnailUrl": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge/i-BZ8kjp9/0/KFczdrncpdRTbLz3m29VRcNN4SxBLZ48VWXbZb7Nf/Th/2026-09%20KR%20XC%20THREE%20COURSE%20CHALLENGE%20-%2006-Th.jpg",
+        "FileName": "2026-09 KR XC THREE COURSE CHALLENGE - 06.JPG",
+        "Date": "2026-09-28T03:13:07+00:00",
+        "Format": "JPG",
+        "OriginalHeight": 3266,
+        "OriginalWidth": 3452,
+        "OriginalSize": 893285,
+        "ImageKey": "BZ8kjp9",
+        "ArchivedUri": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge/i-BZ8kjp9/0/MNQ44hdj33wXCKkmDGMNkv5GVqFMSFZFwtprRR7jf/D/2026-09%20KR%20XC%20THREE%20COURSE%20CHALLENGE%20-%2006-D.jpg",
+        "Uris": {
+          "Album": {
+            "Uri": "/api/v2/album/N74KSK",
+            "Locator": "Album",
+            "LocatorType": "Object",
+            "UriDescription": "Album by key",
+            "EndpointType": "Album"
+          }
+        }
+      }
+    ],
+    "UriDescription": "Images from album",
+    "EndpointType": "AlbumImages",
+    "Pages": {
+      "Total": 61,
+      "Start": 4,
+      "Count": 3,
+      "RequestedCount": 3,
+      "FirstPage": "/api/v2/album/N74KSK!images?count=3&_filter=ImageKey%2CTitle%2CCaption%2CThumbnailUrl%2CArchivedUri%2CDate%2CDateTime%2CFileName%2CFormat%2COriginalWidth%2COriginalHeight%2COriginalSize%2CKeywords%2CKeywordArray%2CUris&_filteruri=LargestVideo%2CAlbum&start=1",
+      "LastPage": "/api/v2/album/N74KSK!images?count=3&_filter=ImageKey%2CTitle%2CCaption%2CThumbnailUrl%2CArchivedUri%2CDate%2CDateTime%2CFileName%2CFormat%2COriginalWidth%2COriginalHeight%2COriginalSize%2CKeywords%2CKeywordArray%2CUris&_filteruri=LargestVideo%2CAlbum&start=61",
+      "PrevPage": "/api/v2/album/N74KSK!images?count=3&_filter=ImageKey%2CTitle%2CCaption%2CThumbnailUrl%2CArchivedUri%2CDate%2CDateTime%2CFileName%2CFormat%2COriginalWidth%2COriginalHeight%2COriginalSize%2CKeywords%2CKeywordArray%2CUris&_filteruri=LargestVideo%2CAlbum&start=1",
+      "NextPage": "/api/v2/album/N74KSK!images?count=3&_filter=ImageKey%2CTitle%2CCaption%2CThumbnailUrl%2CArchivedUri%2CDate%2CDateTime%2CFileName%2CFormat%2COriginalWidth%2COriginalHeight%2COriginalSize%2CKeywords%2CKeywordArray%2CUris&_filteruri=LargestVideo%2CAlbum&start=7"
+    }
+  },
+  "Code": 200,
+  "Message": "Ok"
+}

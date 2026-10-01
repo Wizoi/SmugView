@@ -61,3 +61,21 @@ class ScenarioRigSanityTest {
         assertEquals(rig.server.imageKeysOf("FfHCms").take(100), page1.images!!.map { it.imageKey })
     }
 }
+
+/** Step 4-0: `ScenarioRig(httpCache = true)` runs the same repository over the production HTTP chain on a loopback socket. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], manifest = Config.NONE)
+class ScenarioRigLoopbackSanityTest {
+    private lateinit var rig: ScenarioRig
+
+    @Before fun setUp() { rig = ScenarioRig(httpCache = true) }
+    @After fun tearDown() = rig.close()
+
+    @Test fun `the root listing of site A loads over the loopback with the real cache`() {
+        rig.viewModel.selectSite("idzifamily")
+        awaitUntil("root listing over loopback") {
+            ((rig.viewModel.browserState.value as? BrowserUiState.Success)?.nodes?.map { it.nodeId } ?: emptyList()).containsAll(listOf("2sDN5x", "3BxbFF"))
+        }
+        assertTrue(rig.loopback != null)
+    }
+}

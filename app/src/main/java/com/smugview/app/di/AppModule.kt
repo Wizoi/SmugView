@@ -71,6 +71,86 @@ internal fun smugMugCacheRewriteInterceptor(): Interceptor = Interceptor { chain
     }
 }
 
+/**
+ * The in-memory, host-keyed cookie jar (findings #16: empty at every launch). Top-level and internal
+ * so the loopback harness runs the exact production jar.
+ */
+internal class HostCookieJar : okhttp3.CookieJar {
+    // OkHttp may invoke these from multiple dispatcher threads concurrently.
+    private val cookieStore =
+        java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, okhttp3.Cookie>>()
+
+    override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
+        val hostCookies = cookieStore.getOrPut(url.host) {
+            java.util.concurrent.ConcurrentHashMap()
+        }
+        for (cookie in cookies) {
+            hostCookies[cookie.name] = cookie
+        }
+    }
+
+    override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> {
+        val hostCookies = cookieStore[url.host] ?: return emptyList()
+        val now = System.currentTimeMillis()
+        return hostCookies.values.filter { it.expiresAt > now }
+    }
+}
+
+/**
+ * The production OkHttp client, extracted unchanged from [AppModule.provideOkHttpClient] so a test can
+ * run the exact interceptor chain, [okhttp3.Cache] and cookie jar in front of a loopback server
+ * (phase 4 step 4-0). [isOnline] replaces the connectivity check; [dns] defaults to the system's.
+ *
+ * Offline fallback: when there's no network, rewrite the request to accept a stale cached response
+ * instead of letting it fail outright. This lets both API calls (Retrofit) and thumbnail loads (Coil,
+ * see provideRetryingCallFactory) serve whatever was already fetched into the shared disk cache,
+ * even well past the 5-minute freshness window the cache interceptor sets. Anything never previously
+ * fetched still has nothing to serve and correctly fails, which callers already handle (Room/UI
+ * fallbacks).
+ */
+internal fun buildSmugMugClient(
+    cacheDir: File,
+    isOnline: () -> Boolean,
+    cookieJar: okhttp3.CookieJar,
+    loggingInterceptor: Interceptor,
+    cacheSizeBytes: Long = 50 * 1024 * 1024L, // 50 MB
+    dns: okhttp3.Dns = okhttp3.Dns.SYSTEM
+): OkHttpClient {
+    val headerInterceptor = Interceptor { chain ->
+        val original = chain.request()
+        val request = original.newBuilder()
+            .header("Accept", "application/json")
+            .header("User-Agent", "SmugView-Android-App/1.0")
+            .build()
+        chain.proceed(request)
+    }
+
+    val offlineFallbackInterceptor = Interceptor { chain ->
+        var request = chain.request()
+        if (request.method == "GET" && !isOnline()) {
+            request = request.newBuilder()
+                .header("Cache-Control", "public, only-if-cached, max-stale=" + 60 * 60 * 24 * 7)
+                .build()
+        }
+        chain.proceed(request)
+    }
+
+    val cacheInterceptor = smugMugCacheRewriteInterceptor()
+    val cache = okhttp3.Cache(cacheDir, cacheSizeBytes)
+
+    return OkHttpClient.Builder()
+        .cache(cache)
+        .cookieJar(cookieJar)
+        .dns(dns)
+        .addInterceptor(offlineFallbackInterceptor)
+        .addInterceptor(headerInterceptor)
+        .addNetworkInterceptor(cacheInterceptor)
+        .addInterceptor(loggingInterceptor)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
@@ -92,68 +172,12 @@ object AppModule {
             }
         ) { android.util.Log.d("OkHttp", it) }
 
-        val headerInterceptor = Interceptor { chain ->
-            val original = chain.request()
-            val request = original.newBuilder()
-                .header("Accept", "application/json")
-                .header("User-Agent", "SmugView-Android-App/1.0")
-                .build()
-            chain.proceed(request)
-        }
-
-        // Offline fallback: when there's no network, rewrite the request to accept a stale
-        // cached response instead of letting it fail outright. This lets both API calls
-        // (Retrofit) and thumbnail loads (Coil — see provideRetryingCallFactory) serve whatever
-        // was already fetched into the shared 50MB disk cache below, even well past the 5-minute
-        // freshness window the cacheInterceptor sets, rather than erroring on every screen that
-        // hasn't been visited in the last 5 minutes. Anything never previously fetched still has
-        // nothing to serve and correctly fails, which callers already handle (Room/UI fallbacks).
-        val offlineFallbackInterceptor = Interceptor { chain ->
-            var request = chain.request()
-            if (request.method == "GET" && !isNetworkAvailable(context)) {
-                request = request.newBuilder()
-                    .header("Cache-Control", "public, only-if-cached, max-stale=" + 60 * 60 * 24 * 7)
-                    .build()
-            }
-            chain.proceed(request)
-        }
-
-        val cacheInterceptor = smugMugCacheRewriteInterceptor()
-
-        val cookieJar = object : okhttp3.CookieJar {
-            // OkHttp may invoke these from multiple dispatcher threads concurrently.
-            private val cookieStore =
-                java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, okhttp3.Cookie>>()
-
-            override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
-                val hostCookies = cookieStore.getOrPut(url.host) {
-                    java.util.concurrent.ConcurrentHashMap()
-                }
-                for (cookie in cookies) {
-                    hostCookies[cookie.name] = cookie
-                }
-            }
-
-            override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> {
-                val hostCookies = cookieStore[url.host] ?: return emptyList()
-                val now = System.currentTimeMillis()
-                return hostCookies.values.filter { it.expiresAt > now }
-            }
-        }
-
-        val cacheSize = 50 * 1024 * 1024L // 50 MB
-        val cache = okhttp3.Cache(File(context.cacheDir, "http_cache"), cacheSize)
-
-        return OkHttpClient.Builder()
-            .cache(cache)
-            .cookieJar(cookieJar)
-            .addInterceptor(offlineFallbackInterceptor)
-            .addInterceptor(headerInterceptor)
-            .addNetworkInterceptor(cacheInterceptor)
-            .addInterceptor(loggingInterceptor)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
+        return buildSmugMugClient(
+            cacheDir = File(context.cacheDir, "http_cache"),
+            isOnline = { isNetworkAvailable(context) },
+            cookieJar = HostCookieJar(),
+            loggingInterceptor = loggingInterceptor
+        )
     }
 
     /** Best-effort connectivity check used only to decide whether to force stale cache reuse. */

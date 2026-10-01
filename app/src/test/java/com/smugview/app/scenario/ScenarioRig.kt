@@ -11,6 +11,7 @@ import com.smugview.app.data.db.CollectionDao
 import com.smugview.app.data.db.TestDb
 import com.smugview.app.data.repository.FakeSmugMugServer
 import com.smugview.app.data.repository.InMemorySyncStateStore
+import com.smugview.app.data.repository.LoopbackSmugMug
 import com.smugview.app.data.repository.RecordingSyncReporter
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.data.security.FakePasswordStore
@@ -32,8 +33,16 @@ import org.mockito.Mockito
  * [awaitUntil]. Call [close] from `@After`.
  */
 @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.DelicateCoroutinesApi::class)
-class ScenarioRig(retrying: Boolean = false) {
+class ScenarioRig(retrying: Boolean = false, httpCache: Boolean = false) {
     val server = FakeSmugMugServer()
+    private val cacheDir: java.io.File? = if (httpCache) java.nio.file.Files.createTempDirectory("smugview-http-cache").toFile() else null
+
+    /**
+     * Phase 4: with [httpCache] the repository talks to the fake over a real loopback socket through the
+     * production client ([com.smugview.app.di.buildSmugMugClient]: real OkHttp cache, cache rewrite,
+     * cookie jar, offline fallback). Null for the default in-process interceptor rig.
+     */
+    val loopback: LoopbackSmugMug? = cacheDir?.let { LoopbackSmugMug(server, it) }
     val db: AppDatabase = TestDb.inMemory()
     val dao: CollectionDao = db.collectionDao()
     val reporter = RecordingSyncReporter()
@@ -54,7 +63,7 @@ class ScenarioRig(retrying: Boolean = false) {
     }
 
     private fun newRepository(retrying: Boolean) =
-        SmugMugRepository(server.api(retrying), dao, passwords, app, reporter, syncState).also {
+        SmugMugRepository(loopback?.api(retrying = retrying) ?: server.api(retrying), dao, passwords, app, reporter, syncState).also {
             it.treeSyncDelayMs = 0
             it.unlockDelayMs = 0
         }
@@ -99,6 +108,8 @@ class ScenarioRig(retrying: Boolean = false) {
         Dispatchers.resetMain()
         mainThread.close()
         db.close()
+        loopback?.close()
+        cacheDir?.deleteRecursively()
     }
 }
 

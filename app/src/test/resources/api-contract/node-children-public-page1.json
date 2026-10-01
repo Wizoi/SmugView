@@ -1,0 +1,283 @@
+{
+  "Response": {
+    "Uri": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage",
+    "Locator": "Node",
+    "LocatorType": "Objects",
+    "Node": [
+      {
+        "Description": "",
+        "Name": "2026-09-26 - KR XC Three Course Challenge",
+        "PasswordHint": "",
+        "SecurityType": "None",
+        "Type": "Album",
+        "DateModified": "2026-09-28T15:09:22+00:00",
+        "NodeID": "sXQz4G",
+        "Uri": "/api/v2/node/sXQz4G",
+        "WebUri": "https://gallery.idzifamily.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge",
+        "Uris": {
+          "Album": "/api/v2/album/N74KSK",
+          "HighlightImage": "/api/v2/highlight/node/sXQz4G?_shorturis="
+        },
+        "ResponseLevel": "Public"
+      },
+      {
+        "Description": "",
+        "Name": "2026-09-23 - KR XC at Auburn",
+        "PasswordHint": "",
+        "SecurityType": "None",
+        "Type": "Album",
+        "DateModified": "2026-09-25T19:07:58+00:00",
+        "NodeID": "LCdk7F",
+        "Uri": "/api/v2/node/LCdk7F",
+        "WebUri": "https://gallery.idzifamily.com/Kentridge-Cross-Country/2026-09-23--KR-XC-at-Auburn",
+        "Uris": {
+          "Album": "/api/v2/album/FfHCms",
+          "HighlightImage": "/api/v2/highlight/node/LCdk7F?_shorturis="
+        },
+        "ResponseLevel": "Public"
+      },
+      {
+        "Description": "",
+        "Name": "2026-09-19 - KR XC Fort Steilacoom Invitational",
+        "PasswordHint": "",
+        "SecurityType": "None",
+        "Type": "Album",
+        "DateModified": "2026-09-20T06:48:05+00:00",
+        "NodeID": "GwqvdT",
+        "Uri": "/api/v2/node/GwqvdT",
+        "WebUri": "https://gallery.idzifamily.com/Kentridge-Cross-Country/2026-09-19--KR-XC-Fort-Steilacoom-Invitational",
+        "Uris": {
+          "Album": "/api/v2/album/p4T3mF",
+          "HighlightImage": "/api/v2/highlight/node/GwqvdT?_shorturis="
+        },
+        "ResponseLevel": "Public"
+      }
+    ],
+    "Pages": {
+      "Total": 18,
+      "Start": 1,
+      "Count": 3,
+      "RequestedCount": 3,
+      "FirstPage": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage&start=1",
+      "LastPage": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage&start=16",
+      "NextPage": "/api/v2/node/3BxbFF!children?count=3&_filter=Uri%2CNodeID%2CType%2CName%2CDescription%2CSecurityType%2CPrivacy%2CPasswordHint%2CUris%2CWebUri%2CThumbnailUrl%2CDateModified&_filteruri=ChildNodes%2CAlbum%2CHighlightImage&start=4"
+    }
+  },
+  "Code": 200,
+  "Message": "Ok",
+  "Expansions": {
+    "/api/v2/highlight/node/sXQz4G?_shorturis=": {
+      "Uri": "/api/v2/highlight/node/sXQz4G?_shorturis=",
+      "Locator": "Image",
+      "LocatorType": "Object",
+      "Image": {
+        "Title": "",
+        "Caption": "",
+        "Keywords": "",
+        "KeywordArray": [],
+        "Watermark": "No",
+        "Latitude": "0",
+        "Longitude": "0",
+        "Altitude": 0,
+        "Hidden": false,
+        "ThumbnailUrl": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge/i-gBn6dDh/0/MSXkZK6fLB8xSscSg4nFrkqc39xjXJTRGDG5vWqRV/Th/2026-09%20KR%20XC%20THREE%20COURSE%20CHALLENGE%20-%2030-Th.jpg",
+        "FileName": "2026-09 KR XC THREE COURSE CHALLENGE - 30.JPG",
+        "Processing": false,
+        "UploadKey": "19105494483",
+        "Date": "2026-09-28T03:13:11+00:00",
+        "DateTimeUploaded": "2026-09-28T03:13:11+00:00",
+        "DateTimeOriginal": "2026-09-26T17:22:47+00:00",
+        "Format": "JPG",
+        "OriginalHeight": 2882,
+        "OriginalWidth": 2268,
+        "OriginalSize": 1457658,
+        "LastUpdated": "2026-09-28T03:13:12+00:00",
+        "Collectable": true,
+        "IsArchive": false,
+        "IsVideo": false,
+        "ComponentFileTypes": [],
+        "CanEdit": false,
+        "CanBuy": false,
+        "Protected": false,
+        "EZProject": false,
+        "Watermarked": false,
+        "ImageKey": "gBn6dDh",
+        "Serial": 0,
+        "ArchivedUri": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-26--KR-XC-Three-Course-Challenge/i-gBn6dDh/0/MsrktMQ7QV5JJQd7NqkqzR3dCJLVtPKVWSmwBjnvV/D/2026-09%20KR%20XC%20THREE%20COURSE%20CHALLENGE%20-%2030-D.jpg",
+        "ArchivedSize": 1457658,
+        "ArchivedMD5": "f36e0503fefae5d0dd64081ba2813650",
+        "Status": "Open",
+        "SubStatus": "DB",
+        "CanShare": true,
+        "Comments": true,
+        "ShowKeywords": true,
+        "FormattedValues": {
+          "Caption": {
+            "html": "",
+            "text": ""
+          },
+          "FileName": {
+            "html": "2026-09 KR XC THREE COURSE CHALLENGE - 30.JPG",
+            "text": "2026-09 KR XC THREE COURSE CHALLENGE - 30.JPG"
+          }
+        },
+        "PreferredDisplayFileExtension": "JPG",
+        "Uri": "/api/v2/image/gBn6dDh-0",
+        "Uris": {
+          "LargestImage": "/api/v2/image/gBn6dDh-0!largestimage",
+          "ImageSizes": "/api/v2/image/gBn6dDh-0!sizes",
+          "ImageSizeDetails": "/api/v2/image/gBn6dDh-0!sizedetails",
+          "PointOfInterest": "/api/v2/image/gBn6dDh-0!pointofinterest",
+          "PointOfInterestCrops": "/api/v2/image/gBn6dDh-0!poicrops",
+          "Regions": "/api/v2/image/gBn6dDh-0!regions",
+          "ImageComments": "/api/v2/image/gBn6dDh-0!comments",
+          "ImageMetadata": "/api/v2/image/gBn6dDh-0!metadata",
+          "ImagePrices": "/api/v2/image/gBn6dDh-0!prices",
+          "ImagePricelistExclusions": "/api/v2/image/gBn6dDh-0!pricelistexclusions"
+        }
+      }
+    },
+    "/api/v2/highlight/node/LCdk7F?_shorturis=": {
+      "Uri": "/api/v2/highlight/node/LCdk7F?_shorturis=",
+      "Locator": "Image",
+      "LocatorType": "Object",
+      "Image": {
+        "Title": "",
+        "Caption": "",
+        "Keywords": "",
+        "KeywordArray": [],
+        "Watermark": "No",
+        "Latitude": "0",
+        "Longitude": "0",
+        "Altitude": 0,
+        "Hidden": false,
+        "ThumbnailUrl": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-23--KR-XC-at-Auburn/i-qPQzCHf/0/NGhVHnTRTpjtDgDdqxWVHwdcKCvDLJQJ7TZ2XRsrh/Th/2026-09%20KR%20XC%20AT%20AUBURN%20-%20095-Th.jpg",
+        "FileName": "2026-09 KR XC AT AUBURN - 095.JPG",
+        "Processing": false,
+        "UploadKey": "19093554813",
+        "Date": "2026-09-25T18:59:40+00:00",
+        "DateTimeUploaded": "2026-09-25T18:59:40+00:00",
+        "DateTimeOriginal": "2026-09-23T23:13:23+00:00",
+        "Format": "JPG",
+        "OriginalHeight": 2948,
+        "OriginalWidth": 2343,
+        "OriginalSize": 554218,
+        "LastUpdated": "2026-09-25T18:59:41+00:00",
+        "Collectable": true,
+        "IsArchive": false,
+        "IsVideo": false,
+        "ComponentFileTypes": [],
+        "CanEdit": false,
+        "CanBuy": false,
+        "Protected": false,
+        "EZProject": false,
+        "Watermarked": false,
+        "ImageKey": "qPQzCHf",
+        "Serial": 0,
+        "ArchivedUri": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-23--KR-XC-at-Auburn/i-qPQzCHf/0/NXdkvxvcKFCKB85C4wvgkDxxVgzsMgB7cwQk4LJX2/D/2026-09%20KR%20XC%20AT%20AUBURN%20-%20095-D.jpg",
+        "ArchivedSize": 554218,
+        "ArchivedMD5": "5c9120a5aa85d7029e410b3f8cb987f7",
+        "Status": "Open",
+        "SubStatus": "DB",
+        "CanShare": true,
+        "Comments": true,
+        "ShowKeywords": true,
+        "FormattedValues": {
+          "Caption": {
+            "html": "",
+            "text": ""
+          },
+          "FileName": {
+            "html": "2026-09 KR XC AT AUBURN - 095.JPG",
+            "text": "2026-09 KR XC AT AUBURN - 095.JPG"
+          }
+        },
+        "PreferredDisplayFileExtension": "JPG",
+        "Uri": "/api/v2/image/qPQzCHf-0",
+        "Uris": {
+          "LargestImage": "/api/v2/image/qPQzCHf-0!largestimage",
+          "ImageSizes": "/api/v2/image/qPQzCHf-0!sizes",
+          "ImageSizeDetails": "/api/v2/image/qPQzCHf-0!sizedetails",
+          "PointOfInterest": "/api/v2/image/qPQzCHf-0!pointofinterest",
+          "PointOfInterestCrops": "/api/v2/image/qPQzCHf-0!poicrops",
+          "Regions": "/api/v2/image/qPQzCHf-0!regions",
+          "ImageComments": "/api/v2/image/qPQzCHf-0!comments",
+          "ImageMetadata": "/api/v2/image/qPQzCHf-0!metadata",
+          "ImagePrices": "/api/v2/image/qPQzCHf-0!prices",
+          "ImagePricelistExclusions": "/api/v2/image/qPQzCHf-0!pricelistexclusions"
+        }
+      }
+    },
+    "/api/v2/highlight/node/GwqvdT?_shorturis=": {
+      "Uri": "/api/v2/highlight/node/GwqvdT?_shorturis=",
+      "Locator": "Image",
+      "LocatorType": "Object",
+      "Image": {
+        "Title": "",
+        "Caption": "",
+        "Keywords": "",
+        "KeywordArray": [],
+        "Watermark": "No",
+        "Latitude": "0",
+        "Longitude": "0",
+        "Altitude": 0,
+        "Hidden": false,
+        "ThumbnailUrl": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-19--KR-XC-Fort-Steilacoom-Invitational/i-HSfKNPW/0/NXgXVDCvJ9K4fB2Zswq7MFjNr8G6w55dRfTmqvT2g/Th/2Z6A8781-Th.jpg",
+        "FileName": "2Z6A8781.JPG",
+        "Processing": false,
+        "UploadKey": "19064691396",
+        "Date": "2026-09-20T06:40:08+00:00",
+        "DateTimeUploaded": "2026-09-20T06:40:08+00:00",
+        "DateTimeOriginal": "2026-09-19T18:09:24+00:00",
+        "Format": "JPG",
+        "OriginalHeight": 2269,
+        "OriginalWidth": 2603,
+        "OriginalSize": 880158,
+        "LastUpdated": "2026-09-20T06:40:10+00:00",
+        "Collectable": true,
+        "IsArchive": false,
+        "IsVideo": false,
+        "ComponentFileTypes": [],
+        "CanEdit": false,
+        "CanBuy": false,
+        "Protected": false,
+        "EZProject": false,
+        "Watermarked": false,
+        "ImageKey": "HSfKNPW",
+        "Serial": 0,
+        "ArchivedUri": "https://photos.smugmug.com/Kentridge-Cross-Country/2026-09-19--KR-XC-Fort-Steilacoom-Invitational/i-HSfKNPW/0/KfVSxHdrnb6CXhtxSrmNHhcMD4p4P7SpxnkMzXkKm/D/2Z6A8781-D.jpg",
+        "ArchivedSize": 880158,
+        "ArchivedMD5": "20f0e356261686afa3d4d9a5fd695b44",
+        "Status": "Open",
+        "SubStatus": "DB",
+        "CanShare": true,
+        "Comments": true,
+        "ShowKeywords": true,
+        "FormattedValues": {
+          "Caption": {
+            "html": "",
+            "text": ""
+          },
+          "FileName": {
+            "html": "2Z6A8781.JPG",
+            "text": "2Z6A8781.JPG"
+          }
+        },
+        "PreferredDisplayFileExtension": "JPG",
+        "Uri": "/api/v2/image/HSfKNPW-0",
+        "Uris": {
+          "LargestImage": "/api/v2/image/HSfKNPW-0!largestimage",
+          "ImageSizes": "/api/v2/image/HSfKNPW-0!sizes",
+          "ImageSizeDetails": "/api/v2/image/HSfKNPW-0!sizedetails",
+          "PointOfInterest": "/api/v2/image/HSfKNPW-0!pointofinterest",
+          "PointOfInterestCrops": "/api/v2/image/HSfKNPW-0!poicrops",
+          "Regions": "/api/v2/image/HSfKNPW-0!regions",
+          "ImageComments": "/api/v2/image/HSfKNPW-0!comments",
+          "ImageMetadata": "/api/v2/image/HSfKNPW-0!metadata",
+          "ImagePrices": "/api/v2/image/HSfKNPW-0!prices",
+          "ImagePricelistExclusions": "/api/v2/image/HSfKNPW-0!pricelistexclusions"
+        }
+      }
+    }
+  }
+}

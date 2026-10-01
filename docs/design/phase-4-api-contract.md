@@ -409,8 +409,8 @@ Decided here (no sign-off; same meaning, or a fix to match what the server alrea
 | OkHttp age ≥ `now − sentRequestAt`, so request `max-age` = seconds since the epoch excludes pre-change requests | from OkHttp's `CacheStrategy` age formula (*assumed* for 4.12); pinned by 4-6 test (b) |
 | Retrofit omits a `@Header` whose value is null | relied on since 2-4 (verified there) |
 | Gson gives `emptyList()` for the missing `AlbumImage` key | *likely*; pinned by 4-8's parse test |
-| Session cookie names; whether session GETs set cookies; `ResponseLevel` with a session; anonymous-vs-session `!images` under one URL | **unverified** (needs the password): E1-E3 in 4-0 |
-| A folder with >100 children exists in the owner's data | **unknown**: E4; the 14 public top-level folders have ≤24 |
+| Session cookie names; whether session GETs set cookies; `ResponseLevel` with a session; anonymous-vs-session `!images` under one URL | **verified 2026-10-01 (4-0, E1-E3)**: `shm` + `SMSESS`, no cookie on session GETs, `ResponseLevel` "Public" with a session, same URL answers differently |
+| A folder with >100 children exists in the owner's data | **verified (4-0, E4)**: six, all under the Family root, max 269 |
 | A gallery with videos past #500 exists | not found (3 largest public galleries have no videos); 4-4 is unit-only |
 | `MockSmugMugApi` must change with every `SmugMugApi` signature change | AGENTS.md Retro v5; expected in 4-1, 4-2, 4-3, 4-4, 4-5, 4-7, 4-9 |
 | Suite size 357 | from the progress log (3-11); **not re-run** by this planner |
@@ -422,7 +422,11 @@ design, and why.)*
 
 | Step | Deviation | Why |
 |---|---|---|
-| | | |
+| 4-0 | E1-E4 gathered with read-only calls to the live API (cookie names and attributes, `ResponseLevel` with a session, anonymous vs session `!images`, folders over 100 children), not on the emulator | The emulator was not needed to answer them; the unlock cookie flow is the same over HTTP. The password was used only for `!unlock` and reads; no cookie value recorded |
+| 4-0 | `LiveApiContractTest` is gated on the key AND `SMUGVIEW_LIVE_API=1`, not the key alone | With the key alone every `testDebugUnitTest` run would hit the live API |
+| 4-0 | `FfHCms` keeps a 100-per-page image cap in the fake (`imageCaps`); every other gallery gets the live 500 | The Phase 3 scenarios pin its two-page shape (150 images) and must stay unchanged |
+| 4-0 | Fake `cookieGate` answers 401 for a locked folder; the real anonymous `!children` of one is 404 | Observed, left as is: Phase 3 tests depend on the 401 and no Phase 4 step does |
+| 4-0 | The big folder `Kp7Wq2` joins the root listing only after `listBigFolder()` | So the Phase 3 scenarios see the root they were written for |
 
 ## 10. findings.md rows
 

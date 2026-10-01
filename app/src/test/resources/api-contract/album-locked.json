@@ -1,0 +1,24 @@
+{
+  "Response": {
+    "Uri": "/api/v2/album/zzwtrF?_filter=Uri%2CAlbumKey%2CSecurityType",
+    "Locator": "Album",
+    "LocatorType": "Object",
+    "Album": {
+      "SecurityType": "Password",
+      "AlbumKey": "zzwtrF",
+      "Uri": "/api/v2/album/zzwtrF",
+      "Uris": {
+        "Node": "/api/v2/node/nvR4zT",
+        "NodeCoverImage": "/api/v2/node/nvR4zT!cover",
+        "User": "/api/v2/user/idzifamily",
+        "Folder": "/api/v2/folder/user/idzifamily/Grad-Photos",
+        "ParentFolders": "/api/v2/folder/user/idzifamily/Grad-Photos!parents",
+        "HighlightImage": "/api/v2/highlight/node/nvR4zT",
+        "UnlockAlbum": "/api/v2/album/zzwtrF!unlock"
+      },
+      "ResponseLevel": "Password"
+    }
+  },
+  "Code": 200,
+  "Message": "Ok"
+}

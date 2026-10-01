@@ -1,0 +1,69 @@
+{
+  "meta": [
+    "APIKey",
+    "_expand",
+    "_filter",
+    "_filteruri",
+    "_shorturis",
+    "_verbosity",
+    "count",
+    "start"
+  ],
+  "endpoints": {
+    "album/{k}": [],
+    "album/{k}!images": [
+      "FileNames",
+      "SkuId"
+    ],
+    "image!search": [
+      "DateTakenEnd",
+      "DateTakenStart",
+      "DateUploadedEnd",
+      "DateUploadedStart",
+      "Keywords",
+      "Relevance",
+      "Scope",
+      "SortDirection",
+      "SortMethod",
+      "Text",
+      "Type"
+    ],
+    "image/{k}": [],
+    "image/{k}!metadata": [],
+    "image/{k}!sizedetails": [
+      "PrefetchSizes"
+    ],
+    "node!search": [
+      "Scope",
+      "SortDirection",
+      "SortMethod",
+      "Text"
+    ],
+    "node/{id}": [],
+    "node/{id}!children": [
+      "SortDirection",
+      "SortMethod",
+      "Type"
+    ],
+    "node/{id}!parents": [],
+    "user!search": [
+      "q"
+    ],
+    "user/{n}": [],
+    "user/{n}!albums": [
+      "Order"
+    ],
+    "user/{n}!bioimage": [],
+    "user/{n}!imagesearch": [
+      "Order",
+      "q"
+    ],
+    "user/{n}!recentimages": [
+      "MediaType"
+    ],
+    "user/{n}!topkeywords": [
+      "NodeURI",
+      "NumKeywords"
+    ]
+  }
+}
