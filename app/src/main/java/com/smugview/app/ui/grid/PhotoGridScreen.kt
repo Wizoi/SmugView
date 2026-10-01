@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.data.db.CachedNode
 import androidx.compose.ui.graphics.Brush
@@ -284,7 +285,43 @@ fun PhotoGridScreen(
                             color = Color.White.copy(alpha = 0.6f),
                             textAlign = TextAlign.Center
                         )
+                        // Q4 (6-11): a gallery SmugMug no longer has stays in the user's collections until the user says so.
+                        val goneScope = rememberCoroutineScope()
+                        var bookmarked by remember(albumKey, problem) { mutableStateOf(false) }
+                        var removeQuestion by remember(albumKey, problem) { mutableStateOf<String?>(null) }
+                        if (problem is com.smugview.app.ui.text.Problem.Gone) {
+                            LaunchedEffect(albumKey, problem) { bookmarked = viewModel.isBookmarkedAnywhere("Album", albumKey) }
+                        }
+                        removeQuestion?.let { text ->
+                            com.smugview.app.ui.browser.DeleteCollectionDialog(
+                                text = text,
+                                onConfirm = {
+                                    viewModel.removeBookmarkGlobally(albumKey)
+                                    bookmarked = false
+                                    removeQuestion = null
+                                },
+                                onDismiss = { removeQuestion = null }
+                            )
+                        }
                         Spacer(modifier = Modifier.height(24.dp))
+                        if (problem is com.smugview.app.ui.text.Problem.Gone && bookmarked) {
+                            TextButton(
+                                onClick = {
+                                    goneScope.launch {
+                                        val confirm = viewModel.removeGalleryConfirm(albumKey, albumTitle)
+                                        if (confirm == null) {
+                                            viewModel.removeBookmarkGlobally(albumKey)
+                                            bookmarked = false
+                                        } else {
+                                            removeQuestion = confirm.text
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text(UserMessages.REMOVE_FROM_COLLECTIONS, color = SoftRed)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                         Row {
                             if (primary != ProblemAction.GoBack) {
                                 Button(

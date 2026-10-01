@@ -89,4 +89,11 @@ class OfflineReader(
         if (stats.photos == 0) return null
         return DeleteConfirm(stats.photos, stats.bytes, OfflineMessages.deleteConfirm(name, stats.photos, stats.bytes))
     }
+
+    /** Q4 (6-11): null when removing every bookmark of the gallery [albumKey] would delete no saved photo. */
+    suspend fun removeGalleryConfirm(albumKey: String, name: String): DeleteConfirm? {
+        val stats = dao.savedOnlyByGallery(albumKey)
+        if (stats.photos == 0) return null
+        return DeleteConfirm(stats.photos, stats.bytes, OfflineMessages.deleteConfirm(name, stats.photos, stats.bytes))
+    }
 }

@@ -446,9 +446,7 @@ class SmugViewModel @Inject constructor(
                     // Back out of the folder we navigated into; clear the loading state gracefully
                     return LoadFailure(BrowserUiState.Success(emptyList()), popAfter = true)
                 }
-                if (error is retrofit2.HttpException && error.code() == 404) {
-                    collections.removeBookmarkGlobally(nodeId)
-                }
+                // A 404 does not remove a bookmark of this folder (Q4): it is also how a locked folder answers (L2).
                 return LoadFailure(
                     BrowserUiState.Error(Problem.from(error, Subject.Folder)),
                     popAfter = false
@@ -1230,10 +1228,8 @@ class SmugViewModel @Inject constructor(
         session.scope.launch {
             // A rejected saved password is NOT deleted here (design 3.4, Q5): the repository's read retry
             // already asked UnlockManager, which marked the root Invalid. Only the prompt deletes.
-            if (error is retrofit2.HttpException && error.code() == 404) {
-                collections.removeBookmarkGlobally(albumKey)
-            }
-            
+            // A 404 does not remove a bookmark (Q4): it is also how a locked folder answers (L2), and what the user saved is
+            // theirs. The grid says "gone" and offers "Remove from collections".
             val isAccessDenied = error is retrofit2.HttpException && (error.code() == 401 || error.code() == 404)
             if (isAccessDenied) {
                 var node = repository.getNodeById(albumKey)
@@ -2157,6 +2153,13 @@ class SmugViewModel @Inject constructor(
 
     suspend fun isBookmarkedAnywhere(type: String, itemKey: String): Boolean =
         collections.isBookmarkedAnywhere(type, itemKey)
+
+    /** "Remove from collections" (Q4): every collection's bookmark of [itemKey], its kept-offline rows, and the saved files nothing else holds. */
+    fun removeBookmarkGlobally(itemKey: String) = collections.removeBookmarkGlobally(itemKey)
+
+    /** What [removeBookmarkGlobally] of the gallery [albumKey] would delete from this phone, or null when no saved photo would go (no question needed). */
+    suspend fun removeGalleryConfirm(albumKey: String, name: String): com.smugview.app.data.offline.OfflineReader.DeleteConfirm? =
+        offlineReader.removeGalleryConfirm(albumKey, name)
 
     fun addPhotoToCollection(photo: AlbumImageData, collectionId: Long) =
         collections.addPhotoToCollection(photo, collectionId)

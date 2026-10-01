@@ -81,6 +81,7 @@ object UserMessages {
     const val BUTTON_ENTER_PASSWORD = "Enter password"
     const val BUTTON_SHOW_ALL = "Show all"
     const val BUTTON_LOAD_THE_REST = "Load the rest"
+    const val REMOVE_FROM_COLLECTIONS = "Remove from collections"
 
     const val OFFLINE_HEADING = "You're offline"
     const val EMPTY_GALLERY = "This gallery has no photos yet."

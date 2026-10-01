@@ -241,4 +241,8 @@ class UserMessagesTest {
             UserMessages.PASSWORD_NOT_KEPT
         )
     }
+
+    @Test fun removeFromCollections_isTheDesignWords() {
+        assertEquals("Remove from collections", UserMessages.REMOVE_FROM_COLLECTIONS)
+    }
 }

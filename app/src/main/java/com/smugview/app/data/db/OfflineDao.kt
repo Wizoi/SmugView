@@ -375,6 +375,20 @@ interface OfflineDao {
             "AND NOT EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey AND g.collectionId != :collectionId)"
     )
     suspend fun savedOnlyIn(collectionId: Long): SavedStats
+
+    /**
+     * Q4 (6-11): what removing every bookmark of the gallery [albumKey] (`removeBookmarkGlobally`) would delete: saved (DONE) files
+     * that gallery's kept-offline listing refers to, in any collection, and nothing else does (a photo saved by hand, an Image
+     * bookmark, or another gallery's listing).
+     */
+    @Query(
+        "SELECT COUNT(*) AS photos, COALESCE(SUM(f.bytes), 0) AS bytes FROM offline_files f WHERE f.state = 'DONE' " +
+            "AND EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey AND g.albumKey = :albumKey) " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_photos p WHERE p.imageKey = f.imageKey) " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_bookmarks b WHERE b.type = 'Image' AND b.itemKey = f.imageKey) " +
+            "AND NOT EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey AND g.albumKey != :albumKey)"
+    )
+    suspend fun savedOnlyByGallery(albumKey: String): SavedStats
 }
 
 /** A saved file: the photo and where it is, relative to `filesDir`. */
