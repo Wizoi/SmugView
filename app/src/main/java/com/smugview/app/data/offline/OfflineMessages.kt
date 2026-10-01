@@ -1,0 +1,77 @@
+package com.smugview.app.data.offline
+
+import java.util.Locale
+
+/**
+ * Every word the user reads about a saved photo or gallery (phase 5 design section 4), in one place so
+ * the wording changes in one place. Each failure text names the cause and the way out (owner feedback on 4-8).
+ * Pure: no Android resources, so it is unit-tested without a device.
+ */
+object OfflineMessages {
+    const val SAVED = "Saved on this phone"
+    const val SAVING = "Saving to this phone…"
+    const val WAITING_NETWORK = "Waiting for a connection to save this photo."
+    const val BUSY = "SmugMug is busy. This photo will be saved automatically in a few minutes."
+    const val GONE = "This photo was removed from SmugMug, so it can't be saved. Remove it from this collection."
+    const val FORBIDDEN = "SmugMug won't let this app download this photo. Open it once online, then try again."
+    const val DAMAGED = "The download arrived damaged. Try again, or remove it from this collection."
+    const val VIDEO_STILL = "Videos play online only. The saved copy is a still picture."
+
+    /** The 4-8 lock text, reused unchanged (design section 4). */
+    const val LOCKED = "This gallery needs its password. Open it once to unlock it."
+
+    /** Not in design section 4: a photo with no usable source. Flagged to the owner in the 5-1 report. */
+    const val NO_SOURCE = "SmugMug didn't say where to download this photo. Open it once online, then try again."
+
+    const val TRY_AGAIN = "Try again"
+    const val REMOVE = "Remove"
+
+    // Q3 override (design 8.1); used from 5-9, defined here with the other words.
+    const val USE_MOBILE_DATA_TOO = "Use mobile data too"
+    const val WAITING_FOR_WIFI = "Waiting for Wi-Fi"
+
+    fun saving(done: Int, total: Int) = "Saving to this phone… $done of $total"
+    fun waitingWifi(done: Int, total: Int) = "Will save on Wi-Fi. $done of $total saved so far."
+    fun useMobileData(sizeBytes: Long?) = "Use mobile data (${size(sizeBytes)})"
+
+    fun storage(needBytes: Long, freeBytes: Long) =
+        "Not enough space on this phone to save more photos (needs about ${size(needBytes)}, ${size(freeBytes)} free). " +
+            "Free up space and saving continues by itself."
+
+    fun unexpected(code: Int?) =
+        "SmugMug answered this download with error ${code ?: "unknown"}. Try again later, or remove it from this collection."
+
+    fun keepOffline(sizeBytes: Long?) = "Keep offline · ${size(sizeBytes)}"
+
+    fun deleteConfirm(name: String, photos: Int, sizeBytes: Long) =
+        "Delete “$name”? $photos photos saved on this phone (${size(sizeBytes)}) will be removed. They stay on SmugMug."
+
+    fun offlineGallery(photos: Int) = "You're offline. Showing the $photos photos saved on this phone."
+
+    /**
+     * The text for a failed row. [needBytes] and [freeBytes] fill [FailureReason.STORAGE_FULL]; [httpCode] fills
+     * [FailureReason.UNEXPECTED].
+     */
+    fun forFailure(reason: FailureReason, httpCode: Int? = null, needBytes: Long = 0, freeBytes: Long = 0): String = when (reason) {
+        FailureReason.OFFLINE -> WAITING_NETWORK
+        FailureReason.BUSY -> BUSY
+        FailureReason.STORAGE_FULL -> storage(needBytes, freeBytes)
+        FailureReason.GONE -> GONE
+        FailureReason.FORBIDDEN -> FORBIDDEN
+        FailureReason.LOCKED -> LOCKED
+        FailureReason.DAMAGED -> DAMAGED
+        FailureReason.UNEXPECTED -> unexpected(httpCode)
+        FailureReason.NO_SOURCE -> NO_SOURCE
+    }
+
+    /** "103 MB", "1.2 GB", "950 KB"; "size unknown" for null. */
+    fun size(bytes: Long?): String {
+        if (bytes == null) return "size unknown"
+        val kb = 1024.0
+        return when {
+            bytes >= kb * kb * kb -> String.format(Locale.ROOT, "%.1f GB", bytes / (kb * kb * kb))
+            bytes >= kb * kb -> String.format(Locale.ROOT, "%d MB", Math.round(bytes / (kb * kb)))
+            else -> String.format(Locale.ROOT, "%d KB", maxOf(1L, Math.round(bytes / kb)))
+        }
+    }
+}
