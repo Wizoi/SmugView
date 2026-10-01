@@ -414,7 +414,7 @@ class SmugViewModel @Inject constructor(
                     LoadFailure(listing = null, popAfter = true)
                 } else {
                     LoadFailure(
-                        BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy")),
+                        BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy", com.smugview.app.ui.text.Subject.Folder)),
                         popAfter = true
                     )
                 }
@@ -431,12 +431,12 @@ class SmugViewModel @Inject constructor(
                     collections.removeBookmarkGlobally(nodeId)
                 }
                 return LoadFailure(
-                    BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Access Denied / Not Found")),
+                    BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Access Denied / Not Found", com.smugview.app.ui.text.Subject.Folder)),
                     popAfter = false
                 )
             }
             return LoadFailure(
-                BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy")),
+                BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy", com.smugview.app.ui.text.Subject.Folder)),
                 popAfter = false
             )
         }

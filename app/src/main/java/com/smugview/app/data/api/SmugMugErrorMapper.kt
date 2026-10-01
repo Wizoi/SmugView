@@ -1,5 +1,8 @@
 package com.smugview.app.data.api
 
+import com.smugview.app.ui.text.Problem
+import com.smugview.app.ui.text.Subject
+import com.smugview.app.ui.text.UserMessages
 import org.json.JSONObject
 
 object SmugMugErrorMapper {
@@ -31,16 +34,13 @@ object SmugMugErrorMapper {
     fun shouldShowToast(response: okhttp3.Response): Boolean =
         !response.isSyntheticCacheMiss() && shouldShowToast(response.code)
 
-    const val OFFLINE_NOT_CACHED_MESSAGE = "You're offline, and this hasn't been opened on this device yet."
-
-    /** What a screen shows for [error]: the offline message for a synthetic cache-miss 504,
-     *  otherwise the exception's own message, otherwise [fallback]. */
-    fun userMessage(error: Throwable?, fallback: String): String =
-        if (error is retrofit2.HttpException && error.response()?.raw()?.isSyntheticCacheMiss() == true) {
-            OFFLINE_NOT_CACHED_MESSAGE
-        } else {
-            error?.localizedMessage ?: fallback
-        }
+    /**
+     * What a screen shows for [error] as one line: its kind's heading and sentence from [UserMessages] (design 5),
+     * never the exception's own text. [fallback] only when there is no error at all. A caller that knows the
+     * failing thing sits under a locked root uses [Problem.from] with `underLockedRoot` instead.
+     */
+    fun userMessage(error: Throwable?, fallback: String, subject: Subject = Subject.Gallery): String =
+        if (error == null) fallback else UserMessages.line(Problem.from(error, subject))
 
     /**
      * True when [error] means "this phone cannot reach SmugMug right now": no network at all, or OkHttp's synthetic

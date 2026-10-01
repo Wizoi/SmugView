@@ -694,7 +694,8 @@ class SmugViewModelTest {
         val state = viewModel.browserState.value
         assertTrue(state.toString(), state is BrowserUiState.Error)
         assertEquals(
-            "You're offline, and this hasn't been opened on this device yet.",
+            "You're offline. This folder hasn't been opened on this phone yet, so there's nothing saved to show. " +
+                "Connect to the internet and tap Try again.",
             (state as BrowserUiState.Error).message
         )
     }

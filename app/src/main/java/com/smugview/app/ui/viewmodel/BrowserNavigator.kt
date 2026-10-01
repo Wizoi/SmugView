@@ -268,7 +268,7 @@ class BrowserNavigator(
                 onSuccess = { nodes -> publish(id, BrowserUiState.Success(nodes)) },
                 onFailure = { error ->
                     if (quiet) {
-                        publish(id, BrowserUiState.Error(SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy")))
+                        publish(id, BrowserUiState.Error(SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy", com.smugview.app.ui.text.Subject.Folder)))
                     } else {
                         val failure = host.onLoadFailure(id, password, error)
                         failure.listing?.let { publish(id, it) }

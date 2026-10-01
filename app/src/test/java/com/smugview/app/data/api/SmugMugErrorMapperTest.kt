@@ -143,22 +143,41 @@ class SmugMugErrorMapperTest {
         return retrofit2.HttpException(retrofit2.Response.error<Any>(body, rawResponse))
     }
 
+
     @Test
     fun syntheticCacheMiss_getsTheOfflineMessage() {
         val msg = SmugMugErrorMapper.userMessage(httpException(504, withNetworkResponse = false), "fallback")
-        assertEquals("You're offline, and this hasn't been opened on this device yet.", msg)
+        assertEquals(
+            "You're offline. This gallery hasn't been opened on this phone yet, so there's nothing saved to show. " +
+                "Connect to the internet and tap Try again.",
+            msg
+        )
     }
 
     @Test
-    fun realGatewayTimeout_keepsItsOwnMessage() {
+    fun realGatewayTimeout_isSmugMugTrouble_notItsRawMessage() {
         val e = httpException(504, withNetworkResponse = true)
-        assertEquals(e.localizedMessage, SmugMugErrorMapper.userMessage(e, "fallback"))
+        val msg = SmugMugErrorMapper.userMessage(e, "fallback")
+        assertEquals(
+            "SmugMug is having trouble. SmugMug answered with error 504. This is on SmugMug's side. " +
+                "Wait a few minutes, then tap Try again.",
+            msg
+        )
+        assertEquals(false, msg.contains(e.localizedMessage!!))
     }
 
     @Test
-    fun otherErrors_useTheirMessageThenTheFallback() {
-        assertEquals("boom", SmugMugErrorMapper.userMessage(java.io.IOException("boom"), "fallback"))
-        assertEquals("fallback", SmugMugErrorMapper.userMessage(RuntimeException(null as String?), "fallback"))
+    fun otherErrors_neverShowTheirOwnMessage_andANullErrorUsesTheFallback() {
+        assertEquals(
+            "No answer from SmugMug. SmugMug didn't answer in time. The connection may be weak. Tap Try again.",
+            SmugMugErrorMapper.userMessage(java.net.SocketTimeoutException("boom"), "fallback")
+        )
+        assertEquals(false, SmugMugErrorMapper.userMessage(java.io.IOException("boom"), "fallback").contains("boom"))
+        assertEquals(
+            "Couldn't load this folder. SmugMug answered with error Runtime. Tap Try again. " +
+                "If it keeps happening, the diagnostics report has the details.",
+            SmugMugErrorMapper.userMessage(RuntimeException("secret"), "fallback", com.smugview.app.ui.text.Subject.Folder)
+        )
         assertEquals("fallback", SmugMugErrorMapper.userMessage(null, "fallback"))
     }
 }
