@@ -523,6 +523,21 @@ class SmugViewModel @Inject constructor(
     var passwordError by mutableStateOf<String?>(null)
         private set
 
+    private var passwordNotKeptShown = false
+
+    /** Counts the note as shown, but only when it was there to see: a working phone must not use up the one showing. */
+    private fun markPasswordNotKeptShown() {
+        if (passwordStore.keptOnlyThisSession.value) passwordNotKeptShown = true
+    }
+
+    /**
+     * `PASSWORD_NOT_KEPT` (R-25, Q5 (a)): shown in the prompt, once per app run, when this phone's secure storage isn't working and
+     * a typed password therefore lives in memory only. Null otherwise. Counted as shown when the prompt is submitted or dismissed.
+     */
+    val passwordNotKeptNote: String?
+        get() = if (!passwordNotKeptShown && passwordStore.keptOnlyThisSession.value)
+            com.smugview.app.ui.text.UserMessages.PASSWORD_NOT_KEPT else null
+
     private val _currentAlbumKey = MutableStateFlow("")
     /** The photo the current gallery was selected for (the viewer), or null for the grid. */
     private var openedOnImageKey: String? = null
@@ -1258,6 +1273,7 @@ class SmugViewModel @Inject constructor(
         val pending = pendingOpen
         val target = pending?.target ?: promptNode
         passwordError = null
+        markPasswordNotKeptShown()
         val normalizedPassword = password
             .replace('“', '"')
             .replace('”', '"')
@@ -1357,6 +1373,7 @@ class SmugViewModel @Inject constructor(
     }
 
     fun dismissPasswordPrompt() {
+        markPasswordNotKeptShown()
         passwordPromptNode = null
         passwordError = null
         pendingOpen = null

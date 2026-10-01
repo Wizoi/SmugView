@@ -1,6 +1,7 @@
 package com.smugview.app.ui.browser
 
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -619,7 +620,8 @@ fun PasswordPromptDialog(
     node: CachedNode,
     error: String?,
     onSubmit: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    note: String? = null
 ) {
     var password by remember { mutableStateOf("") }
 
@@ -695,6 +697,17 @@ fun PasswordPromptDialog(
                         text = error,
                         color = MaterialTheme.colorScheme.error,
                         fontSize = 12.sp
+                    )
+                }
+
+                if (note != null) {
+                    // PASSWORD_NOT_KEPT: not an error (the password works), so not the error colour.
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = note,
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.testTag("passwordNotKeptNote")
                     )
                 }
 
@@ -803,6 +816,7 @@ fun PasswordPromptHost(viewModel: SmugViewModel, onDismiss: () -> Unit = {}) {
         PasswordPromptDialog(
             node = node,
             error = viewModel.passwordError,
+            note = viewModel.passwordNotKeptNote,
             onSubmit = { password -> viewModel.submitPassword(password) },
             onDismiss = {
                 viewModel.dismissPasswordPrompt()

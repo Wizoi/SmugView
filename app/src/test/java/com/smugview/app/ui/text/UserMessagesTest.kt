@@ -234,4 +234,11 @@ class UserMessagesTest {
         )
         assertEquals("TV or streaming device", UserMessages.CAST_DIAL_DEVICE)
     }
+
+    @Test fun passwordNotKept_isTheDesignWords() {
+        assertEquals(
+            "This phone's secure storage isn't working, so this password will be asked for again next time SmugView starts.",
+            UserMessages.PASSWORD_NOT_KEPT
+        )
+    }
 }

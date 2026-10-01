@@ -199,6 +199,10 @@ object UserMessages {
     /** `DOWNLOAD_FAILED`: a photo could not be saved to this phone (the toast of the download button). */
     fun downloadFailed(cause: Problem): String = "Couldn't save the photo. ${shortCause(cause)}"
 
+    /** `PASSWORD_NOT_KEPT` (design 5, Q5 (a)): the password prompt, once, when this phone's secure storage isn't working. */
+    const val PASSWORD_NOT_KEPT =
+        "This phone's secure storage isn't working, so this password will be asked for again next time SmugView starts."
+
     /** `PASSWORD_CHECK_FAILED`: the password could not be checked (not "wrong password"). */
     fun passwordCheckFailed(cause: Problem): String = "Couldn't check the password. ${shortCause(cause)}"
 }

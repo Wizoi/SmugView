@@ -46,4 +46,21 @@ class DiagnosticsInitializerTest {
         log.i("t", "key $apiKey end")
         assertFalse(sink.lines.last().contains(apiKey)) // deliberately no message: never print the key
     }
+
+    /** N9: saving a new password under a key that already has one leaves the key set unchanged, so the key set does not emit. */
+    @Test fun aPasswordChangedUnderTheSameKey_isRedactedAtOnce() {
+        val sink = RecordingSink()
+        val redactor = Redactor()
+        val log = DiagLog(sink, redactor)
+        val store = FakePasswordStore()
+        DiagnosticsInitializer(
+            ApplicationProvider.getApplicationContext(), log, redactor, store, CoroutineScope(Dispatchers.Unconfined)
+        ).start()
+
+        store.savePassword("rootNode", "oldsecret1")
+        store.savePassword("rootNode", "newsecret2")
+        log.i("t", "x newsecret2")
+
+        assertFalse(sink.lines.last(), sink.lines.last().contains("newsecret2"))
+    }
 }

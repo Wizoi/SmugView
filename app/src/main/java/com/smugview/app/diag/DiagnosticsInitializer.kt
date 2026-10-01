@@ -35,8 +35,10 @@ class DiagnosticsInitializer @Inject constructor(
         )
         scope.launch { CrashRecorder.recordExitReasons(context, diagLog, File(dir, "state.properties")) }
         scope.launch {
+            // `revision` moves on every save and remove, including a new password under a key that already had one (the key
+            // set does not change then, so `unlockedKeys` would not emit and the redactor would keep the old value: N9).
             // all() also primes the store, so the first emission already reflects saved passwords.
-            passwordStore.unlockedKeys.collect { refreshSecrets() }
+            passwordStore.revision.collect { refreshSecrets() }
         }
     }
 

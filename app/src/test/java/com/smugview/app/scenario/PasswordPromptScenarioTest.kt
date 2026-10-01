@@ -119,4 +119,29 @@ class PasswordPromptScenarioTest {
             }
         assertEquals("the target is marked viewed, once", listOf("LCdk7F"), viewed)
     }
+
+    /**
+     * Q5 (a): when the phone's secure storage isn't working, the prompt says once that the password will be asked for again. A phone
+     * whose storage works never shows it.
+     */
+    @Test fun `the prompt says PASSWORD_NOT_KEPT once when secure storage is broken, and never when it works`() {
+        settleSiteA()
+        vm.navigateToChildFolder(node("2sDN5x"))
+        awaitUntil("the prompt for Family") { vm.passwordPromptNode?.nodeId == "2sDN5x" }
+        assertNull("secure storage works: no note", vm.passwordNotKeptNote)
+        vm.dismissPasswordPrompt()
+
+        rig.passwords.keptOnlyThisSessionFlow.value = true
+        vm.navigateToChildFolder(node("2sDN5x"))
+        awaitUntil("the prompt for Family again") { vm.passwordPromptNode?.nodeId == "2sDN5x" }
+        assertEquals(
+            "This phone's secure storage isn't working, so this password will be asked for again next time SmugView starts.",
+            vm.passwordNotKeptNote
+        )
+        vm.dismissPasswordPrompt()
+
+        vm.navigateToChildFolder(node("2sDN5x"))
+        awaitUntil("the prompt for Family a third time") { vm.passwordPromptNode?.nodeId == "2sDN5x" }
+        assertNull("once: it was shown already", vm.passwordNotKeptNote)
+    }
 }
