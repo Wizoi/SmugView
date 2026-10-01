@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -34,6 +37,22 @@ interface UnlockIo {
     suspend fun unlockNodeResult(nodeId: String, apiKey: String, password: String): UnlockResult
 
     suspend fun unlockAlbumResult(albumKey: String, apiKey: String, password: String): UnlockResult
+}
+
+/** Why an unlock attempt was inconclusive ([UnlockResult.Transient]): the device is [Offline], or SmugMug is [Busy] (429, 5xx). */
+enum class TransientReason { Offline, Busy }
+
+/** An unlock result with, for a [UnlockResult.Transient] one, the reason when it is known (null: not known). */
+data class UnlockOutcome(val result: UnlockResult, val reason: TransientReason? = null)
+
+/**
+ * Carries the reason of one unlock flight from where the request ran (`timedUnlock`) back to the flight that
+ * started it, without changing [UnlockIo]. One note per flight (created in [UnlockManager.ensureRoot]), so
+ * nothing is shared between concurrent unlocks.
+ */
+class TransientNote : AbstractCoroutineContextElement(Key) {
+    @Volatile var reason: TransientReason? = null
+    companion object Key : CoroutineContext.Key<TransientNote>
 }
 
 /**
@@ -69,7 +88,7 @@ class UnlockManager(
     // The flight outlives a cancelled caller: the callers that joined it still need its answer.
     private val flights = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
-    private val inFlight = HashMap<String, Deferred<UnlockResult>>()
+    private val inFlight = HashMap<String, Deferred<UnlockOutcome>>()
 
     fun accessOf(rootId: String): Access = _access.value[rootId] ?: Access.None
 
@@ -164,7 +183,7 @@ class UnlockManager(
      * - No password at all, or a lineage that can't be read: Rejected or Transient, no state change.
      */
     suspend fun ensureSession(idOrKey: String, apiKey: String, password: String? = null): UnlockResult =
-        ensure(idOrKey, apiKey, password, readGot401 = false, force = false)
+        ensure(idOrKey, apiKey, password, readGot401 = false, force = false).result
 
     /**
      * A read with this root's credentials just failed with 401 (or an unlocked-looking empty answer).
@@ -172,6 +191,10 @@ class UnlockManager(
      * unlocked again, once; callers already unlocking it share that request.
      */
     suspend fun reauthorize(idOrKey: String, apiKey: String, password: String? = null): UnlockResult =
+        reauthorizeOutcome(idOrKey, apiKey, password).result
+
+    /** [reauthorize] that also says why a [UnlockResult.Transient] one was inconclusive (offline vs 429/5xx). */
+    suspend fun reauthorizeOutcome(idOrKey: String, apiKey: String, password: String? = null): UnlockOutcome =
         ensure(idOrKey, apiKey, password, readGot401 = true, force = false)
 
     /**
@@ -184,8 +207,8 @@ class UnlockManager(
         password: String?,
         readGot401: Boolean,
         force: Boolean
-    ): UnlockResult {
-        val rootId = rootOf(idOrKey, apiKey) ?: return UnlockResult.Transient
+    ): UnlockOutcome {
+        val rootId = rootOf(idOrKey, apiKey) ?: return UnlockOutcome(UnlockResult.Transient)
         return ensureRoot(rootId, idOrKey, apiKey, password, readGot401, force)
     }
 
@@ -196,7 +219,7 @@ class UnlockManager(
         password: String?,
         readGot401: Boolean,
         force: Boolean
-    ): UnlockResult {
+    ): UnlockOutcome {
         val saved = savedFor(idOrKey, rootId)
         val pw = password?.takeIf { it.isNotEmpty() } ?: saved
         val actionId = DiagContext.currentActionId() ?: DiagContext.newActionId("unlock")
@@ -213,22 +236,23 @@ class UnlockManager(
             }
         }
 
-        val flight: Deferred<UnlockResult> = lock.withLock {
+        val flight: Deferred<UnlockOutcome> = lock.withLock {
             inFlight[rootId]?.let { return@withLock it }
             val state = accessOf(rootId)
             if (!force) {
-                if (state == Access.Session && !readGot401) return UnlockResult.Success
-                if (state == Access.Invalid && pw != null && pw == saved) return UnlockResult.Rejected
+                if (state == Access.Session && !readGot401) return UnlockOutcome(UnlockResult.Success)
+                if (state == Access.Invalid && pw != null && pw == saved) return UnlockOutcome(UnlockResult.Rejected)
             }
-            if (pw == null) return UnlockResult.Rejected
+            if (pw == null) return UnlockOutcome(UnlockResult.Rejected)
             if (!force) {
                 if (state == Access.Session) setAccess(rootId, Access.Saved)
                 else if (state == Access.None && saved != null) setAccess(rootId, Access.Saved)
             }
             flights.async(DiagContext.element(actionId)) {
                 // This scope is never cancelled, so a flight always reaches the bookkeeping below.
+                val note = TransientNote()
                 val result = try {
-                    unlockRoot(rootId, idOrKey, apiKey, pw)
+                    withContext(note) { unlockRoot(rootId, idOrKey, apiKey, pw) }
                 } catch (e: Exception) {
                     UnlockResult.Transient
                 }
@@ -242,7 +266,7 @@ class UnlockManager(
                     }
                     inFlight.remove(rootId)
                 }
-                result
+                UnlockOutcome(result, note.reason.takeIf { result == UnlockResult.Transient })
             }.also { inFlight[rootId] = it }
         }
         return flight.await()
@@ -343,7 +367,7 @@ class UnlockManager(
         val rootId = rootOf(target.nodeId, apiKey) ?: return Submit.Transient
         val saved = savedFor(target.nodeId, rootId)
         val before = accessOf(rootId)
-        return when (ensureRoot(rootId, target.nodeId, apiKey, password, readGot401 = false, force = true)) {
+        return when (ensureRoot(rootId, target.nodeId, apiKey, password, readGot401 = false, force = true).result) {
             UnlockResult.Success -> {
                 if (saved != null && saved != password) dropValue(saved)
                 store.savePassword(rootId, password)

@@ -114,7 +114,8 @@ class LockedAlbumTest {
 
     /**
      * A saved password whose use is inconclusive (503 on the unlock): the gallery is still locked, but the
-     * password is not known to be wrong, so the exception says "pending" and nothing is deleted.
+     * password is not known to be wrong, so the exception says "pending" and nothing is deleted. SmugMug is
+     * failing, not the device: the text says SmugMug is busy.
      */
     @Test fun `a saved password whose unlock is transient throws pending and keeps the password`() {
         rig.passwords.savePassword("2sDN5x", "family-pw")
@@ -124,7 +125,47 @@ class LockedAlbumTest {
 
         assertNotNull(e)
         assertTrue("the unlock could not be tried, not refused", e!!.unlockPending)
+        assertEquals("SmugMug is busy right now. Try again in a moment.", e.message)
         assertEquals("the saved password is untouched", "family-pw", rig.passwords.getPassword("2sDN5x"))
+    }
+
+    /** A 429 on the unlock is SmugMug being busy too. */
+    @Test fun `an unlock answered 429 says SmugMug is busy`() {
+        rig.passwords.savePassword("2sDN5x", "family-pw")
+        rig.server.unlockCode = 429
+
+        val e = lockedAlbumError { rig.repository.getAlbumImagesPage("FfHCms", "test-key", password = "family-pw") }
+
+        assertNotNull(e)
+        assertTrue(e!!.unlockPending)
+        assertEquals("SmugMug is busy right now. Try again in a moment.", e.message)
+        assertEquals("family-pw", rig.passwords.getPassword("2sDN5x"))
+    }
+
+    /** The unlock POST threw (no network): the device is offline, and the text says so. */
+    @Test fun `an unlock that cannot reach SmugMug says the device is offline`() {
+        rig.passwords.savePassword("2sDN5x", "family-pw")
+        rig.server.unlockFailure = java.net.UnknownHostException("api.smugmug.com")
+
+        val e = lockedAlbumError { rig.repository.getAlbumImagesPage("FfHCms", "test-key", password = "family-pw") }
+
+        assertNotNull(e)
+        assertTrue("offline is still 'pending', not 'refused'", e!!.unlockPending)
+        assertEquals("You're offline. This gallery will open once you're back online.", e.message)
+        assertEquals("family-pw", rig.passwords.getPassword("2sDN5x"))
+    }
+
+    /** A refused password (401) is not pending: the plain locked message, so the screen prompts. */
+    @Test fun `a saved password the server refuses is not pending`() {
+        rig.passwords.savePassword("2sDN5x", "stale-pw")
+        rig.server.unlockCode = 401
+
+        val e = lockedAlbumError { rig.repository.getAlbumImagesPage("FfHCms", "test-key", password = "stale-pw") }
+
+        assertNotNull(e)
+        assertFalse(e!!.unlockPending)
+        assertEquals("This gallery needs its password. Open it once to unlock it.", e.message)
+        assertEquals("stale-pw", rig.passwords.getPassword("2sDN5x"))
     }
 
     // --- the screens ---
@@ -158,8 +199,23 @@ class LockedAlbumTest {
         Thread.sleep(300) // negative wait: nothing may prompt or delete
         assertNull("no prompt over a password that was never refused", rig.viewModel.passwordPromptNode)
         assertEquals("family-pw", rig.passwords.getPassword("2sDN5x"))
-        assertEquals(AlbumLockedException.PENDING_MESSAGE, GridProbe.error(rig.viewModel))
+        assertEquals("SmugMug is busy right now. Try again in a moment.", GridProbe.error(rig.viewModel))
         assertNotEquals(true, GridProbe.complete(rig.viewModel))
+    }
+
+    /** The same screen when the unlock POST could not leave the device: it says offline, still no prompt. */
+    @Test fun `a saved password with an offline unlock shows the offline message and no prompt`() {
+        rig.passwords.savePassword("2sDN5x", "family-pw")
+        rig.server.unlockFailure = java.net.ConnectException("no route")
+        cacheFamilyTree()
+
+        rig.viewModel.selectAlbum("FfHCms")
+
+        awaitUntil("the grid reports why it is empty") { GridProbe.error(rig.viewModel) != null }
+        Thread.sleep(300)
+        assertNull(rig.viewModel.passwordPromptNode)
+        assertEquals("family-pw", rig.passwords.getPassword("2sDN5x"))
+        assertEquals("You're offline. This gallery will open once you're back online.", GridProbe.error(rig.viewModel))
     }
 
     /** A saved password the server REFUSES (401): the prompt opens, and the saved one survives until a typed one fails. */

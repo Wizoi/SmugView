@@ -92,6 +92,9 @@ class FakeSmugMugServer {
     /** What a POST to `!unlock` answers. */
     var unlockCode: Int = 200
 
+    /** When set, a POST to `!unlock` throws it instead of answering (the device is offline: UnknownHostException, timeout). */
+    var unlockFailure: java.io.IOException? = null
+
     /**
      * The session cookie (R-68). The app's OkHttp cookie jar is global per host, so any successful
      * `!unlock` makes every later request carry the cookie; the fake models that jar here instead of
@@ -502,6 +505,7 @@ class FakeSmugMugServer {
             )
         }
         if (req.method == "POST" && path.endsWith("!unlock")) {
+            unlockFailure?.let { throw it }
             val resp = json(req, unlockCode, "{}")
             if (unlockCode in 200..299) {
                 unlockedRoots += path.substringAfter('/').removeSuffix("!unlock")

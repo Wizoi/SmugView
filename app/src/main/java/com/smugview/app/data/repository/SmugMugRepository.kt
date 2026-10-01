@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -419,21 +420,24 @@ class SmugMugRepository @Inject constructor(
         }
         if (!first.hasNoListing()) return first
 
-        var unlockPending = false
+        var pending: TransientReason? = null
         if (!password.isNullOrEmpty()) {
-            when (unlocks.reauthorize(albumKey, apiKey, password)) {
+            val outcome = unlocks.reauthorizeOutcome(albumKey, apiKey, password)
+            when (outcome.result) {
                 UnlockResult.Success -> {
                     first = api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true", cacheControl = cacheControl)
                     if (!first.hasNoListing()) return first
                 }
-                UnlockResult.Transient -> unlockPending = true
+                // A reason that is not known (the lineage was unreadable) reads as busy: the album was
+                // answering a moment ago, so "offline" would be the bolder claim.
+                UnlockResult.Transient -> pending = outcome.reason ?: TransientReason.Busy
                 UnlockResult.Rejected -> {}
             }
         }
         // Still nothing: a gallery with no photos, or a locked one. Only the album can say which. A failure
         // to read it (offline, uncached) propagates: an empty grid would claim the gallery is empty.
         val album = api.getAlbum(albumKey, apiKey, ignoreErrors = "true", cacheControl = cacheControl).response.album
-        if (album.isLocked) throw AlbumLockedException(albumKey, unlockPending)
+        if (album.isLocked) throw AlbumLockedException(albumKey, pending)
         return first
     }
 
@@ -1332,10 +1336,14 @@ class SmugMugRepository @Inject constructor(
         try {
             httpCode = call()
             result = unlockResultOf(httpCode)
+            if (result == UnlockResult.Transient && (httpCode == 429 || httpCode in 500..599)) {
+                currentCoroutineContext()[TransientNote]?.reason = TransientReason.Busy
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             exception = e.javaClass.simpleName
+            if (e is java.io.IOException) currentCoroutineContext()[TransientNote]?.reason = TransientReason.Offline
             SmugLog.d("SmugMugRepository") { "unlock exception: via=$via target=$target ${e.javaClass.simpleName}" }
         }
         syncReporter.recordUnlock(
