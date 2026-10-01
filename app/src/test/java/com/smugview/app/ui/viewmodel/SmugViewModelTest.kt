@@ -146,40 +146,22 @@ class SmugViewModelTest {
         override fun hasOpenRun() = runs.isNotEmpty() && !finished
     }
 
-    // Phase 1b-3 / R-22: the launch unlock records which saved keys it skipped. Real topology: password
-    // folder (2sDN5x) -> sub-folder (P4BKB) -> gallery node (LCdk7F); SmugMug's password copy puts the
-    // password under both the folder and the gallery (R-26), so two keys are saved.
+    // Phase 2 step 2-7 (design 3.2, 3.8): the ViewModel no longer unlocks at launch. The unlock moved
+    // into the repository's site sync (SessionUnlockTest) so it runs BEFORE the crawl; the old VM path
+    // skipped every saved key as "already unlocked" (R-22) and so never created a session (findings #16).
     @Test
-    fun launchUnlock_recordsSkippedKeys() {
+    fun init_doesNotUnlockAnything_theSiteSyncOwnsTheLaunchUnlock() {
         val reporter = RecordingReporter()
         val store = com.smugview.app.data.security.FakePasswordStore(
             mapOf("2sDN5x" to "fake-pw-1", "LCdk7F" to "fake-pw-1")
         )
-        runBlocking {
-            Mockito.`when`(mockRepository.getNodeById("2sDN5x"))
-                .thenReturn(createTestNode("2sDN5x", parentNodeId = "SITE01"))
-            Mockito.`when`(mockRepository.getNodeById("P4BKB"))
-                .thenReturn(createTestNode("P4BKB", parentNodeId = "2sDN5x"))
-            Mockito.`when`(mockRepository.getNodeById("LCdk7F"))
-                .thenReturn(createTestNode("LCdk7F", parentNodeId = "P4BKB", type = "Album"))
-        }
-        val vm = SmugViewModel(mockApp, mockRepository, mockWorkManager, mockCastManager, store, testDispatcher, reporter)
+        SmugViewModel(mockApp, mockRepository, mockWorkManager, mockCastManager, store, testDispatcher, reporter)
+        Thread.sleep(300) // the old init launched the unlock on Dispatchers.IO
 
-        // the launch unlock starts from the ViewModel init, as in the app
-        val deadline = System.currentTimeMillis() + 5000
-        while (!reporter.finished && System.currentTimeMillis() < deadline) Thread.sleep(10)
-
-        val run = reporter.runs.single()
-        assertEquals(com.smugview.app.diag.SyncKind.LaunchUnlock, run.kind)
-        assertTrue(run.runId.startsWith("unlock#"))
-        assertEquals(2, run.savedKeys)
-        // R-22 evidence: isNodeUnlocked() means "has a saved password", so BOTH saved keys are skipped
-        // (the child because its parent is saved, the parent because it is saved itself) and no
-        // unlock call is made. Shallowest first.
-        assertEquals(listOf("2sDN5x", "LCdk7F"), run.skippedAlreadyUnlocked)
-        assertEquals(com.smugview.app.diag.StopReason.Completed, run.stop)
+        assertTrue("no LaunchUnlock run from the ViewModel", reporter.runs.isEmpty())
         runBlocking {
             Mockito.verify(mockRepository, Mockito.never()).unlockNode(Mockito.anyString(), Mockito.anyString(), Mockito.anyString())
+            Mockito.verify(mockRepository, Mockito.never()).unlockAlbum(Mockito.anyString(), Mockito.anyString(), Mockito.anyString())
         }
     }
 

@@ -326,125 +326,6 @@ class SmugViewModel @Inject constructor(
 
     fun clearScanProgress() = tag.clearScanProgress()
 
-    fun unlockAllSavedPasswords() {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "unlockAllSavedPasswords started")
-        }
-        val actionId = com.smugview.app.diag.DiagContext.newActionId("unlock")
-        viewModelScope.launch(Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)) {
-            val run = syncReporter.begin(
-                com.smugview.app.diag.SyncKind.LaunchUnlock, _activeNickname.value ?: "", actionId
-            )
-            try {
-                runLaunchUnlock(run)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                run?.stop = com.smugview.app.diag.StopReason.Cancelled
-                throw e
-            } finally {
-                run?.let { syncReporter.finish(it) }
-            }
-        }
-    }
-
-    /** The body of [unlockAllSavedPasswords]; fills [run] (saved keys, skipped keys) as it goes. */
-    private suspend fun runLaunchUnlock(run: com.smugview.app.diag.SyncRun?) {
-        val allPasswords = passwordPrefs.all
-        
-        val depthMappedEntries = mutableListOf<Triple<String, String, Int>>()
-        for ((nodeId, passwordObj) in allPasswords) {
-            val password = passwordObj as? String ?: continue
-            if (password.isNotEmpty()) {
-                try {
-                    var currentId: String? = nodeId
-                    var depth = 0
-                    while (currentId != null && currentId != "root" && depth < 10) {
-                        val node = repository.getNodeById(currentId) ?: repository.albumsCache.value.find { it.nodeId == currentId }
-                        currentId = node?.parentNodeId
-                        depth++
-                    }
-                    depthMappedEntries.add(Triple(nodeId, password, depth))
-                } catch (e: Exception) {
-                    com.smugview.app.util.SmugLog.w("unlock", "depth lookup failed for nodeId=$nodeId", e)
-                    // Fallback to max depth if depth resolution fails
-                    depthMappedEntries.add(Triple(nodeId, password, 99))
-                }
-            }
-        }
-
-        // Sort entries by depth ascending (shallowest/roots first)
-        val sortedEntries = depthMappedEntries.sortedBy { it.third }
-
-        run?.savedKeys = sortedEntries.size
-        val skippedKeys = mutableListOf<String>()
-
-        val unlockedRoots = mutableSetOf<String>()
-        for ((nodeId, password, _) in sortedEntries) {
-            // If already unlocked via hierarchy traversal, skip explicit unlock
-            if (isNodeUnlocked(nodeId)) {
-                // R-22 evidence: isNodeUnlocked means "has a saved password", so this skips saved keys.
-                skippedKeys.add(nodeId)
-                run?.skippedAlreadyUnlocked = skippedKeys.toList()
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "unlockAllSavedPasswords: skipping nodeId=$nodeId as it is already unlocked via parent hierarchy")
-                }
-                continue
-            }
-
-            try {
-                val cachedNode = repository.getNodeById(nodeId)
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "unlockAllSavedPasswords: processing nodeId=$nodeId, cachedFound=${cachedNode != null}, type=${cachedNode?.type}")
-                }
-                if (cachedNode != null) {
-                    if (cachedNode.type == "Folder") {
-                        if (unlockedRoots.add(nodeId)) {
-                            val success = repository.unlockNode(nodeId, apiKey, password)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "unlockAllSavedPasswords: unlockNode for Folder nodeId=$nodeId success=$success")
-                            }
-                            kotlinx.coroutines.delay(400)
-                        }
-                    } else {
-                        val albumKey = cachedNode.getAlbumKey()
-                        if (albumKey.isNotEmpty()) {
-                            if (unlockedRoots.add(albumKey)) {
-                                val success = repository.unlockAlbum(albumKey, apiKey, password)
-                                if (BuildConfig.DEBUG) {
-                                    android.util.Log.d("SmugViewModel", "unlockAllSavedPasswords: unlockAlbum for Album key=$albumKey success=$success")
-                                }
-                                kotlinx.coroutines.delay(400)
-                            }
-                        } else {
-                            if (unlockedRoots.add(nodeId)) {
-                                val success = repository.unlockNode(nodeId, apiKey, password)
-                                if (BuildConfig.DEBUG) {
-                                    android.util.Log.d("SmugViewModel", "unlockAllSavedPasswords: unlockNode fallback for nodeId=$nodeId success=$success")
-                                }
-                                kotlinx.coroutines.delay(400)
-                            }
-                        }
-                    }
-                } else {
-                    if (unlockedRoots.add(nodeId)) {
-                        val success = repository.unlockNode(nodeId, apiKey, password)
-                        if (BuildConfig.DEBUG) {
-                            android.util.Log.d("SmugViewModel", "unlockAllSavedPasswords: unlockNode for uncached nodeId=$nodeId success=$success")
-                        }
-                        if (!success) {
-                            val successAlbum = repository.unlockAlbum(nodeId, apiKey, password)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "unlockAllSavedPasswords: unlockAlbum fallback for uncached nodeId=$nodeId success=$successAlbum")
-                            }
-                        }
-                        kotlinx.coroutines.delay(400)
-                    }
-                }
-            } catch (e: Exception) {
-                com.smugview.app.util.SmugLog.w("unlock", "unlock failed for nodeId=$nodeId", e)
-            }
-        }
-    }
-
     // Splash State
     private val _splashState = MutableStateFlow<SplashUiState>(SplashUiState.Idle)
     val splashState: StateFlow<SplashUiState> = _splashState.asStateFlow()
@@ -722,7 +603,8 @@ class SmugViewModel @Inject constructor(
     init {
         loadHistoryAndActiveSite()
         // The keyword image-loading observe is started by TagSearchController's own init.
-        unlockAllSavedPasswords()
+        // No launch unlock here: the site sync unlocks the saved password roots first, then crawls,
+        // so the crawl runs with the session cookie (design 3.8).
     }
 
     private fun loadHistoryAndActiveSite() {
@@ -767,20 +649,10 @@ class SmugViewModel @Inject constructor(
                         _splashState.value = SplashUiState.Success(rootId)
                         currentFolderId = rootId
                         
-                        // Launch the thin gallery load cache in the background. If it discovers a
-                        // new/changed gallery whose parent folder is the one we're about to show,
-                        // re-load that folder once the sync lands so the new album/dot isn't stuck
-                        // behind a manual refresh (loadFolderContents below may otherwise win the
-                        // race and show the stale cached listing).
-                        viewModelScope.launch {
-                            val invalidatedParents = repository.buildInMemoryGalleryCache(nickname, apiKey)
-                            if (currentFolderId != null && currentFolderId in invalidatedParents.orEmpty()) {
-                                loadFolderContents(currentFolderId!!, forceRefresh = true)
-                            }
-                        }
+                        // Unlock, gallery crawl and tree walk run as one job (startSiteSync, below).
 
                         loadFolderContents(rootId)
-                        startFolderTreeSync(nickname, rootId)
+                        startSiteSync(nickname, rootId)
                         loadSiteHeaderImage(rootId)
 
                         // Fetch active site recent images and top keywords in parallel
@@ -839,20 +711,13 @@ class SmugViewModel @Inject constructor(
                         // onto the newly selected site.
                         resetPerSiteState()
 
-                        // Launch the thin gallery load cache in the background. Re-load the shown
-                        // folder if the sync invalidates it (see the matching comment above).
-                        viewModelScope.launch {
-                            val invalidatedParents = repository.buildInMemoryGalleryCache(normalizedNickname, apiKey)
-                            if (currentFolderId != null && currentFolderId in invalidatedParents.orEmpty()) {
-                                loadFolderContents(currentFolderId!!, forceRefresh = true)
-                            }
-                        }
+                        // Unlock, gallery crawl and tree walk run as one job (startSiteSync, below).
                         
                         if (BuildConfig.DEBUG) {
                             android.util.Log.d("SmugViewModel", "selectSite success: resolved rootId=$rootId")
                         }
                         loadFolderContents(rootId)
-                        startFolderTreeSync(normalizedNickname, rootId)
+                        startSiteSync(normalizedNickname, rootId)
                         loadSiteHeaderImage(rootId)
 
                         // Fetch active site details for the hub dashboard in parallel
@@ -2219,12 +2084,18 @@ class SmugViewModel @Inject constructor(
         return stateFlow.asStateFlow()
     }
 
-    private fun startFolderTreeSync(nickname: String, rootNodeId: String) {
+    /**
+     * The one background job per site (design 3.8): unlock the saved password roots, crawl the
+     * gallery index, walk the folder tree. Replaced on a site switch. If the sync relisted the
+     * folder on screen, it is reloaded so a new gallery is not stuck behind a manual refresh.
+     */
+    private fun startSiteSync(nickname: String, rootNodeId: String) {
         treeSyncJob?.cancel()
         treeSyncJob = viewModelScope.launch {
-            // The repository walks the tree (forced once per site after the v16 upgrade, design 3.6)
-            // and records a FolderTreeSync run; cancellation propagates.
-            repository.syncFolderTree(nickname, rootNodeId, apiKey)
+            val invalidatedParents = repository.runSiteSync(nickname, rootNodeId, apiKey)
+            if (currentFolderId != null && currentFolderId in invalidatedParents.orEmpty()) {
+                loadFolderContents(currentFolderId!!, forceRefresh = true)
+            }
         }
     }
 }

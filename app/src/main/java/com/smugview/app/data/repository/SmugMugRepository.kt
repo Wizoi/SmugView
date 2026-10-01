@@ -783,6 +783,156 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
+    /** Pause between unlock calls in [unlockSavedRoots]; tests set it to 0. */
+    internal var unlockDelayMs: Long = 400L
+
+    /**
+     * What [unlockSavedRoots] did. [allSucceeded] is true only when every distinct root unlocked:
+     * the crawl may prune index rows only then (design 3.3), because a root that failed to unlock
+     * hides its galleries from the listing and they would look deleted.
+     */
+    data class UnlockSummary(val roots: Int, val ok: Int, val rejected: Int, val transient: Int) {
+        val allSucceeded: Boolean get() = rejected == 0 && transient == 0
+
+        companion object { val NONE = UnlockSummary(0, 0, 0, 0) }
+    }
+
+    /** A password root to unlock: a folder/album node, or a bare saved key whose node is unknown. */
+    private data class UnlockTarget(
+        val dedupeKey: String,
+        val node: CachedNode?,
+        val bareKey: String?,
+        val password: String,
+        /** The bare key may be an AlbumKey, so try `album!unlock` if `node!unlock` did not succeed. */
+        val albumFallback: Boolean = false
+    )
+
+    /**
+     * Session unlock at launch (design 3.2). A saved password is not a session: the cookie jar is
+     * empty at every launch, and without the `!unlock` cookie password-protected galleries are
+     * invisible to `user!albums` (findings #16). So every saved key is mapped to the root that holds
+     * its password (offline from the cached rows when possible, else one `!parents` call), and each
+     * distinct root is unlocked once, sequentially. There is no "already unlocked" skip. A rejected
+     * or transient answer never deletes a saved password: launch cannot ask the user, and the prompt
+     * path owns deletion. Recorded as a LaunchUnlock run.
+     */
+    suspend fun unlockSavedRoots(nickname: String, apiKey: String): UnlockSummary {
+        val actionId = com.smugview.app.diag.DiagContext.newActionId("unlock")
+        return kotlinx.coroutines.withContext(
+            Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
+        ) {
+            val run = syncReporter.begin(com.smugview.app.diag.SyncKind.LaunchUnlock, nickname, actionId)
+            var summary = UnlockSummary.NONE
+            try {
+                val saved = passwordStore.all().filterValues { it.isNotEmpty() }
+                run?.savedKeys = saved.size
+                val targets = LinkedHashMap<String, UnlockTarget>()
+                for ((key, password) in saved) {
+                    val target = findUnlockTarget(key, password, apiKey)
+                    targets.putIfAbsent(target.dedupeKey, target)
+                }
+                var ok = 0
+                var rejected = 0
+                var transient = 0
+                var first = true
+                for (t in targets.values) {
+                    if (!first && unlockDelayMs > 0) kotlinx.coroutines.delay(unlockDelayMs)
+                    first = false
+                    when (unlockTarget(t, apiKey)) {
+                        UnlockResult.Success -> ok++
+                        UnlockResult.Rejected -> rejected++
+                        UnlockResult.Transient -> transient++
+                    }
+                }
+                summary = UnlockSummary(targets.size, ok, rejected, transient)
+                run?.stop = com.smugview.app.diag.StopReason.Completed
+            } catch (e: CancellationException) {
+                run?.stop = com.smugview.app.diag.StopReason.Cancelled
+                throw e
+            } catch (e: Exception) {
+                run?.stop = com.smugview.app.diag.StopReason.Error
+                run?.stopDetail = e.javaClass.simpleName
+            } finally {
+                run?.notes = "roots=${summary.roots} ok=${summary.ok} rejected=${summary.rejected} transient=${summary.transient}"
+                run?.let { syncReporter.finish(it) }
+            }
+            summary
+        }
+    }
+
+    /** The password root of a saved [key]: cached rows first (depth <= 32, cycle-safe), else `!parents`. */
+    private suspend fun findUnlockTarget(key: String, password: String, apiKey: String): UnlockTarget {
+        val row: CachedNode? = dao.getNodeByIdOrKey(key)
+            ?: dao.getAlbumNodeIdByKey(key)?.let { dao.getNodeById(it) }
+        if (row != null) {
+            val seen = mutableSetOf<String>()
+            var current: CachedNode? = row
+            var depth = 0
+            while (current != null && depth < 32 && seen.add(current.nodeId)) {
+                if (current.access == "Password") return targetFor(current, password)
+                val parent = current.parentNodeId
+                // Chain complete and no Password row above: the saved key is its own root.
+                if (parent == null || parent == "root") return targetFor(row, password)
+                current = dao.getNodeById(parent)
+                depth++
+            }
+            // A cached link is missing: fall through to the one-request answer.
+        }
+        return when (val r = resolvePasswordRootNodeId(key, apiKey)) {
+            is RootResolution.Resolved -> {
+                val rootRow = dao.getNodeById(r.nodeId)
+                val rootPassword = passwordStore.getPassword(r.nodeId)?.takeIf { it.isNotEmpty() } ?: password
+                when {
+                    rootRow != null -> targetFor(rootRow, rootPassword)
+                    // The key's own node is the root: it may be a gallery, so allow the album route.
+                    r.nodeId == key -> UnlockTarget("node:${r.nodeId}", null, key, rootPassword, albumFallback = true)
+                    else -> UnlockTarget("node:${r.nodeId}", null, r.nodeId, rootPassword)
+                }
+            }
+            RootResolution.NotProtected, RootResolution.Unknown ->
+                if (row != null) targetFor(row, password) else UnlockTarget("node:$key", null, key, password, albumFallback = true)
+        }
+    }
+
+    private fun targetFor(node: CachedNode, password: String): UnlockTarget {
+        val own = passwordStore.getPassword(node.nodeId)?.takeIf { it.isNotEmpty() }
+            ?: node.getAlbumKey().takeIf { node.type != "Folder" }
+                ?.let { passwordStore.getPassword(it) }?.takeIf { it.isNotEmpty() }
+        val dedupe = if (node.type == "Folder") "node:${node.nodeId}" else "album:${node.getAlbumKey()}"
+        return UnlockTarget(dedupe, node, null, own ?: password)
+    }
+
+    private suspend fun unlockTarget(t: UnlockTarget, apiKey: String): UnlockResult {
+        val node = t.node
+        if (node != null) {
+            return if (node.type == "Folder") {
+                unlockNodeResult(node.nodeId, apiKey, t.password)
+            } else {
+                val albumKey = node.getAlbumKey()
+                if (albumKey.isNotEmpty() && albumKey != node.nodeId) unlockAlbumResult(albumKey, apiKey, t.password)
+                else unlockNodeResult(node.nodeId, apiKey, t.password)
+            }
+        }
+        val key = t.bareKey ?: return UnlockResult.Transient
+        val asNode = unlockNodeResult(key, apiKey, t.password)
+        if (asNode == UnlockResult.Success || !t.albumFallback) return asNode
+        // A bare key may be an AlbumKey: try it as one. Success wins; otherwise a transient answer stands.
+        val asAlbum = unlockAlbumResult(key, apiKey, t.password)
+        return if (asAlbum == UnlockResult.Success) asAlbum else if (asNode == UnlockResult.Transient) asNode else asAlbum
+    }
+
+    /**
+     * One site sync, in the order that makes the data right (design 3.8): unlock the saved password
+     * roots (so the session cookie exists), then the gallery crawl, then the folder tree. Returns the
+     * folders whose listing changed so the caller can reload one that is on screen.
+     */
+    suspend fun runSiteSync(nickname: String, rootNodeId: String, apiKey: String): Set<String> {
+        unlockSavedRoots(nickname, apiKey)
+        val invalidated = buildInMemoryGalleryCache(nickname, apiKey)
+        syncFolderTree(nickname, rootNodeId, apiKey)
+        return invalidated
+    }
+
     /** Pause between folder listings in [syncFolderTree]; tests set it to 0. */
     internal var treeSyncDelayMs: Long = 200L
 

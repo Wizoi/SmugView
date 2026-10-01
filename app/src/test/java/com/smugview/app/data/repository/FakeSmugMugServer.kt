@@ -34,6 +34,23 @@ class FakeSmugMugServer {
     /** What a POST to `!unlock` answers. */
     var unlockCode: Int = 200
 
+    /**
+     * The session cookie (R-68). The app's OkHttp cookie jar is global per host, so any successful
+     * `!unlock` makes every later request carry the cookie; the fake models that jar here instead of
+     * parsing a Cookie header (an application interceptor runs before OkHttp adds it). The fake
+     * answers the response with a Set-Cookie header too, as SmugMug does.
+     */
+    private val unlockedRoots = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /** When true, Family's and School's `!children` answer 401 until `node/2sDN5x!unlock` succeeded. */
+    var cookieGate = false
+
+    /** Requests (method + path) that went out while the session cookie existed. */
+    val requestsWithSession = java.util.Collections.synchronizedList(mutableListOf<String>())
+
+    /** True once a `!unlock` for [rootId] succeeded (the jar holds its cookie). */
+    fun hasSession(rootId: String = "2sDN5x") = rootId in unlockedRoots
+
     /** NodeIDs that `node!search` answers with (any query). */
     var searchResultIds: List<String> = emptyList()
 
@@ -107,9 +124,13 @@ class FakeSmugMugServer {
         val path = req.url.encodedPath.removePrefix("/api/v2/")
         requests += "${req.method} $path"
         requestLog += req
+        if (unlockedRoots.isNotEmpty()) requestsWithSession += "${req.method} $path"
         if (path.startsWith("node/") && path.endsWith("!children")) {
             val id = path.removePrefix("node/").removeSuffix("!children")
             childrenOverride?.invoke(id, req)?.let { return it }
+            if (cookieGate && (id == family.id || id == school.id) && family.id !in unlockedRoots) {
+                return json(req, 401, """{"Code":401,"Message":"Unauthorized"}""")
+            }
             val kids = childrenOf[id] ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
             val nodes = kids.joinToString(",") {
                 val uris = if (it.type == "Folder") """"ChildNodes":"/api/v2/node/${it.id}!children""""
@@ -119,7 +140,17 @@ class FakeSmugMugServer {
             }
             return json(req, 200, """{"Response":{"Node":[$nodes]},"Code":200}""")
         }
-        if (req.method == "POST" && path.endsWith("!unlock")) return json(req, unlockCode, "{}")
+        if (req.method == "POST" && path.endsWith("!unlock")) {
+            val resp = json(req, unlockCode, "{}")
+            if (unlockCode in 200..299) {
+                unlockedRoots += path.substringAfter('/').removeSuffix("!unlock")
+                return resp.newBuilder().addHeader("Set-Cookie", "SMSESS=fake-session; Path=/; HttpOnly").build()
+            }
+            return resp
+        }
+        if (req.method == "GET" && path.startsWith("user/") && path.endsWith("!albums")) {
+            return json(req, 200, """{"Response":{"Album":[],"Pages":{"Start":1,"Count":0,"Total":0}},"Code":200}""")
+        }
         if (path.startsWith("node/") && path.endsWith("!parents")) {
             parentsOverride?.let { return it(req) }
             val id = path.removePrefix("node/").removeSuffix("!parents")
