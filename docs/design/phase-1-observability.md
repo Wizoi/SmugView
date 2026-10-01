@@ -1,12 +1,22 @@
 # Design: Phase 1: see what's happening
 
-Status: **DRAFT, awaiting owner sign-off.** Written 2026-09-30 by the planning agent. No code yet.
+Status: **APPROVED with amendments (owner, 2026-09-30)** — see §0. Written 2026-09-30 by the planning agent.
 Scope: review §4 Phase 1 ([whole-app review](../review/2026-09-29-whole-app-review.md)): R-50, R-51,
 R-52 (T9), R-63, R-67 (T8), findings #7 and #11 ([findings.md](../findings.md)).
 Borrowed ideas (not code) from TagPup: `tagpup/logs.py` (bounded rotating file log, read from the
 end), `tagpup/core/runs.py` (a run tag carried in context, stamped on every line), `tools/doctor.py`
 (read-only invariant checks, **counts by default, examples only on request because they name
 people**).
+
+## 0. Owner decisions and amendments (2026-09-30) — these override the rest of this doc
+
+| Q | Owner's answer | Effect on this design |
+|---|---|---|
+| 1 install path | "No idea; I assume upgrading didn't wipe the app data." (Play upgrades keep data.) The phone was not connected when I tried to check the install. | Unresolved mechanics: getting the build onto the phone needs a Play internal-track upload (confirmed at that moment) or a side-by-side debug build. **Decide at step 1b-6, not before.** Code work in 1a–1c doesn't depend on it. |
+| 2 gesture/footer | "That could work, but I plug my phone in and Claude can access the files directly, so no UI needed." | **No footer, no 7-tap gesture, no Diagnostics screen, no share-sheet export.** Replace 1b-4/1b-5 with a `DiagnosticsFileWriter` that, after launch sync and after each doctor run, writes `report.txt` (doctor counts + last sync + log tail, already redacted, with the §3.4 leak scan) into `context.getExternalFilesDir("diagnostics")`. Claude pulls it with `adb pull`. **Assumed, to verify on the phone:** adb shell can read `/sdcard/Android/data/com.smugview.app/files/diagnostics` on this Android version (run-as does not work on release builds). If not, add the share-sheet export back. The doctor runs automatically once per launch after the sync (read-only). No `file_paths.xml` change and no `PRIVACY_POLICY.md` change are needed while nothing leaves the device by itself. |
+| 3 release logcat | yes | Mirror redacted W/E lines to logcat in release. |
+| 4 export contents | sure (recommendation) | Counts by default; node IDs only behind a switch (a debug-only/`adb`-readable second file `report-ids.txt` is NOT written in Phase 1); titles and paths never. |
+| 5 red tests | "If a test goes red, fix it." | No `@Ignore`. Fix the fixture, or the bug if it is small and clearly in scope; if a red test exposes a large bug, stop and tell the owner rather than parking it. |
 
 ## 1. Goals, non-goals, acceptance
 
