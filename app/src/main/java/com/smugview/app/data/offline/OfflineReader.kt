@@ -4,6 +4,8 @@ import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.OfflineFile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.io.File
 
@@ -20,7 +22,9 @@ import java.io.File
  */
 class OfflineReader(
     private val db: AppDatabase,
-    private val store: OfflineStore
+    private val store: OfflineStore,
+    /** Whether the phone has a network now (any kind). Folded into the kept-gallery text so it names the real cause. */
+    private val online: Flow<Boolean> = flowOf(true)
 ) {
     private val dao get() = db.offlineDao()
 
@@ -58,15 +62,16 @@ class OfflineReader(
         combine(
             dao.filesOfCollection(collectionId),
             dao.galleriesOfCollection(collectionId),
-            dao.galleryFilesOfCollection(collectionId)
-        ) { files, galleries, galleryRows ->
+            dao.galleryFilesOfCollection(collectionId),
+            online.distinctUntilChanged()
+        ) { files, galleries, galleryRows, connected ->
             val free = store.freeBytesNow()
             val rows = files.associate { it.imageKey to OfflineRowState.of(it, store.needBytes(it.expectedBytes), free) }
             val byGallery = galleryRows.groupBy { it.albumKey }
             val summaries = galleries.associate { g ->
                 val own = byGallery[g.albumKey].orEmpty()
                 val need = own.filter { it.state != OfflineStore.DONE }.sumOf { it.expectedBytes ?: store.needBytes(null) }
-                g.albumKey to OfflineRowState.summary(g, own, need, free)
+                g.albumKey to OfflineRowState.summary(g, own, need, free, connected)
             }
             CollectionOffline(rows, summaries)
         }

@@ -33,6 +33,10 @@ object OfflineMessages {
     const val USE_MOBILE_DATA_TOO = "Use mobile data too"
     const val WAITING_FOR_WIFI = "Waiting for Wi-Fi"
 
+    /** 5-11: a kept gallery that cannot move because the phone has no network at all (not "Waiting for Wi-Fi"). */
+    const val NO_CONNECTION = "No connection. Saving continues when you're back online."
+    fun noConnectionProgress(done: Int, total: Int) = "$done of $total saved so far."
+
     fun saving(done: Int, total: Int) = "Saving to this phone… $done of $total"
     fun waitingWifi(done: Int, total: Int) = "Will save on Wi-Fi. $done of $total saved so far."
     fun useMobileData(sizeBytes: Long?) = "Use mobile data (${size(sizeBytes)})"

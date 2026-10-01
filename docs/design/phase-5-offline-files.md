@@ -1,6 +1,6 @@
 # Design: Phase 5: Offline files (T6)
 
-Status: **DONE 2026-10-01 (step 5-11 exit check passed; phone checks of §7.3 and the items in findings.md "still unverified" remain for the last phase).** Was: SIGNED OFF 2026-10-01 (§8.1; Q3 has an override), before that DRAFT, needs owner sign-off (§8). Steps **5-0** (harness and evidence) and **5-1** (a pure
+Status: **DONE 2026-10-01 for §7.1 and §7.2 (step 5-11: both run, §7.2 on emulator-5554 with item caveats recorded in findings.md; the §7.3 phone checks and the items in findings.md "still unverified" are batched into the last phase).** Was: SIGNED OFF 2026-10-01 (§8.1; Q3 has an override), before that DRAFT, needs owner sign-off (§8). Steps **5-0** (harness and evidence) and **5-1** (a pure
 failure classifier) change no behaviour and no stored format, so they can start before sign-off.
 Every later step depends on at least one answer in §8: 5-2 needs Q5 and Q6, 5-6 needs Q3 and Q7,
 5-7 needs Q1, 5-8 needs Q6, and 5-9 needs Q2 and Q8.
@@ -636,3 +636,4 @@ design, and why.)*
 | 5-10 | The report prints the offline checks in their own section, "== offline files (counts only) ==", apart from the invariants. | Design 9 asked for a section. |
 | 5-10 | `PRIVACY_POLICY.md` is unchanged: "photos you choose to save for offline viewing, are stored locally on your device" still describes kept galleries. `AGENTS.md` unchanged (no rule changed). | Checked, as the step asks. |
 | 5-11 | `OfflineDownloader.resolve` also treats a 404 on `image/{key}-0` as "maybe locked" when the row has an `albumKey` and no unlock was tried yet: it calls `UnlockManager.ensureSession` once and retries (Rejected falls through to GONE). `FakeSmugMugServer.imageRoute` now answers 404 for a locked album's photo. | E1 (live): a password-gallery photo is a 404, not 401/403, on `image/{key}-0` without the session. The 401/403-only branch left such a photo FAILED (test `aPasswordGalleryPhotoWithNoSourceUrlIsResolvedAfterTheSavedPasswordUnlocksIt` failed on the old code: `FfHCmsi001 should be DONE expected:<[DONE]> but was:<[FAILED]>`). |
+| 5-11 | `GallerySummary.Kind.OFFLINE` and two strings (`OfflineMessages.NO_CONNECTION`, `noConnectionProgress`); `OfflineReader` takes an `online` flow, fed by `networkAvailableFlow` in `AppModule`; a gallery stopped by `STORAGE_FULL` shows only the storage text. | Emulator run showed "Waiting for Wi-Fi" with no network at all, which names the wrong cause; the storage case had the same flaw. "Waiting for Wi-Fi" and "Use mobile data" now appear only when a non-Wi-Fi network exists. |

@@ -42,7 +42,7 @@ data class GallerySummary(
     /** "Use mobile data (103 MB)" while the gallery waits for Wi-Fi; null otherwise. */
     val useMobileDataAction: String? = null
 ) {
-    enum class Kind { LISTING, SAVING, WAITING_WIFI, SAVED, FAILED }
+    enum class Kind { LISTING, SAVING, WAITING_WIFI, OFFLINE, SAVED, FAILED }
 }
 
 object OfflineRowState {
@@ -74,9 +74,16 @@ object OfflineRowState {
 
     /**
      * The summary of one kept gallery. [rows] are its photos' file rows (empty until the first listing).
-     * [needBytes] and [freeBytes] fill a storage failure's text.
+     * [needBytes] and [freeBytes] fill a storage failure's text. [connected] is false when the phone has no network
+     * at all: a gallery that cannot move then says so instead of "Waiting for Wi-Fi".
      */
-    fun summary(gallery: OfflineGallery, rows: List<GalleryFileRow>, needBytes: Long = 0, freeBytes: Long = 0): GallerySummary {
+    fun summary(
+        gallery: OfflineGallery,
+        rows: List<GalleryFileRow>,
+        needBytes: Long = 0,
+        freeBytes: Long = 0,
+        connected: Boolean = true
+    ): GallerySummary {
         val done = rows.count { it.state == OfflineStore.DONE }
         val total = gallery.photoCount ?: rows.size
         val left = rows.filter { it.state != OfflineStore.DONE }
@@ -103,6 +110,18 @@ object OfflineRowState {
 
         val notListed = gallery.state != OfflineStore.LISTED
         if (notListed || unsettled > 0) {
+            // 5-11: a pass the 1 GB floor stopped is waiting for space, not for Wi-Fi; mobile data would not help.
+            if (!downloading && failed.any { reasonOf(it.failure) == FailureReason.STORAGE_FULL }) {
+                return summary(GallerySummary.Kind.FAILED, failureLine(failed.filter { reasonOf(it.failure) == FailureReason.STORAGE_FULL }, needBytes, freeBytes))
+            }
+            // 5-11: with no network at all it is not "waiting for Wi-Fi", and there is no mobile network to offer.
+            if (!connected && !downloading) {
+                return summary(
+                    GallerySummary.Kind.OFFLINE,
+                    OfflineMessages.NO_CONNECTION,
+                    detail ?: if (notListed) null else OfflineMessages.noConnectionProgress(done, total)
+                )
+            }
             // Nothing is on the wire until a Wi-Fi pass for a Wi-Fi-only gallery; the user may widen the rule.
             if (gallery.wifiOnly && !downloading) {
                 return summary(

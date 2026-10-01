@@ -281,6 +281,85 @@ class OfflineReaderTest {
         assertEquals(2, summary.done); assertEquals(3, summary.total)
     }
 
+    // 5-11: "Waiting for Wi-Fi" is only true when some other network exists. With none, say so (owner's rule: name the real cause).
+
+    private fun readerWith(online: kotlinx.coroutines.flow.Flow<Boolean>) = OfflineReader(rig.db, rig.offlineStore, online)
+
+    @Test fun `with no network at all a waiting gallery says no connection, not Waiting for Wi-Fi`() = runBlocking {
+        saved(keys[0]); saved(keys[1])
+        row(keys[2], OfflineStore.PENDING, expected = 4_000_000)
+        keepGallery(2, keys.take(3))
+
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(false)).collection(2).first().galleries.getValue(gallery)
+
+        assertEquals(GallerySummary.Kind.OFFLINE, summary.kind)
+        assertEquals(OfflineMessages.NO_CONNECTION, summary.text)
+        assertEquals(OfflineMessages.noConnectionProgress(2, 3), summary.detail)
+        assertNull("there is no mobile network to offer", summary.useMobileDataAction)
+        assertFalse(summary.text.contains("Wi-Fi"))
+    }
+
+    @Test fun `a gallery not listed yet, with no network, says no connection and offers no mobile data`() = runBlocking {
+        keepGallery(2, emptyList(), state = OfflineStore.LIST_PENDING)
+
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(false)).collection(2).first().galleries.getValue(gallery)
+
+        assertEquals(OfflineMessages.NO_CONNECTION, summary.text)
+        assertNull(summary.detail)
+        assertNull(summary.useMobileDataAction)
+    }
+
+    @Test fun `with mobile data allowed and no network a gallery also says no connection, not Saving`() = runBlocking {
+        saved(keys[0]); row(keys[1], OfflineStore.PENDING)
+        keepGallery(2, keys.take(2), wifiOnly = false)
+
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(false)).collection(2).first().galleries.getValue(gallery)
+
+        assertEquals(OfflineMessages.NO_CONNECTION, summary.text)
+    }
+
+    // 5-11 (emulator, item 8): a pass stopped by the 1 GB floor left "Waiting for Wi-Fi" + "Use mobile data" on a Wi-Fi
+    // phone, with the storage text only as a small second line. Mobile data cannot fix a full disk: say the real cause.
+    @Test fun `a gallery stopped by a full disk says so and does not wait for Wi-Fi or offer mobile data`() = runBlocking {
+        saved(keys[0])
+        row(keys[1], OfflineStore.FAILED, FailureReason.STORAGE_FULL, retryable = true, expected = 5_000_000)
+        row(keys[2], OfflineStore.PENDING, expected = 4_000_000)
+        keepGallery(2, keys.take(3))
+
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(true)).collection(2).first().galleries.getValue(gallery)
+
+        assertEquals(GallerySummary.Kind.FAILED, summary.kind)
+        assertEquals(
+            OfflineMessages.storage(rig.offlineStore.needBytes(9_000_000), rig.offlineStore.freeBytesNow()).substringBefore(" (needs"),
+            summary.text.substringBefore(" (needs")
+        )
+        assertTrue(summary.text, summary.text.startsWith("Not enough space"))
+        assertFalse(summary.text, summary.text.contains("Wi-Fi"))
+        assertNull(summary.useMobileDataAction)
+        assertNull("the storage text is the headline, not a second line", summary.detail)
+    }
+
+    @Test fun `on a mobile-only network the gallery still waits for Wi-Fi and offers mobile data`() = runBlocking {
+        saved(keys[0]); row(keys[1], OfflineStore.PENDING, expected = 4_000_000)
+        keepGallery(2, keys.take(2))
+
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(true)).collection(2).first().galleries.getValue(gallery)
+
+        assertEquals(OfflineMessages.WAITING_FOR_WIFI, summary.text)
+        assertEquals(OfflineMessages.useMobileData(4_000_000), summary.useMobileDataAction)
+    }
+
+    @Test fun `the gallery line follows the network coming and going`() = runBlocking {
+        saved(keys[0]); row(keys[1], OfflineStore.PENDING)
+        keepGallery(2, keys.take(2))
+        val net = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val flow = readerWith(net).collection(2)
+
+        assertEquals(OfflineMessages.NO_CONNECTION, flow.first().galleries.getValue(gallery).text)
+        net.value = true
+        assertEquals(OfflineMessages.WAITING_FOR_WIFI, flow.first().galleries.getValue(gallery).text)
+    }
+
     @Test fun `with mobile data allowed a gallery is saving, not waiting`() = runBlocking {
         saved(keys[0])
         row(keys[1], OfflineStore.PENDING)

@@ -1,6 +1,7 @@
 package com.smugview.app.di
 
 import android.content.Context
+import kotlinx.coroutines.channels.awaitClose
 import androidx.room.Room
 import androidx.work.WorkManager
 import com.smugview.app.data.api.CredentialEpoch
@@ -342,9 +343,25 @@ object AppModule {
     @Provides
     @Singleton
     fun provideOfflineReader(
+        @ApplicationContext context: Context,
         database: AppDatabase,
         store: com.smugview.app.data.offline.OfflineStore
-    ): com.smugview.app.data.offline.OfflineReader = com.smugview.app.data.offline.OfflineReader(database, store)
+    ): com.smugview.app.data.offline.OfflineReader =
+        com.smugview.app.data.offline.OfflineReader(database, store, networkAvailableFlow(context))
+
+    /** True while the phone has a default network with internet (any kind). Emits the current state first. */
+    private fun networkAvailableFlow(context: Context): kotlinx.coroutines.flow.Flow<Boolean> =
+        kotlinx.coroutines.flow.callbackFlow {
+            val cm = try { context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager } catch (e: Exception) { null }
+            if (cm == null) { trySend(true); awaitClose { }; return@callbackFlow }
+            trySend(isNetworkAvailable(context))
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) { trySend(true) }
+                override fun onLost(network: android.net.Network) { trySend(false) }
+            }
+            try { cm.registerDefaultNetworkCallback(callback) } catch (e: Exception) { trySend(true) }
+            awaitClose { try { cm.unregisterNetworkCallback(callback) } catch (_: Exception) {} }
+        }
 
     @Provides
     @Singleton
