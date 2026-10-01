@@ -156,6 +156,20 @@ interface SmugMugApi {
         @Query("_verbosity") verbosity: Int = 1
     ): ImageResponse
 
+    /**
+     * Where the original of one photo or video is (phase 5, P1/P8): `ArchivedUri` plus the size and MD5 the CDN
+     * will deliver. `image_key` is the canonical `{key}-0`. [cacheControl] `no-cache` re-asks the server (a source
+     * that stopped working is looked up again, not read back from the HTTP cache).
+     */
+    @GET("image/{image_key}")
+    suspend fun getImageSource(
+        @Path("image_key") imageKey: String,
+        @Query("APIKey") apiKey: String,
+        @Query("_filter") filter: String = "ImageKey,ArchivedUri,ArchivedSize,ArchivedMD5,Format,IsVideo",
+        @Query("_verbosity") verbosity: Int = 1,
+        @Header("Cache-Control") cacheControl: String? = null
+    ): ImageSourceResponse
+
     @GET("image/{image_key}!metadata")
     suspend fun getImageExif(
         @Path("image_key") imageKey: String,

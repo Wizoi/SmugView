@@ -55,6 +55,7 @@ class ApiContractTest(private val method: String) {
             "getUserRecentImages" to { getUserRecentImages("idzifamily", K) },
             "searchNodes" to { searchNodes(K, scope = "/api/v2/node/4zqWw", text = "meet") },
             "getImage" to { getImage("N74KSKi001-0", K) },
+            "getImageSource" to { getImageSource("N74KSKi001-0", K, cacheControl = "no-cache") },
             "getImageExif" to { getImageExif("N74KSKi001-0", K) },
             "unlockNode" to { unlockNode("2sDN5x", K, "pw", "true") },
             "unlockAlbum" to { unlockAlbum("FfHCms", K, "pw", "true") },

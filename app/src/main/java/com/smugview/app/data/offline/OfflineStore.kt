@@ -99,6 +99,19 @@ class OfflineStore(
 
     suspend fun unreferencedFiles(): List<OfflineFile> = dao.unreferencedFiles()
 
+    /** The row as stored now (the pass reads the outcome of a file from here). */
+    suspend fun file(fileKey: String): OfflineFile? = dao.getFile(fileKey)
+
+    /** Rows a pass may try, oldest first (see [OfflineDao.candidates]). */
+    suspend fun candidates(now: Long, unmetered: Boolean, limit: Int): List<OfflineFile> =
+        dao.candidates(now, unmetered, limit)
+
+    // The scheduler's questions (5-5).
+    suspend fun countWanted(): Int = dao.countWanted()
+    suspend fun countWantedWifiOnly(): Int = dao.countWantedWifiOnly()
+    suspend fun earliestRetryAt(): Long? = dao.earliestRetryAt()
+    suspend fun countDue(now: Long, unmetered: Boolean): Int = dao.countDue(now, unmetered)
+
     // ---- storage ---------------------------------------------------------------------------------------------
 
     fun freeBytesNow(): Long = freeBytes()

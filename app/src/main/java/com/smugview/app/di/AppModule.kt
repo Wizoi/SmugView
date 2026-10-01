@@ -294,6 +294,19 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideOfflineDownloader(
+        store: com.smugview.app.data.offline.OfflineStore,
+        repository: com.smugview.app.data.repository.SmugMugRepository,
+        @javax.inject.Named("images") images: okhttp3.Call.Factory
+    ): com.smugview.app.data.offline.OfflineDownloader = com.smugview.app.data.offline.OfflineDownloader(
+        store = store,
+        repo = repository,
+        images = images,
+        apiKey = { com.smugview.app.BuildConfig.SMUGMUG_API_KEY }
+    )
+
+    @Provides
+    @Singleton
     fun provideCastManager(impl: com.smugview.app.data.cast.DefaultCastManager): com.smugview.app.data.cast.CastManager {
         return impl
     }

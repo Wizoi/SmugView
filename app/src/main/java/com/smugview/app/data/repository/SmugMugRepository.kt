@@ -26,6 +26,7 @@ import com.smugview.app.data.db.OfflineCollection
 import com.smugview.app.data.db.SearchHistory
 import com.smugview.app.data.db.SearchResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.channelFlow
@@ -1392,6 +1393,25 @@ class SmugMugRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * Where the original of [imageKey] is, for the offline downloader (phase 5, P8): `image/{key}-0` narrowed to the
+     * archived-original fields. [fresh] re-asks the server (after a CDN 401/403, the HTTP cache must not answer).
+     * Throws what the call throws (`HttpException` with the status, `IOException` offline); cancellation propagates.
+     */
+    suspend fun resolveImageSource(imageKey: String, apiKey: String, fresh: Boolean = false): ImageSource =
+        withContext(Dispatchers.IO) {
+            val img = api.getImageSource(canonicalImageKey(imageKey), apiKey, cacheControl = if (fresh) "no-cache" else null)
+                .response.image
+            ImageSource(
+                imageKey = img.imageKey ?: imageKey,
+                archivedUri = img.archivedUri?.takeIf { it.isNotBlank() },
+                archivedSize = img.archivedSize,
+                archivedMd5 = img.archivedMd5?.takeIf { it.isNotBlank() },
+                format = img.format,
+                isVideo = img.isVideo == true
+            )
+        }
+
     // Fetches the real generated sizes/urls/dimensions for a single image, used by pinch-to-zoom
     fun getImageSizeDetails(
         uri: String,
@@ -2104,4 +2124,12 @@ data class AlbumSecurityInfo(
     val passwordHint: String?
 )
 
-
+/** What `image/{key}-0` says about where the original is ([SmugMugRepository.resolveImageSource]). */
+data class ImageSource(
+    val imageKey: String,
+    val archivedUri: String?,
+    val archivedSize: Long?,
+    val archivedMd5: String?,
+    val format: String?,
+    val isVideo: Boolean
+)

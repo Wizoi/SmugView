@@ -287,6 +287,22 @@ data class ImagePayload(
     @SerializedName("Image") val image: AlbumImageData
 )
 
+// `image/{key}-0` narrowed to where the original is (phase 5 offline downloads)
+data class ImageSourceResponse(
+    @SerializedName("Response") val response: ImageSourcePayload
+)
+data class ImageSourcePayload(
+    @SerializedName("Image") val image: ImageSourceData
+)
+data class ImageSourceData(
+    @SerializedName("ImageKey") val imageKey: String? = null,
+    @SerializedName("ArchivedUri") val archivedUri: String? = null,
+    @SerializedName("ArchivedSize") val archivedSize: Long? = null,
+    @SerializedName("ArchivedMD5") val archivedMd5: String? = null,
+    @SerializedName("Format") val format: String? = null,
+    @SerializedName("IsVideo") val isVideo: Boolean? = null
+)
+
 // User Top Keywords Response
 data class TopKeywordsResponse(
     @SerializedName("Response") val response: TopKeywordsPayload
