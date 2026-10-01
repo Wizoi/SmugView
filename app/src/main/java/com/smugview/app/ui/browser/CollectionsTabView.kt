@@ -285,8 +285,7 @@ fun CollectionsTabView(
                                     .fillMaxWidth()
                                     .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
                                     .clickable {
-                                        viewModel.setActiveTab(BrowserTab.Folders)
-                                        viewModel.loadFolderContents(f.itemKey)
+                                        viewModel.openFolderShortcut(f.itemKey)
                                     }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,

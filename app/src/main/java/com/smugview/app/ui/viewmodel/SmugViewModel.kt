@@ -230,6 +230,8 @@ class SmugViewModel @Inject constructor(
     private fun beginSite(nickname: String) {
         session.close()
         session = SiteSession(nickname, viewModelScope.coroutineContext[kotlinx.coroutines.Job])
+        navigator = BrowserNavigator(session.scope, browserHost)
+        browserHost.render(BrowserState())
         treeSyncJob = null
         unlockResyncJob = null
         unlockSubtreeIndexJob = null
@@ -373,6 +375,88 @@ class SmugViewModel @Inject constructor(
         private set
 
     val folderNavigationStack = mutableStateListOf<CachedNode>()
+
+    /**
+     * The services the Folders tab's [BrowserNavigator] needs. The three mirrors above
+     * ([currentFolderId], [folderNavigationStack], [browserState]) and [savedFolderStateBeforeSearch]
+     * are written only by [BrowserHost.render], on Main (design 3.2).
+     */
+    private val browserHost = object : BrowserHost {
+        override fun rootId(): String? = _splashState.value.let { if (it is SplashUiState.Success) it.rootNodeId else null }
+
+        override suspend fun savedPassword(nodeId: String): String? = getUnlockedPassword(nodeId)
+
+        override fun requestPassword(node: CachedNode) {
+            if (BuildConfig.DEBUG) {
+                android.util.Log.d("SmugViewModel", "navigator: password prompt needed for nodeId=${node.nodeId}")
+            }
+            promptPassword(node)
+        }
+
+        override fun children(nodeId: String, force: Boolean, password: String?): Flow<Result<List<CachedNode>>> =
+            repository.getNodeChildren(_activeNickname.value.orEmpty(), nodeId, apiKey, force, password)
+
+        override suspend fun albumLineage(albumKey: String): List<CachedNode>? =
+            repository.resolveAndCacheAlbumLineage(albumKey, apiKey, getUnlockedPassword(albumKey))
+
+        override suspend fun nodeLineage(nodeId: String): List<CachedNode>? = repository.lineageOf(nodeId, apiKey)
+
+        override suspend fun onLoadFailure(nodeId: String, password: String?, error: Throwable): LoadFailure {
+            if (BuildConfig.DEBUG) {
+                android.util.Log.e("SmugViewModel", "folder load failed for nodeId=$nodeId", error)
+            }
+            if (!password.isNullOrEmpty() && com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)) {
+                // SmugMug explicitly rejected the saved password (401/403): it was changed or invalid
+                passwordPrefs.edit().remove(nodeId).apply()
+                val node = repository.getNodeById(nodeId)
+                return if (node != null) {
+                    passwordPromptNode = node
+                    passwordError = "Saved password is no longer valid. Please re-enter."
+                    LoadFailure(listing = null, popAfter = true)
+                } else {
+                    LoadFailure(
+                        BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy")),
+                        popAfter = true
+                    )
+                }
+            }
+            val isAccessDenied = error is retrofit2.HttpException && (error.code() == 401 || error.code() == 404)
+            if (isAccessDenied && !nodeId.startsWith("virtual:")) {
+                val node = repository.getNodeById(nodeId)
+                if (node != null) {
+                    promptPassword(node)
+                    // Back out of the folder we navigated into; clear the loading state gracefully
+                    return LoadFailure(BrowserUiState.Success(emptyList()), popAfter = true)
+                }
+                if (error is retrofit2.HttpException && error.code() == 404) {
+                    viewModelScope.launch { repository.removeBookmarkGlobally(nodeId) }
+                }
+                return LoadFailure(
+                    BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Access Denied / Not Found")),
+                    popAfter = false
+                )
+            }
+            return LoadFailure(
+                BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy")),
+                popAfter = false
+            )
+        }
+
+        override fun showTab(tab: BrowserTab) = setActiveTab(tab)
+
+        override fun render(state: BrowserState) {
+            if (folderNavigationStack.toList() != state.stack) {
+                folderNavigationStack.clear()
+                folderNavigationStack.addAll(state.stack)
+            }
+            currentFolderId = state.currentId
+            savedFolderStateBeforeSearch = state.returnToSearch?.let { Pair(it.lastOrNull()?.nodeId ?: state.rootId, it) }
+            _browserState.value = state.listing
+        }
+    }
+
+    /** One per [SiteSession]; replaced, empty, by [beginSite]. */
+    private var navigator = BrowserNavigator(session.scope, browserHost)
 
     // Unlocked nodes passwords map (cached in-memory for security)
     private val _unlockedPasswords = mutableMapOf<String, String>()
@@ -703,11 +787,10 @@ class SmugViewModel @Inject constructor(
                         val nodeUri = userData.uris.node
                         val rootId = repository.parseNodeIdFromUri(nodeUri)
                         _splashState.value = SplashUiState.Success(rootId)
-                        currentFolderId = rootId
-                        
+
                         // Unlock, gallery crawl and tree walk run as one job (startSiteSync, below).
 
-                        loadFolderContents(rootId)
+                        navigator.navigate(NavIntent.Root)
                         startSiteSync(nickname, rootId)
                         loadSiteHeaderImage(nickname, rootId)
 
@@ -765,15 +848,13 @@ class SmugViewModel @Inject constructor(
 
                         // Transition state
                         _splashState.value = SplashUiState.Success(rootId)
-                        currentFolderId = rootId
-                        folderNavigationStack.clear()
 
                         // Unlock, gallery crawl and tree walk run as one job (startSiteSync, below).
-                        
+
                         if (BuildConfig.DEBUG) {
                             android.util.Log.d("SmugViewModel", "selectSite success: resolved rootId=$rootId")
                         }
-                        loadFolderContents(rootId)
+                        navigator.navigate(NavIntent.Root)
                         startSiteSync(normalizedNickname, rootId)
                         loadSiteHeaderImage(normalizedNickname, rootId)
 
@@ -806,8 +887,7 @@ class SmugViewModel @Inject constructor(
         _siteHeaderImageUrl.value = null
         siteHub.clearActiveSiteData()
         resetPerSiteState()
-        currentFolderId = null
-        folderNavigationStack.clear()
+        // beginSite("") above replaced the navigator; its empty state is already rendered.
         _splashState.value = SplashUiState.Idle
         siteHub.clearPreview()
         _activeTab.value = BrowserTab.Hub
@@ -820,145 +900,51 @@ class SmugViewModel @Inject constructor(
         return repository.getNodeById(albumKey) ?: repository.getNodeByIdOrKey(albumKey)
     }
 
-    // Browsing folder contents
+    // Browsing folder contents. Every move goes through the BrowserNavigator (design 3.2); these are
+    // one-line delegates so callers and tests read the mirrors unchanged.
     fun clearEntireCacheAndReload() {
         viewModelScope.launch {
             repository.clearEntireCache()
-            loadFolderContents("root", forceRefresh = true)
+            navigator.navigate(NavIntent.Refresh(force = true))
         }
     }
 
+    /** Relist [nodeId]: the open folder in place, any other folder by its lineage (a shortcut). */
     fun loadFolderContents(nodeId: String, forceRefresh: Boolean = false) {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "loadFolderContents called: nodeId=$nodeId, forceRefresh=$forceRefresh")
         }
-        _browserState.value = BrowserUiState.Loading
-        val nickname = _activeNickname.value.orEmpty()
-        session.scope.launch(com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("folder"))) {
-            val password = getUnlockedPassword(nodeId)
-            repository.getNodeChildren(nickname, nodeId, apiKey, forceRefresh, password).collect { result ->
-                result.fold(
-                    onSuccess = { nodes ->
-                        if (BuildConfig.DEBUG) {
-                            android.util.Log.d("SmugViewModel", "loadFolderContents success: retrieved ${nodes.size} nodes for nodeId=$nodeId")
-                        }
-                        _browserState.value = BrowserUiState.Success(nodes)
-                    },
-                    onFailure = { error ->
-                        if (BuildConfig.DEBUG) {
-                            android.util.Log.e("SmugViewModel", "loadFolderContents failed for nodeId=$nodeId", error)
-                        }
-                        if (!password.isNullOrEmpty() && com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)) {
-                            // SmugMug explicitly rejected the saved password (401/403): it was changed or invalid
-                            passwordPrefs.edit().remove(nodeId).apply()
-                            
-                            // Revert navigation if we are inside the stack
-                            if (currentFolderId == nodeId) {
-                                navigateBackFolder()
-                            }
-                            
-                            // Fetch node details to prompt user
-                            val node = repository.getNodeById(nodeId)
-                            if (node != null) {
-                                passwordPromptNode = node
-                                passwordError = "Saved password is no longer valid. Please re-enter."
-                            } else {
-                                _browserState.value = BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy"))
-                            }
-                        } else {
-                            val isAccessDenied = error is retrofit2.HttpException && (error.code() == 401 || error.code() == 404)
-                            if (isAccessDenied && !nodeId.startsWith("virtual:")) {
-                                val node = repository.getNodeById(nodeId)
-                                if (node != null) {
-                                    promptPassword(node)
-                                    // Back out if we navigated into it
-                                    if (currentFolderId == nodeId) {
-                                        navigateBackFolder()
-                                    }
-                                    _browserState.value = BrowserUiState.Success(emptyList()) // clear loading state gracefully
-                                } else {
-                                    if (error is retrofit2.HttpException && error.code() == 404) {
-                                        viewModelScope.launch {
-                                            repository.removeBookmarkGlobally(nodeId)
-                                        }
-                                    }
-                                    _browserState.value = BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Access Denied / Not Found"))
-                                }
-                            } else {
-                                _browserState.value = BrowserUiState.Error(com.smugview.app.data.api.SmugMugErrorMapper.userMessage(error, "Failed to load hierarchy"))
-                            }
-                        }
-                    }
-                )
-            }
-        }
+        if (nodeId == navigator.currentId) navigator.navigate(NavIntent.Refresh(forceRefresh))
+        else navigator.navigate(NavIntent.Shortcut(nodeId))
     }
+
+    /** Open a folder id from Collections: the Folders tab moves there, breadcrumb and listing together. */
+    fun openFolderShortcut(nodeId: String) {
+        setActiveTab(BrowserTab.Folders)
+        navigator.navigate(NavIntent.Shortcut(nodeId))
+    }
+
     fun navigateToFolderFromSearch(node: CachedNode) {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "navigateToFolderFromSearch: folderName=${node.title}, nodeId=${node.nodeId}")
         }
-        if (savedFolderStateBeforeSearch == null) {
-            savedFolderStateBeforeSearch = Pair(currentFolderId, folderNavigationStack.toList())
-        }
-        navigateToChildFolder(node)
-        setActiveTab(BrowserTab.Folders)
+        navigator.navigate(NavIntent.FromSearch(node))
     }
 
     fun navigateBack(): Boolean {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "navigateBack called: savedStateExists=${savedFolderStateBeforeSearch != null}")
         }
-        val savedState = savedFolderStateBeforeSearch
-        if (savedState != null) {
-            val savedStack = savedState.second
-            if (folderNavigationStack.size > savedStack.size + 1) {
-                return navigateBackFolder()
-            } else {
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "navigateBack: restoring search tab state")
-                }
-                folderNavigationStack.clear()
-                folderNavigationStack.addAll(savedStack)
-                currentFolderId = savedState.first
-                if (currentFolderId != null) {
-                    loadFolderContents(currentFolderId!!)
-                } else {
-                    splashState.value.let {
-                        if (it is SplashUiState.Success) {
-                            currentFolderId = it.rootNodeId
-                            loadFolderContents(it.rootNodeId)
-                        }
-                    }
-                }
-                savedFolderStateBeforeSearch = null
-                setActiveTab(BrowserTab.Search)
-                return true
-            }
-        } else {
-            return navigateBackFolder()
-        }
+        if (!navigator.canGoBack(viaSearch = true)) return false
+        navigator.navigate(NavIntent.Back(viaSearch = true))
+        return true
     }
 
     fun navigateToChildFolder(node: CachedNode) {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "navigateToChildFolder: title=${node.title}, nodeId=${node.nodeId}, access=${node.access}")
         }
-        session.scope.launch {
-            val savedPassword = getUnlockedPassword(node.nodeId)
-            if ((node.access == "Password" || node.access == "Inherited") && savedPassword == null) {
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "navigateToChildFolder: password prompt needed for nodeId=${node.nodeId}")
-                }
-                promptPassword(node)
-                return@launch
-            }
-            currentFolderId = node.nodeId
-            folderNavigationStack.add(node)
-            loadFolderContents(node.nodeId)
-            // Deliberately NOT markNodeAsViewed here: that marks every gallery beneath the folder
-            // as viewed, clearing dots the user never looked at. See
-            // SmugViewModelTest.navigatingIntoFolder_doesNotMarkItsGalleriesViewed.
-        }
+        navigator.navigate(NavIntent.Child(node))
     }
 
     fun markNodeAsViewed(nodeId: String) {
@@ -977,21 +963,9 @@ class SmugViewModel @Inject constructor(
         if (BuildConfig.DEBUG) {
             android.util.Log.d("SmugViewModel", "navigateBackFolder called: stackSize=${folderNavigationStack.size}")
         }
-        if (folderNavigationStack.isNotEmpty()) {
-            folderNavigationStack.removeAt(folderNavigationStack.size - 1)
-            val previousNodeId = folderNavigationStack.lastOrNull()?.nodeId ?: splashState.value.let {
-                if (it is SplashUiState.Success) it.rootNodeId else null
-            }
-            if (BuildConfig.DEBUG) {
-                android.util.Log.d("SmugViewModel", "navigateBackFolder: popped stack, previousNodeId=$previousNodeId")
-            }
-            if (previousNodeId != null) {
-                currentFolderId = previousNodeId
-                loadFolderContents(previousNodeId)
-                return true
-            }
-        }
-        return false
+        if (!navigator.canGoBack(viaSearch = false)) return false
+        navigator.navigate(NavIntent.Back(viaSearch = false))
+        return true
     }
 
     fun checkAndNavigateToAlbum(node: CachedNode, onNavigate: (albumKey: String) -> Unit) {
@@ -1251,7 +1225,7 @@ class SmugViewModel @Inject constructor(
         unlockResyncJob = session.scope.launch(defaultDispatcher) {
             val invalidated = repository.resyncAfterUnlock(nickname, rootId, apiKey)
             val open = currentFolderId
-            if (open != null && open in invalidated) loadFolderContents(open, forceRefresh = true)
+            if (open != null && open in invalidated) navigator.navigate(NavIntent.Refresh(force = true, background = true))
         }
     }
 
@@ -1438,17 +1412,8 @@ class SmugViewModel @Inject constructor(
                         android.util.Log.e("SmugViewModel", "Failed to mark album as viewed on selection: $albumKey", e)
                     }
                 }
-                try {
-                    val password = getUnlockedPassword(albumKey)
-                    val list = repository.resolveAndCacheAlbumLineage(albumKey, apiKey, password)
-                    folderNavigationStack.clear()
-                    folderNavigationStack.addAll(list)
-                    currentFolderId = list.lastOrNull()?.nodeId ?: _splashState.value.let {
-                        if (it is SplashUiState.Success) it.rootNodeId else null
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                // Q3: the Folders tab follows the gallery: breadcrumb and listing move to its folder together.
+                navigator.navigate(NavIntent.Reveal(albumKey))
 
                 if (targetImageKey != null) {
                     try {
@@ -1971,23 +1936,14 @@ class SmugViewModel @Inject constructor(
         val rootNodeId = _splashState.value.let {
             if (it is SplashUiState.Success) it.rootNodeId else null
         }
-        if (rootNodeId != null) {
-            currentFolderId = rootNodeId
-            folderNavigationStack.clear()
-            loadFolderContents(rootNodeId)
-        }
+        if (rootNodeId != null) navigator.navigate(NavIntent.Root)
     }
 
     fun navigateToStackFolder(index: Int) {
         if (index < 0) {
             navigateToHome()
-        } else if (index < folderNavigationStack.size) {
-            while (folderNavigationStack.size > index + 1) {
-                folderNavigationStack.removeAt(folderNavigationStack.size - 1)
-            }
-            val targetNode = folderNavigationStack[index]
-            currentFolderId = targetNode.nodeId
-            loadFolderContents(targetNode.nodeId)
+        } else {
+            navigator.navigate(NavIntent.ToIndex(index))
         }
     }
 
@@ -2161,7 +2117,7 @@ class SmugViewModel @Inject constructor(
         treeSyncJob = session.scope.launch {
             val invalidatedParents = repository.runSiteSync(nickname, rootNodeId, apiKey)
             if (currentFolderId != null && currentFolderId in invalidatedParents.orEmpty()) {
-                loadFolderContents(currentFolderId!!, forceRefresh = true)
+                navigator.navigate(NavIntent.Refresh(force = true, background = true))
             }
         }
     }
