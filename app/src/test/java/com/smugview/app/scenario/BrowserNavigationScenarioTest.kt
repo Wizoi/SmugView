@@ -90,6 +90,7 @@ class BrowserNavigationScenarioTest {
 
     @Test fun `back from a search jump returns to the search tab and the folder you left`() {
         openSiteAndSettle()
+        awaitUntil("the root listing is a Success, not a background refresh Loading") { vm.browserState.value is BrowserUiState.Success }
         val kentridge = (vm.browserState.value as BrowserUiState.Success).nodes.first { it.nodeId == "3BxbFF" }
         vm.setActiveTab(BrowserTab.Search)
 

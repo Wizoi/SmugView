@@ -1272,10 +1272,10 @@ fun SmugViewModel.setActiveNicknameForTest(nickname: String) {
 }
 
 fun SmugViewModel.setRawPhotosForTest(photos: List<AlbumImageData>) {
-    val rawPhotosField = SmugViewModel::class.java.getDeclaredField("_rawPhotos")
-    rawPhotosField.isAccessible = true
-    val stateFlow = rawPhotosField.get(this) as kotlinx.coroutines.flow.MutableStateFlow<List<AlbumImageData>>
-    stateFlow.value = photos
+    // The gallery photos live in the AlbumLoader now; an inline (Unconfined) run publishes them synchronously.
+    albumLoader.select("test_album", scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)) { run ->
+        run.update { it.copy(photos = photos, complete = true) }
+    }
 }
 
 fun createTestNode(

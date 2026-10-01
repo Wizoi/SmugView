@@ -190,18 +190,6 @@ class SmugViewModel @Inject constructor(
     }
 
     /**
-     * Merges any buffered photo pages into [_rawPhotos] atomically and clears the buffer.
-     * Using `update` (rather than assigning a locally-accumulated snapshot) means concurrent
-     * publishers into _rawPhotos don't clobber each other.
-     */
-    private fun flushPendingPhotos(pending: MutableList<AlbumImageData>) {
-        if (pending.isEmpty()) return
-        val batch = pending.toList()
-        pending.clear()
-        _rawPhotos.update { current -> (current + batch).distinctBy { it.imageKey } }
-    }
-
-    /**
      * Non-blocking unlock check. Reads the reactively-maintained [unlockedNodeIds] set plus the
      * current navigation stack; performs no DB or network I/O so it is safe to call during
      * composition. Prefer observing [unlockedNodeIds] directly in Compose for recomposition.
@@ -243,8 +231,7 @@ class SmugViewModel @Inject constructor(
         passwordPromptNode = null
         passwordError = null
         targetNodeToUnlockAfterSuccess = null
-        _isBackgroundLoading.value = false
-        _backgroundLoadingStatus.value = null
+        albums.reset()
         siteHub.clearActiveSiteData()
         resetPerSiteState()
     }
@@ -479,14 +466,27 @@ class SmugViewModel @Inject constructor(
     var currentAlbumWebUri by mutableStateOf<String?>("")
         private set
 
-    private val _isBackgroundLoading = MutableStateFlow(false)
-    val isBackgroundLoading: StateFlow<Boolean> = _isBackgroundLoading.asStateFlow()
+    /**
+     * The albums behind the gallery grid (design 3.4): one state per album key, the current one shown,
+     * the last few finished ones kept. [currentAlbumTitle], [currentAlbumStyle] and [currentAlbumWebUri]
+     * are Compose state, so the loader pushes the current album into them. [isBackgroundLoading] and
+     * [backgroundLoadingStatus] merge the current album with collection downloads (declared below).
+     */
+    private val albums = AlbumLoader(
+        defaultScope = { session.scope },
+        onChange = { s ->
+            currentAlbumTitle = s?.title ?: ""
+            currentAlbumStyle = s?.style ?: "Collage"
+            currentAlbumWebUri = s?.webUri ?: ""
+        }
+    )
 
-    private val _backgroundLoadingStatus = MutableStateFlow<String?>(null)
-    val backgroundLoadingStatus: StateFlow<String?> = _backgroundLoadingStatus.asStateFlow()
+    /** The error that replaces the grid: the current album failed before any photo arrived. */
+    val albumLoadError: StateFlow<String?> get() = albums.blockingError
 
-    private val _albumLoadError = MutableStateFlow<String?>(null)
-    val albumLoadError: StateFlow<String?> = _albumLoadError.asStateFlow()
+    /** The current album's state, for tests and diagnostics. */
+    internal val albumState: StateFlow<AlbumState?> get() = albums.state
+    internal val albumLoader: AlbumLoader get() = albums
 
     private val _filterType = MutableStateFlow(GalleryFilterType.ALL)
     val filterType: StateFlow<GalleryFilterType> = _filterType.asStateFlow()
@@ -595,8 +595,7 @@ class SmugViewModel @Inject constructor(
     fun performSearch(query: String, forceRefresh: Boolean = false) = search.performSearch(query, forceRefresh)
 
     // Tag list and active selection state
-    private val _availableTags = MutableStateFlow<Set<String>>(emptySet())
-    val availableTags: StateFlow<Set<String>> = _availableTags.asStateFlow()
+    val availableTags: StateFlow<Set<String>> get() = albums.tags
 
     private val _includedTags = MutableStateFlow<Set<String>>(emptySet())
     val includedTags: StateFlow<Set<String>> = _includedTags.asStateFlow()
@@ -1075,6 +1074,8 @@ class SmugViewModel @Inject constructor(
     }
 
     fun handleAlbumLoadError(albumKey: String, error: Throwable? = null) {
+        // R-11: an album that is no longer on screen has no say about passwords or prompts.
+        albums.currentKey?.let { if (it != albumKey) return }
         session.scope.launch {
             val rejected = com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)
             val password = getUnlockedPassword(albumKey)
@@ -1344,11 +1345,9 @@ class SmugViewModel @Inject constructor(
 
     // --- Photos Paging & Tag Filtering ---
 
-    private val _rawPhotos = MutableStateFlow<List<AlbumImageData>>(emptyList())
-
     @OptIn(ExperimentalCoroutinesApi::class)
     val photosFlow: Flow<PagingData<AlbumImageData>> = combine(
-        _rawPhotos,
+        albums.photos,
         _includedTags,
         _excludedTags,
         _sortBy,
@@ -1391,282 +1390,305 @@ class SmugViewModel @Inject constructor(
         }
     }
 
+    /** The lower-cased keywords of [images], for the tag filter. */
+    private fun tagsOf(images: List<AlbumImageData>): Set<String> = images.flatMap { item ->
+        item.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
+    }.filter { it.isNotEmpty() }.toSet()
+
+    /**
+     * Opens [albumKey] in the gallery grid (design 3.4). The [albums] loader owns the state: choosing
+     * another album cancels this one's stream, and nothing a cancelled or stale load does can reach the
+     * album on screen. A finished album you come back to is shown from memory with no request.
+     */
     fun selectAlbum(albumKey: String, targetImageKey: String? = null) {
-        if (albumKey == _currentAlbumKey.value && _rawPhotos.value.isNotEmpty()) {
-            if (targetImageKey == null || _rawPhotos.value.any { it.imageKey == targetImageKey }) {
-                return
-            }
-        }
+        val isLocal = albumKey.startsWith("local_col_")
+        val diag = com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("gallery"))
         _currentAlbumKey.value = albumKey
+        val selection = albums.select(
+            albumKey = albumKey,
+            target = targetImageKey,
+            scope = if (isLocal) viewModelScope else session.scope,
+            context = diag,
+            initialStatus = if (isLocal) "Loading offline collection..." else "Fetching album photos..."
+        ) { run ->
+            if (isLocal) loadLocalCollection(run) else loadAlbum(run, targetImageKey)
+        }
+        if (selection == AlbumSelection.Same) return
         _includedTags.value = emptySet()
         _excludedTags.value = emptySet()
-        _rawPhotos.value = emptyList()
-        _availableTags.value = emptySet()
-        _albumLoadError.value = null
-        currentAlbumStyle = "Collage"
-        currentAlbumTitle = ""
+        if (isLocal) return
 
-        if (!albumKey.startsWith("local_col_")) {
-            session.scope.launch(com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("gallery"))) {
-                try {
-                    val node = repository.getNodeByIdOrKey(albumKey)
-                    if (node != null) {
-                        repository.markNodeAsViewed(node.nodeId)
-                    }
-                } catch (e: Exception) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.e("SmugViewModel", "Failed to mark album as viewed on selection: $albumKey", e)
-                    }
+        // Not part of the album's load: switching to another album must not cancel the "viewed" mark.
+        session.scope.launch(diag) {
+            try {
+                val node = repository.getNodeByIdOrKey(albumKey)
+                if (node != null) {
+                    repository.markNodeAsViewed(node.nodeId)
                 }
-                // Q3: the Folders tab follows the gallery: breadcrumb and listing move to its folder together.
-                navigator.navigate(NavIntent.Reveal(albumKey))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.e("SmugViewModel", "Failed to mark album as viewed on selection: $albumKey", e)
+                }
+            }
+            // Q3: the Folders tab follows the gallery: breadcrumb and listing move to its folder together.
+            navigator.navigate(NavIntent.Reveal(albumKey))
+        }
+    }
 
-                if (targetImageKey != null) {
-                    try {
-                        val dbPhoto = repository.getCollectionPhotoByKey(targetImageKey)
-                        val placeholder = if (dbPhoto != null) {
-                            AlbumImageData(
-                                imageKey = dbPhoto.imageKey,
-                                title = dbPhoto.title,
-                                caption = dbPhoto.title,
-                                thumbnailUrl = dbPhoto.localFilePath ?: dbPhoto.thumbnailUrl,
-                                archivedUri = dbPhoto.localFilePath ?: dbPhoto.archivedUri,
-                                date = dbPhoto.dateTaken,
-                                dateTime = dbPhoto.dateTaken,
-                                keywords = dbPhoto.keywords,
-                                webUri = null,
-                                originalWidth = null,
-                                originalHeight = null,
-                                format = if (dbPhoto.localFilePath?.lowercase()?.endsWith(".mp4") == true || dbPhoto.archivedUri?.lowercase()?.contains(".mp4") == true) "MP4" else "JPG",
-                                videoUrl = dbPhoto.localFilePath ?: dbPhoto.archivedUri
-                            )
+    private suspend fun loadLocalCollection(run: AlbumRun) {
+        val collectionId = run.albumKey.removePrefix("local_col_").toLongOrNull() ?: 0L
+        val dbCollection = repository.getCollectionById(collectionId)
+        run.update { it.copy(title = dbCollection?.name ?: "Local Collection") }
+
+        repository.getPhotosInCollection(collectionId).collect { dbPhotos ->
+            val images = dbPhotos.map { dbPhoto ->
+                AlbumImageData(
+                    imageKey = dbPhoto.imageKey,
+                    title = dbPhoto.title,
+                    caption = dbPhoto.title,
+                    thumbnailUrl = dbPhoto.localFilePath ?: dbPhoto.thumbnailUrl,
+                    archivedUri = dbPhoto.localFilePath ?: dbPhoto.archivedUri,
+                    date = dbPhoto.dateTaken,
+                    dateTime = dbPhoto.dateTaken,
+                    keywords = dbPhoto.keywords,
+                    webUri = null,
+                    originalWidth = null,
+                    originalHeight = null,
+                    format = if (dbPhoto.localFilePath?.lowercase()?.endsWith(".mp4") == true || dbPhoto.archivedUri?.lowercase()?.contains(".mp4") == true) "MP4" else "JPG",
+                    videoUrl = dbPhoto.localFilePath ?: dbPhoto.archivedUri
+                )
+            }
+            run.update { it.copy(photos = images, tags = tagsOf(images), loading = false, status = null) }
+        }
+    }
+
+    private suspend fun loadAlbum(run: AlbumRun, targetImageKey: String?) = coroutineScope {
+        if (targetImageKey != null) launch { loadTargetImage(run, targetImageKey) }
+        loadAlbumPages(run, targetImageKey)
+    }
+
+    /** The image the detail screen was opened on: a placeholder from the local DB, then the API's copy. */
+    private suspend fun loadTargetImage(run: AlbumRun, targetImageKey: String) {
+        try {
+            val dbPhoto = repository.getCollectionPhotoByKey(targetImageKey)
+            val placeholder = if (dbPhoto != null) {
+                AlbumImageData(
+                    imageKey = dbPhoto.imageKey,
+                    title = dbPhoto.title,
+                    caption = dbPhoto.title,
+                    thumbnailUrl = dbPhoto.localFilePath ?: dbPhoto.thumbnailUrl,
+                    archivedUri = dbPhoto.localFilePath ?: dbPhoto.archivedUri,
+                    date = dbPhoto.dateTaken,
+                    dateTime = dbPhoto.dateTaken,
+                    keywords = dbPhoto.keywords,
+                    webUri = null,
+                    originalWidth = null,
+                    originalHeight = null,
+                    format = if (dbPhoto.localFilePath?.lowercase()?.endsWith(".mp4") == true || dbPhoto.archivedUri?.lowercase()?.contains(".mp4") == true) "MP4" else "JPG",
+                    videoUrl = dbPhoto.localFilePath ?: dbPhoto.archivedUri
+                )
+            } else {
+                val dbBookmark = repository.getBookmarkByItemKey(targetImageKey)
+                if (dbBookmark != null) {
+                    AlbumImageData(
+                        imageKey = dbBookmark.itemKey,
+                        title = dbBookmark.title,
+                        caption = dbBookmark.title,
+                        thumbnailUrl = dbBookmark.thumbnailUrl,
+                        archivedUri = dbBookmark.extraData ?: dbBookmark.thumbnailUrl,
+                        date = null,
+                        dateTime = null,
+                        keywords = null,
+                        webUri = null,
+                        originalWidth = null,
+                        originalHeight = null,
+                        format = "JPG",
+                        videoUrl = null
+                    )
+                } else null
+            }
+
+            if (placeholder != null) {
+                run.update { it.copy(photos = listOf(placeholder)) }
+            }
+
+            val password = getUnlockedPassword(run.albumKey)
+            repository.getImage(targetImageKey, apiKey, password).collect { result ->
+                result.getOrNull()?.let { apiImg ->
+                    run.update { s ->
+                        val updated = s.photos.toMutableList()
+                        val index = updated.indexOfFirst { it.imageKey == targetImageKey }
+                        if (index >= 0) {
+                            updated[index] = apiImg
                         } else {
-                            val dbBookmark = repository.getBookmarkByItemKey(targetImageKey)
-                            if (dbBookmark != null) {
-                                AlbumImageData(
-                                    imageKey = dbBookmark.itemKey,
-                                    title = dbBookmark.title,
-                                    caption = dbBookmark.title,
-                                    thumbnailUrl = dbBookmark.thumbnailUrl,
-                                    archivedUri = dbBookmark.extraData ?: dbBookmark.thumbnailUrl,
-                                    date = null,
-                                    dateTime = null,
-                                    keywords = null,
-                                    webUri = null,
-                                    originalWidth = null,
-                                    originalHeight = null,
-                                    format = "JPG",
-                                    videoUrl = null
-                                )
-                            } else null
+                            updated.add(apiImg)
                         }
-
-                        if (placeholder != null) {
-                            _rawPhotos.value = listOf(placeholder)
-                        }
-
-                        val password = getUnlockedPassword(albumKey)
-                        repository.getImage(targetImageKey, apiKey, password).collect { result ->
-                            result.getOrNull()?.let { apiImg ->
-                                // Atomic: several coroutines in selectAlbum publish into
-                                // _rawPhotos concurrently; a read-modify-write on .value here
-                                // would lose updates depending on scheduling.
-                                _rawPhotos.update { current ->
-                                    val updated = current.toMutableList()
-                                    val index = updated.indexOfFirst { it.imageKey == targetImageKey }
-                                    if (index >= 0) {
-                                        updated[index] = apiImg
-                                    } else {
-                                        updated.add(apiImg)
-                                    }
-                                    updated
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                        s.copy(photos = updated)
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private suspend fun loadAlbumPages(run: AlbumRun, targetImageKey: String?) {
+        val albumKey = run.albumKey
+        // Resolve any saved/inherited password, but bound it: the hierarchy walk can be starved
+        // for several seconds under concurrent load (e.g. arriving here via "Jump to Gallery"
+        // while image-detail resolution is still running). On timeout we treat it as "no saved
+        // password" and fall through to the lock detection below, which prompts — far better
+        // than an indefinitely spinning grid.
+        val password = kotlinx.coroutines.withTimeoutOrNull(4000) {
+            getUnlockedPassword(albumKey)
+        }
+        var albumDetails: com.smugview.app.data.api.AlbumDetails? = null
+        try {
+            val details = repository.getAlbum(albumKey, apiKey, password)
+            albumDetails = details
+            run.update {
+                it.copy(
+                    title = details?.name ?: "",
+                    style = details?.galleryStyle ?: "Collage",
+                    webUri = details?.webUri ?: ""
+                )
+            }
+            val nodeIdToMark = details?.nodeId
+            if (nodeIdToMark != null) {
+                repository.markNodeAsViewed(nodeIdToMark)
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Fallback to Collage
         }
 
-        if (albumKey.startsWith("local_col_")) {
-            val collectionId = albumKey.removePrefix("local_col_").toLongOrNull() ?: 0L
-            _isBackgroundLoading.value = true
-            _backgroundLoadingStatus.value = "Loading offline collection..."
-            viewModelScope.launch {
-                val dbCollection = repository.getCollectionById(collectionId)
-                currentAlbumTitle = dbCollection?.name ?: "Local Collection"
-                
-                repository.getPhotosInCollection(collectionId).collect { dbPhotos ->
-                    val images = dbPhotos.map { dbPhoto ->
-                        AlbumImageData(
-                            imageKey = dbPhoto.imageKey,
-                            title = dbPhoto.title,
-                            caption = dbPhoto.title,
-                            thumbnailUrl = dbPhoto.localFilePath ?: dbPhoto.thumbnailUrl,
-                            archivedUri = dbPhoto.localFilePath ?: dbPhoto.archivedUri,
-                            date = dbPhoto.dateTaken,
-                            dateTime = dbPhoto.dateTaken,
-                            keywords = dbPhoto.keywords,
-                            webUri = null,
-                            originalWidth = null,
-                            originalHeight = null,
-                            format = if (dbPhoto.localFilePath?.lowercase()?.endsWith(".mp4") == true || dbPhoto.archivedUri?.lowercase()?.contains(".mp4") == true) "MP4" else "JPG",
-                            videoUrl = dbPhoto.localFilePath ?: dbPhoto.archivedUri
-                        )
-                    }
-                    _rawPhotos.value = images
-                    val tagsSet = images.flatMap { item ->
-                        item.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
-                    }.filter { it.isNotEmpty() }.toSet()
-                    _availableTags.value = tagsSet
-                    _isBackgroundLoading.value = false
-                    _backgroundLoadingStatus.value = null
-                }
-            }
+        // If the album is password-protected and we have no working password yet, prompt for
+        // it instead of silently rendering an empty grid. This is the landing point for
+        // "Jump to Gallery" from a search/keyword image whose gallery was never browsed or
+        // unlocked — the images come back redacted (empty) with no thrown error, so nothing
+        // else triggers the prompt. Album metadata (incl. SecurityType) is public, so
+        // getAlbum above still resolves it without a password.
+        val securityType = albumDetails?.securityType
+        if ((securityType == "Password" || securityType == "Inherited") && password.isNullOrEmpty()) {
+            // R-11: never prompt for an album the user has already left.
+            if (!run.isCurrent) return
+            val promptNode = repository.getNodeByIdOrKey(albumKey) ?: CachedNode(
+                nodeId = albumDetails?.nodeId ?: albumKey,
+                parentNodeId = null,
+                type = "Album",
+                title = albumDetails?.name ?: "Gallery",
+                description = null,
+                access = securityType,
+                passwordHint = albumDetails?.passwordHint,
+                uri = albumDetails?.uri ?: "/api/v2/album/$albumKey",
+                childNodesUri = null,
+                albumUri = albumDetails?.uri ?: "/api/v2/album/$albumKey"
+            )
+            run.update { it.copy(loading = false, status = null) }
+            promptPassword(promptNode)
             return
         }
 
-        _isBackgroundLoading.value = true
-        _backgroundLoadingStatus.value = "Fetching album photos..."
-        session.scope.launch {
-            // Resolve any saved/inherited password, but bound it: the hierarchy walk can be starved
-            // for several seconds under concurrent load (e.g. arriving here via "Jump to Gallery"
-            // while image-detail resolution is still running). On timeout we treat it as "no saved
-            // password" and fall through to the lock detection below, which prompts — far better
-            // than an indefinitely spinning grid.
-            val password = kotlinx.coroutines.withTimeoutOrNull(4000) {
-                getUnlockedPassword(albumKey)
-            }
-            var albumDetails: com.smugview.app.data.api.AlbumDetails? = null
-            try {
-                albumDetails = repository.getAlbum(albumKey, apiKey, password)
-                currentAlbumTitle = albumDetails?.name ?: ""
-                currentAlbumStyle = albumDetails?.galleryStyle ?: "Collage"
-                currentAlbumWebUri = albumDetails?.webUri ?: ""
-                val nodeIdToMark = albumDetails?.nodeId
-                if (nodeIdToMark != null) {
-                    repository.markNodeAsViewed(nodeIdToMark)
-                }
-            } catch (e: Exception) {
-                // Fallback to Collage
-            }
+        val firstPageResponse = try {
+            repository.getAlbumImagesPage(albumKey, apiKey, password)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failFirstPage(run, e)
+            return
+        }
+        val firstPageImages = firstPageResponse.response.images ?: emptyList()
+        val expectedCount = albumDetails?.imageCount ?: 0
+        if (firstPageImages.isEmpty() && expectedCount > 0) {
+            failFirstPage(run, Exception("Failed to find any images in the gallery."))
+            return
+        }
 
-            // If the album is password-protected and we have no working password yet, prompt for
-            // it instead of silently rendering an empty grid. This is the landing point for
-            // "Jump to Gallery" from a search/keyword image whose gallery was never browsed or
-            // unlocked — the images come back redacted (empty) with no thrown error, so nothing
-            // else triggers the prompt. Album metadata (incl. SecurityType) is public, so
-            // getAlbum above still resolves it without a password.
-            val securityType = albumDetails?.securityType
-            if ((securityType == "Password" || securityType == "Inherited") && password.isNullOrEmpty()) {
-                val promptNode = repository.getNodeByIdOrKey(albumKey) ?: CachedNode(
-                    nodeId = albumDetails?.nodeId ?: albumKey,
-                    parentNodeId = null,
-                    type = "Album",
-                    title = albumDetails?.name ?: "Gallery",
-                    description = null,
-                    access = securityType,
-                    passwordHint = albumDetails?.passwordHint,
-                    uri = albumDetails?.uri ?: "/api/v2/album/$albumKey",
-                    childNodesUri = null,
-                    albumUri = albumDetails?.uri ?: "/api/v2/album/$albumKey"
+        imagesUrlUpdate(firstPageImages, firstPageResponse.expansions)
+        var tagsSet = tagsOf(firstPageImages)
+        run.update { s ->
+            // Deliberate reset when the requested image is on this page; otherwise merge with the placeholder.
+            val merged = if (targetImageKey != null && firstPageImages.any { it.imageKey == targetImageKey }) {
+                firstPageImages
+            } else {
+                (s.photos + firstPageImages).distinctBy { it.imageKey }
+            }
+            s.copy(photos = merged, tags = tagsSet)
+        }
+
+        var currentNextUrl: String? = firstPageResponse.response.pages?.next
+        if (currentNextUrl == null) {
+            run.update { it.copy(complete = true) }
+            return
+        }
+
+        run.update { it.copy(status = "Streaming more photos...") }
+        var pageIndex = 2
+        // Buffer new pages and merge them in batches to prevent main-thread recomposition storms.
+        val pendingImages = mutableListOf<AlbumImageData>()
+        var tagsUpdated = false
+        var failure: Exception? = null
+
+        fun flush() {
+            val batch = pendingImages.toList()
+            pendingImages.clear()
+            val tagsNow = tagsSet
+            val withTags = tagsUpdated
+            tagsUpdated = false
+            if (batch.isEmpty() && !withTags) return
+            run.update { s ->
+                s.copy(
+                    photos = if (batch.isEmpty()) s.photos else (s.photos + batch).distinctBy { it.imageKey },
+                    tags = if (withTags) tagsNow else s.tags
                 )
-                _isBackgroundLoading.value = false
-                _backgroundLoadingStatus.value = null
-                promptPassword(promptNode)
-                return@launch
-            }
-
-            try {
-                val firstPageResponse = repository.getAlbumImagesPage(albumKey, apiKey, password)
-                val firstPageImages = firstPageResponse.response.images ?: emptyList()
-                
-                val expectedCount = albumDetails?.imageCount ?: 0
-                if (firstPageImages.isEmpty() && expectedCount > 0) {
-                    throw Exception("Failed to find any images in the gallery.")
-                }
-
-                val firstPageExpansions = firstPageResponse.expansions
-                imagesUrlUpdate(firstPageImages, firstPageExpansions)
-                if (targetImageKey != null && firstPageImages.any { it.imageKey == targetImageKey }) {
-                    // Deliberate reset: the requested image is on this page.
-                    _rawPhotos.value = firstPageImages
-                } else {
-                    _rawPhotos.update { current ->
-                        (current + firstPageImages).distinctBy { it.imageKey }
-                    }
-                }
-
-                var tagsSet = firstPageImages.flatMap { item ->
-                    item.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
-                }.filter { it.isNotEmpty() }.toSet()
-                _availableTags.value = tagsSet
-
-                val nextUrl = firstPageResponse.response.pages?.next
-                if (nextUrl == null) {
-                    _isBackgroundLoading.value = false
-                    _backgroundLoadingStatus.value = null
-                    return@launch
-                }
-
-                launch {
-                    _backgroundLoadingStatus.value = "Streaming more photos..."
-                    try {
-                        var pageIndex = 2
-                        var currentNextUrl: String? = nextUrl
-                        // Buffer new pages and merge them into _rawPhotos atomically. Snapshotting
-                        // the list into a local accumulator and writing it back wholesale would
-                        // clobber concurrent writes from the target-image loader above.
-                        val pendingImages = mutableListOf<AlbumImageData>()
-                        var tagsUpdated = false
-                        while (currentNextUrl != null && pageIndex <= repository.maxPagesPerFetch) {
-                            try {
-                                _backgroundLoadingStatus.value = "Downloading page $pageIndex..."
-                                val nextPageResponse = repository.getAlbumImagesPageByUri(currentNextUrl, apiKey, password)
-                                val nextPageImages = nextPageResponse.response.images ?: emptyList()
-                                if (nextPageImages.isNotEmpty()) {
-                                    val nextPageExpansions = nextPageResponse.expansions
-                                    imagesUrlUpdate(nextPageImages, nextPageExpansions)
-                                    pendingImages.addAll(nextPageImages)
-                                    val newTags = nextPageImages.flatMap { item ->
-                                        item.keywordsString?.split(",")?.map { it.trim().lowercase() } ?: emptyList<String>()
-                                    }.filter { it.isNotEmpty() }
-                                    tagsSet = tagsSet + newTags
-                                    tagsUpdated = true
-                                }
-                                pageIndex++
-                                currentNextUrl = nextPageResponse.response.pages?.next
-                                
-                                // Batch updates to prevent main thread recomposition storms
-                                if (pageIndex % 3 == 0 || currentNextUrl == null) {
-                                    flushPendingPhotos(pendingImages)
-                                    if (tagsUpdated) {
-                                        _availableTags.value = tagsSet
-                                        tagsUpdated = false
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                currentNextUrl = null
-                            }
-                        }
-                        // Final safety updates
-                        flushPendingPhotos(pendingImages)
-                        _availableTags.value = tagsSet
-                    } finally {
-                        _isBackgroundLoading.value = false
-                        _backgroundLoadingStatus.value = null
-                    }
-                }
-            } catch (e: Exception) {
-                _isBackgroundLoading.value = false
-                _backgroundLoadingStatus.value = null
-                _rawPhotos.value = emptyList() // Clear raw photos on failure
-                _albumLoadError.value = com.smugview.app.data.api.SmugMugErrorMapper.userMessage(e, "Failed to load album images")
-                handleAlbumLoadError(albumKey, e)
             }
         }
+
+        while (currentNextUrl != null && pageIndex <= repository.maxPagesPerFetch) {
+            try {
+                run.update { it.copy(status = "Downloading page $pageIndex...") }
+                val nextPageResponse = repository.getAlbumImagesPageByUri(currentNextUrl, apiKey, password)
+                val nextPageImages = nextPageResponse.response.images ?: emptyList()
+                if (nextPageImages.isNotEmpty()) {
+                    imagesUrlUpdate(nextPageImages, nextPageResponse.expansions)
+                    pendingImages.addAll(nextPageImages)
+                    tagsSet = tagsSet + tagsOf(nextPageImages)
+                    tagsUpdated = true
+                }
+                pageIndex++
+                currentNextUrl = nextPageResponse.response.pages?.next
+                if (pageIndex % 3 == 0 || currentNextUrl == null) flush()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failure = e
+                break
+            }
+        }
+        flush()
+        val failed = failure
+        if (failed != null) {
+            // R-46: keep the pages that arrived, say the album is incomplete (it restarts if selected again).
+            val message = com.smugview.app.data.api.SmugMugErrorMapper.userMessage(failed, "Failed to load all photos")
+            run.update { it.copy(error = message) }
+        } else {
+            run.update { it.copy(complete = true) }
+        }
+    }
+
+    /** Page 1 failed: the grid is empty, the error says why, and the password logic decides about a prompt. */
+    private fun failFirstPage(run: AlbumRun, e: Exception) {
+        val message = com.smugview.app.data.api.SmugMugErrorMapper.userMessage(e, "Failed to load album images")
+        val applied = run.update {
+            it.copy(photos = emptyList(), tags = emptySet(), loading = false, status = null, error = message)
+        }
+        // A stale run (the user moved on) must not touch the password state of the album on screen (R-11).
+        if (applied) handleAlbumLoadError(run.albumKey, e)
     }
 
     fun cycleTag(tag: String) {
@@ -1899,12 +1921,20 @@ class SmugViewModel @Inject constructor(
         sharedPrefs = sharedPrefs,
         apiKey = apiKey,
         scope = viewModelScope,
-        backgroundLoadingStatus = _backgroundLoadingStatus,
-        isBackgroundLoading = _isBackgroundLoading,
         getActiveNickname = { _activeNickname.value },
         getCurrentAlbumKey = { _currentAlbumKey.value },
         getUnlockedPassword = { key -> getUnlockedPassword(key) }
     )
+
+    /** The spinner of the gallery screen: the current album is still loading, or a download/delete runs (R-20). */
+    val isBackgroundLoading: StateFlow<Boolean> =
+        combine(albums.loading, collections.busy) { album, busy -> album || busy }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** The status line under it: a download's progress wins over the album's own. */
+    val backgroundLoadingStatus: StateFlow<String?> =
+        combine(albums.status, collections.status) { album, download -> download ?: album }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     fun createCollection(name: String) = collections.createCollection(name)
 

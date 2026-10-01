@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -26,8 +27,8 @@ import java.io.FileOutputStream
  * as part of the facade decomposition — the ViewModel keeps its public surface
  * and delegates here, so screens and tests are unaffected.
  *
- * The shared [backgroundLoadingStatus] / [isBackgroundLoading] flows are passed
- * in (rather than owned here) because album loading also drives them; the
+ * Download and delete progress ([backgroundLoadingStatus] / [isBackgroundLoading]) is this controller's
+ * own state (R-20): album loading has its own spinner in AlbumLoader, and the view model combines both. The
  * accessor lambdas expose the small pieces of ViewModel state these operations
  * still need (active site nickname, current album key, gallery passwords).
  */
@@ -38,12 +39,19 @@ class CollectionsController(
     private val sharedPrefs: SharedPreferences,
     private val apiKey: String,
     private val scope: CoroutineScope,
-    private val backgroundLoadingStatus: MutableStateFlow<String?>,
-    private val isBackgroundLoading: MutableStateFlow<Boolean>,
     private val getActiveNickname: () -> String?,
     private val getCurrentAlbumKey: () -> String,
     private val getUnlockedPassword: suspend (String) -> String?
 ) {
+    private val backgroundLoadingStatus = MutableStateFlow<String?>(null)
+    private val isBackgroundLoading = MutableStateFlow(false)
+
+    /** What a download or delete is doing right now, or null. */
+    val status: kotlinx.coroutines.flow.StateFlow<String?> = backgroundLoadingStatus.asStateFlow()
+
+    /** True while an album download or delete runs. */
+    val busy: kotlinx.coroutines.flow.StateFlow<Boolean> = isBackgroundLoading.asStateFlow()
+
     fun createCollection(name: String) {
         scope.launch {
             val nickname = getActiveNickname() ?: ""

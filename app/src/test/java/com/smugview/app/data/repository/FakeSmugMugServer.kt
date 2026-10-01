@@ -59,13 +59,18 @@ class FakeSmugMugServer {
     /** Lets every held request go (test teardown). */
     fun releaseAllGates() = gates.forEach { it.release() }
 
-    private class Throttle(val pathContains: String, val remaining: AtomicInteger)
+    private class Throttle(val pathContains: String, val remaining: AtomicInteger, val code: Int = 429)
 
     private val throttles = java.util.concurrent.CopyOnWriteArrayList<Throttle>()
 
     /** The next [times] requests whose "path?query" contains [pathContains] answer 429 with `Retry-After: 0`. */
     fun respond429(pathContains: String, times: Int) {
-        throttles += Throttle(pathContains, AtomicInteger(times))
+        throttles += Throttle(pathContains, AtomicInteger(times), 429)
+    }
+
+    /** The next [times] requests whose "path?query" contains [pathContains] answer [code] (a 500, a 401, ...). */
+    fun respondWith(pathContains: String, code: Int, times: Int) {
+        throttles += Throttle(pathContains, AtomicInteger(times), code)
     }
 
     val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
@@ -291,6 +296,7 @@ class FakeSmugMugServer {
         }
         throttles.firstOrNull { target.contains(it.pathContains) && it.remaining.get() > 0 }?.let {
             if (it.remaining.getAndDecrement() > 0) {
+                if (it.code != 429) return json(req, it.code, """{"Code":${it.code},"Message":"Injected"}""")
                 return json(req, 429, """{"Code":429,"Message":"Too Many Requests"}""")
                     .newBuilder().header("Retry-After", "0").build()
             }
@@ -368,13 +374,17 @@ class FakeSmugMugServer {
             val key = path.removePrefix("album/")
             val nodeId = albumKeyToNodeId[key] ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
             // A gallery that is in `albums` also reports its dates (the 2-10 getAlbum filter asks for them).
-            val dates = (albums + albumsB).firstOrNull { it.albumKey == key }?.let {
+            val known = (albums + albumsB).firstOrNull { it.albumKey == key }
+            val dates = known?.let {
                 val ilu = it.imagesLastUpdated?.let { v -> ""","ImagesLastUpdated":"$v"""" } ?: ""
                 ""","LastUpdated":"${it.lastUpdated}"$ilu"""
             } ?: ""
+            // Real galleries answer their own name and WebUri; the gallery screen shows both (R-18).
+            val name = known?.name ?: "g"
+            val webUri = known?.let { ""","WebUri":"${hostOf(if (it in albumsB) SITE_B else "")}${it.urlPath}"""" } ?: ""
             return json(
                 req, 200,
-                """{"Response":{"Album":{"Uri":"/api/v2/album/$key","AlbumKey":"$key","NodeID":"$nodeId","Name":"g"$dates}},"Code":200}"""
+                """{"Response":{"Album":{"Uri":"/api/v2/album/$key","AlbumKey":"$key","NodeID":"$nodeId","Name":"$name"$webUri$dates}},"Code":200}"""
             )
         }
         if (path == "node!search") {
