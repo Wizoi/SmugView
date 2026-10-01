@@ -23,24 +23,42 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
+/**
+ * The OkHttp logging interceptor used in debug builds (R-52). Every logged line goes through
+ * [redactor] (API key, passwords, JSON secrets, cookie lines), and the credential headers are
+ * masked by OkHttp itself. Release builds pass `Level.NONE`, so nothing is logged there.
+ */
+internal fun debugHttpLogger(
+    redactor: com.smugview.app.diag.Redactor,
+    level: HttpLoggingInterceptor.Level = HttpLoggingInterceptor.Level.BODY,
+    sink: (String) -> Unit
+): HttpLoggingInterceptor = HttpLoggingInterceptor { sink(redactor.redact(it)) }.apply {
+    this.level = level
+    redactHeader("Authorization")
+    redactHeader("Cookie")
+    redactHeader("Set-Cookie")
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(@ApplicationContext context: Context): OkHttpClient {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            // Never log full URLs/bodies in release: the URLs carry the SmugMug APIKey and
-            // gallery Password query params, and bodies can contain private data.
+    fun provideOkHttpClient(
+        @ApplicationContext context: Context,
+        redactor: com.smugview.app.diag.Redactor
+    ): OkHttpClient {
+        // Never log full URLs/bodies in release: the URLs carry the SmugMug APIKey and gallery
+        // Password query params, and bodies can contain private data.
+        val loggingInterceptor = debugHttpLogger(
+            redactor,
             level = if (com.smugview.app.BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BODY
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
-            // Redact the sensitive query params even in debug logcat.
-            redactHeader("Authorization")
-        }
+        ) { android.util.Log.d("OkHttp", it) }
 
         val headerInterceptor = Interceptor { chain ->
             val original = chain.request()
