@@ -146,12 +146,29 @@ class ScreenRig(
         val deadline = System.currentTimeMillis() + timeoutMs
         while (true) {
             shadowOf(android.os.Looper.getMainLooper()).idle()
+            healUiDispatcher()
             compose.mainClock.advanceTimeByFrame()
             if (condition()) break
             if (System.currentTimeMillis() > deadline) throw AssertionError("timed out after ${timeoutMs}ms waiting for: $message; ${describeState()}")
             Thread.sleep(20)
         }
         settle()
+    }
+
+    /**
+     * Robolectric's looper reset between tests can drop the message `AndroidUiDispatcher.Main` (a process-wide singleton that
+     * Paging's `LazyPagingItems` presents on) had scheduled. Its two "already scheduled" flags then stay true, tasks queue
+     * forever, and a grid reads 0 items while the view model is right. Re-posting its dispatch callback un-wedges it, and an
+     * extra post is harmless because the dispatch tolerates an empty queue.
+     */
+    private fun healUiDispatcher() {
+        val d = androidx.compose.ui.platform.AndroidUiDispatcher.Main[kotlin.coroutines.ContinuationInterceptor] ?: return
+        fun field(name: String) = d.javaClass.getDeclaredField(name).also { it.isAccessible = true }.get(d)
+        val queue = field("toRunTrampolined") as Collection<*>
+        val handler = field("handler") as android.os.Handler
+        val callback = field("dispatchCallback") as Runnable
+        val stuck = synchronized(field("lock")) { queue.isNotEmpty() }
+        if (stuck) handler.post(callback)
     }
 
     /** What the view model held when a wait timed out: the state is the diagnosis (never a title, password or key of the account). */
@@ -178,6 +195,7 @@ class ScreenRig(
         var since = 0L
         while (true) {
             shadowOf(android.os.Looper.getMainLooper()).idle()
+            healUiDispatcher()
             compose.mainClock.advanceTimeByFrame()
             val now = System.currentTimeMillis()
             val key = Triple(viewModel.browserState.value, rig.reporter.runs.size, rig.reporter.hasOpenRun())
@@ -193,6 +211,7 @@ class ScreenRig(
     fun settle() {
         repeat(3) {
             shadowOf(android.os.Looper.getMainLooper()).idle()
+            healUiDispatcher()
             compose.mainClock.advanceTimeByFrame()
             compose.waitForIdle()
         }
