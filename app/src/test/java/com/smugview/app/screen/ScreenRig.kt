@@ -36,10 +36,14 @@ import com.smugview.app.ui.grid.PhotoGridScreen
  * test class owns the rule: `@get:Rule val compose = createComposeRule()`.
  * Call [close] from `@After`.
  */
-class ScreenRig(val compose: ComposeContentTestRule, retrying: Boolean = false) {
+class ScreenRig(
+    val compose: ComposeContentTestRule,
+    retrying: Boolean = false,
+    repositoryDao: (com.smugview.app.data.db.CollectionDao) -> com.smugview.app.data.db.CollectionDao = { it }
+) {
     // Dispatchers.Main is the Robolectric main looper, the real app's arrangement. Coil's AsyncImagePainter reads
     // Compose snapshot state from Dispatchers.Main and crashes on any other thread; the view model's work follows it.
-    val rig = ScenarioRig(retrying, mainDispatcher = android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher())
+    val rig = ScenarioRig(retrying, mainDispatcher = android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher(), repositoryDao = repositoryDao)
     val viewModel get() = rig.viewModel
     val server get() = rig.server
 

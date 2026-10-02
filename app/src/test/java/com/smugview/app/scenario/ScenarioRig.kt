@@ -37,7 +37,9 @@ class ScenarioRig(
     retrying: Boolean = false,
     httpCache: Boolean = false,
     /** What `Dispatchers.Main` is for this rig; null (the default) is a private single thread named "main". Screen tests pass the Robolectric main looper. */
-    mainDispatcher: kotlinx.coroutines.CoroutineDispatcher? = null
+    mainDispatcher: kotlinx.coroutines.CoroutineDispatcher? = null,
+    /** What the repository sees as its DAO (a test wraps [dao] to hold or watch a query); `dao` itself stays the plain one. */
+    repositoryDao: (CollectionDao) -> CollectionDao = { it }
 ) {
     val server = FakeSmugMugServer()
     private val cacheDir: java.io.File? = if (httpCache) java.nio.file.Files.createTempDirectory("smugview-http-cache").toFile() else null
@@ -50,6 +52,7 @@ class ScenarioRig(
     val loopback: LoopbackSmugMug? = cacheDir?.let { LoopbackSmugMug(server, it) }
     val db: AppDatabase = TestDb.inMemory()
     val dao: CollectionDao = db.collectionDao()
+    private val daoForRepository: CollectionDao = repositoryDao(dao)
     val reporter = RecordingSyncReporter()
     val passwords = FakePasswordStore()
     val syncState = InMemorySyncStateStore()
@@ -78,7 +81,7 @@ class ScenarioRig(
     }
 
     private fun newRepository(retrying: Boolean) =
-        SmugMugRepository(loopback?.api(retrying = retrying) ?: server.api(retrying), dao, passwords, app, reporter, syncState).also {
+        SmugMugRepository(loopback?.api(retrying = retrying) ?: server.api(retrying), daoForRepository, passwords, app, reporter, syncState).also {
             it.treeSyncDelayMs = 0
             it.unlockDelayMs = 0
         }

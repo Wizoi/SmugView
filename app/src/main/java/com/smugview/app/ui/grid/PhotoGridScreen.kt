@@ -163,8 +163,12 @@ fun PhotoGridScreen(
             val node = viewModel.getNodeByAlbumKey(albumKey)
             if (node?.highlightImageUrl != null) {
                 coverUrl = node.highlightImageUrl
-            } else if (lazyPhotos.itemCount > 0) {
-                coverUrl = lazyPhotos[0]?.thumbnailUrl
+            } else {
+                // Read the list once, as an immutable snapshot. Not `itemCount` then `lazyPhotos[0]`: `get` reads the live
+                // paging presenter, which a type filter that hides every photo empties before the count is published, and this
+                // resumes from a Room lookup, so the two can disagree ("Index: 0, Size: 0").
+                val photos = lazyPhotos.itemSnapshotList
+                if (photos.isNotEmpty()) coverUrl = photos[0]?.thumbnailUrl
             }
         }
 

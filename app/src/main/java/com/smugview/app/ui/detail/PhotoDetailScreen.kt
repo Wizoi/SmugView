@@ -192,10 +192,14 @@ fun PhotoDetailScreen(
         }
     }
     LaunchedEffect(pagerState.currentPage, lazyPhotos.itemCount) {
-        if (hasScrolledToTarget || userSwiped) lazyPhotos[pagerState.currentPage]?.imageKey?.let { currentKey = it }
+        if (hasScrolledToTarget || userSwiped) {
+            // The page can sit past the end for a frame when the list shrinks (a filter), and `get` throws past the end.
+            val photos = lazyPhotos.itemSnapshotList
+            if (pagerState.currentPage in photos.indices) photos[pagerState.currentPage]?.imageKey?.let { currentKey = it }
+        }
     }
 
-    val currentPhoto = lazyPhotos[pagerState.currentPage]
+    val currentPhoto = if (pagerState.currentPage < lazyPhotos.itemCount) lazyPhotos[pagerState.currentPage] else null
 
     // 6-7 (R-45): the one photo that was asked for can show before the gallery says it is locked (its image URL needs no
     // session). The prompt belongs here too, and dismissing it is Back.
