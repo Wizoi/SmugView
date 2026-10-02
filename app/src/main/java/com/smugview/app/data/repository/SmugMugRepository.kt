@@ -364,17 +364,8 @@ class SmugMugRepository @Inject constructor(
         } catch (e: Exception) {
             null
         }
-        // Fresh truth beats a crawl up to 15 minutes old (design 3.5): move the index's
-        // ImagesLastUpdated forward (never back) so the "viewed" mark written next matches it.
-        album?.imagesLastUpdated?.let { ilu ->
-            try {
-                dao.raiseAlbumImagesLastUpdated(album.albumKey, ilu)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                SmugLog.w("SmugMugRepository", "index ILU raise failed: ${e.javaClass.simpleName}")
-            }
-        }
+        // A read is not a view (6-12, design 3.8): this never touches the index date the dot compares.
+        // [markGalleryViewed] does that, once the photos are shown.
         return album
     }
 
@@ -1951,6 +1942,36 @@ class SmugMugRepository @Inject constructor(
      */
     suspend fun markNodeAsViewed(nodeId: String) {
         dao.markViewedAtOrBelow(nodeId)
+    }
+
+    /**
+     * The viewed mark for a gallery whose first page was just shown (6-12, design 3.8). [details] is the album read of
+     * that same load: fresh truth beats a crawl up to 15 minutes old, so the index's `ImagesLastUpdated` is moved
+     * forward (never back) to the album's own, and the mark then equals it. Nothing here runs for a prompt, a failure,
+     * the saved-photos view or a restore from memory. A gallery the index does not hold has no dot to clear.
+     */
+    suspend fun markGalleryViewed(details: AlbumDetails) {
+        details.imagesLastUpdated?.let { ilu ->
+            try {
+                dao.raiseAlbumImagesLastUpdated(details.albumKey, ilu)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SmugLog.w("SmugMugRepository", "index ILU raise failed: ${e.javaClass.simpleName}")
+            }
+        }
+        val row = dao.getAlbumByKey(details.albumKey)
+        // What was shown is behind what the dot knows (an answer served from a week-old cache while offline): the user has
+        // not seen the new photos, so the dot stays. Live, the album's date and the index's are the same value.
+        if (details.imagesLastUpdated != null && row?.imagesLastUpdated != null && isBefore(details.imagesLastUpdated, row.imagesLastUpdated)) return
+        val nodeId = details.nodeId ?: row?.nodeId ?: return
+        dao.markViewedAtOrBelow(nodeId)
+    }
+
+    private fun isBefore(a: String, b: String): Boolean = try {
+        java.time.OffsetDateTime.parse(a).toInstant().isBefore(java.time.OffsetDateTime.parse(b).toInstant())
+    } catch (e: java.time.format.DateTimeParseException) {
+        false
     }
 
     fun searchPublicSites(query: String, apiKey: String): Flow<Result<List<DiscoveredSite>>> = flow {

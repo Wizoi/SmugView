@@ -58,7 +58,6 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -1311,14 +1310,8 @@ class SmugViewModel @Inject constructor(
                             val albumKey = target.getAlbumKey()
                             val open = pending?.onUnlocked
                             if (open != null) {
-                                // Marked here, once: the caller only navigates (R-24).
-                                try {
-                                    repository.markNodeAsViewed(target.nodeId)
-                                } catch (e: kotlinx.coroutines.CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    // a failed mark must not stop the gallery opening
-                                }
+                                // Not marked here (6-12): a correct password opens the gallery, it does not show its photos.
+                                // The load marks it once page 1 is published.
                                 withContext(Dispatchers.Main) { open(albumKey) }
                             } else {
                                 // 6-7: forced, because a viewer opened on one photo already holds that photo, which the loader counts as
@@ -1496,9 +1489,6 @@ class SmugViewModel @Inject constructor(
         val diag = com.smugview.app.diag.DiagContext.element(com.smugview.app.diag.DiagContext.newActionId("gallery"))
         _currentAlbumKey.value = albumKey
         openedOnImageKey = targetImageKey
-        // Step 4-6: the load decides "is this gallery lit?" (and so whether it goes to the network) BEFORE
-        // the viewed mark below clears the dot. The mark waits for that answer.
-        val litDecision = CompletableDeferred<Boolean>()
         val selection = albums.select(
             albumKey = albumKey,
             target = targetImageKey,
@@ -1507,46 +1497,45 @@ class SmugViewModel @Inject constructor(
             context = diag,
             initialStatus = "Fetching album photos..."
         ) { run ->
-            try {
-                loadAlbum(run, targetImageKey, force, litDecision)
-            } finally {
-                litDecision.complete(false) // a load that never got as far as the check
-            }
+            loadAlbum(run, targetImageKey, force)
         }
         if (selection == AlbumSelection.Same) return
-        if (selection != AlbumSelection.Started) litDecision.complete(false) // restored from memory: no load runs
         _includedTags.value = emptySet()
         _excludedTags.value = emptySet()
 
-        // Not part of the album's load: switching to another album must not cancel the "viewed" mark.
+        // Not part of the album's load: switching to another album must not cancel these.
         session.scope.launch(diag) {
-            try {
-                // Bounded: a load cancelled before it started never answers.
-                withTimeoutOrNull(5000) { litDecision.await() }
-                val node = repository.getNodeByIdOrKey(albumKey)
-                if (node != null) {
-                    repository.markNodeAsViewed(node.nodeId)
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.e("SmugViewModel", "Failed to mark album as viewed on selection: $albumKey", e)
-                }
-            }
+            if (selection == AlbumSelection.Restored) refreshRestoredIfLit(albumKey, targetImageKey)
             // Q3: the Folders tab follows the gallery: breadcrumb and listing move to its folder together.
             navigator.navigate(NavIntent.Reveal(albumKey))
         }
     }
 
+    /**
+     * 6-12 (design 3.8): a finished gallery comes back from memory with no request, and nothing marks it viewed. But when the
+     * dot now says something new is in it (the crawl raised its date while it sat in memory), the photos on screen are behind:
+     * it restarts from the network (the 4-6 rule), and the load marks it once the new page 1 is shown. Offline that restart
+     * is served from the HTTP cache like any open. [lit] is asked of the SAME query that draws the dot.
+     */
+    private suspend fun refreshRestoredIfLit(albumKey: String, targetImageKey: String?) {
+        val lit = try {
+            repository.isGalleryLit(albumKey, _activeNickname.value.orEmpty())
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+        // Still the album on screen: the user may have moved on while the query ran.
+        if (lit && albums.currentKey == albumKey) selectAlbum(albumKey, targetImageKey, force = true)
+    }
+
     private suspend fun loadAlbum(
         run: AlbumRun,
         targetImageKey: String?,
-        force: Boolean,
-        litDecision: CompletableDeferred<Boolean>
+        force: Boolean
     ) = coroutineScope {
         if (targetImageKey != null) launch { loadTargetImage(run, targetImageKey) }
-        loadAlbumPages(run, targetImageKey, force, litDecision)
+        loadAlbumPages(run, targetImageKey, force)
     }
 
     /**
@@ -1629,14 +1618,12 @@ class SmugViewModel @Inject constructor(
     private suspend fun loadAlbumPages(
         run: AlbumRun,
         targetImageKey: String?,
-        force: Boolean,
-        litDecision: CompletableDeferred<Boolean>
+        force: Boolean
     ) {
         val albumKey = run.albumKey
         // Step 4-6: a lit gallery (the dot says something new is in it) and Retry open from the network;
         // anything else follows the cache policy (reuse for 5 minutes, never across a session change).
         val lit = repository.isGalleryLit(albumKey, _activeNickname.value.orEmpty())
-        litDecision.complete(lit)
         val cacheControl = if (force || lit) "no-cache" else null
         // Resolve any saved/inherited password, but bound it: the hierarchy walk can be starved
         // for several seconds under concurrent load (e.g. arriving here via "Jump to Gallery"
@@ -1657,10 +1644,6 @@ class SmugViewModel @Inject constructor(
                     webUri = details?.webUri ?: "",
                     expected = details?.imageCount
                 )
-            }
-            val nodeIdToMark = details?.nodeId
-            if (nodeIdToMark != null) {
-                repository.markNodeAsViewed(nodeIdToMark)
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -1737,6 +1720,10 @@ class SmugViewModel @Inject constructor(
             }
             s.copy(photos = merged, tags = tagsSet)
         }
+        // 6-12 (design 3.8): the ONE place a gallery becomes "viewed": its first page (or a confirmed empty gallery) is on
+        // screen, for an album that is still the one the user is looking at. Not for a prompt, a failure, the saved-photos
+        // view or a restore from memory, and not by a read of the album's details. Page 2+ failing does not undo it.
+        markViewed(run, albumDetails)
 
         // More pages exist when the server's own Count/Total say so (never a followed NextPage, which
         // drops `_expand=LargestVideo`: videos on page 2+ had no videoUrl, R-27).
@@ -1807,6 +1794,22 @@ class SmugViewModel @Inject constructor(
             run.update { it.copy(error = com.smugview.app.ui.text.UserMessages.line(problem), problem = problem) }
         } else {
             run.update { it.copy(complete = true) }
+        }
+    }
+
+    /**
+     * Writes the viewed mark for the album [run] just showed (design 3.8). Needs the album read of this same load: with none
+     * (the read failed) nothing is known about what was shown, so nothing is marked and the dot stays. A failed write never
+     * disturbs the grid. Not cancellable: the user saw the photos even if they leave a moment later.
+     */
+    private suspend fun markViewed(run: AlbumRun, details: com.smugview.app.data.api.AlbumDetails?) {
+        if (details == null || !run.isCurrent) return
+        try {
+            withContext(kotlinx.coroutines.NonCancellable) { repository.markGalleryViewed(details) }
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) {
+                android.util.Log.e("SmugViewModel", "Failed to mark album as viewed: ${run.albumKey}", e)
+            }
         }
     }
 

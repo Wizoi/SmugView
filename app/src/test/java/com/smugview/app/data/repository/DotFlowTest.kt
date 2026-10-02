@@ -92,10 +92,11 @@ class DotFlowTest {
         assertEquals(emptySet<String>(), lit(r))
     }
 
-    @Test fun openingAGalleryWithFreshPhotos_raisesTheIndexIlu_soTheViewedMarkMatchesIt() = runBlocking {
+    @Test fun markingAShownGallery_raisesTheIndexIlu_soTheViewedMarkMatchesTheAlbumsOwn() = runBlocking {
         val r = crawled()
         r.markNodeAsViewed("LCdk7F")
         assertEquals(emptySet<String>(), lit(r))
+        val before = dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated
         // Photos were added after the crawl: the album read reports a newer ILU than the index holds.
         val fresh = server.daysAgo(0, -600)
         server.albums = server.albums.map { if (it.albumKey == "FfHCms") it.copy(imagesLastUpdated = fresh) else it }
@@ -103,22 +104,26 @@ class DotFlowTest {
         val album = r.getAlbum("FfHCms", "k")
 
         assertEquals("LCdk7F", album?.nodeId)
+        assertEquals("a read is not a view: the index row has not moved (6-12)", before, dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated)
+        assertEquals("the index is behind the album, so nothing is lit by the read", emptySet<String>(), lit(r))
+
+        r.markGalleryViewed(album!!) // what loadAlbumPages does once page 1 is shown
+
         assertEquals("the index row moved forward to the album's own ILU", fresh, dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated)
-        assertTrue("newer than the old viewed mark: lit again until the open marks it", "LCdk7F" in lit(r))
-
-        r.markNodeAsViewed("LCdk7F") // what selectAlbum does after getAlbum
-
-        assertEquals(emptySet<String>(), lit(r))
+        assertEquals("and the mark matches it: nothing is lit", emptySet<String>(), lit(r))
+        assertEquals(fresh, runBlocking { db.openHelper.readableDatabase.query("SELECT lastViewedDateModified FROM viewed_gallery_updates WHERE nodeId = 'LCdk7F'").use { it.moveToFirst(); it.getString(0) } })
     }
 
-    @Test fun anOlderIluFromAnAlbumRead_neverLowersTheIndex() = runBlocking {
+    @Test fun anOlderIluFromAnAlbumRead_neverLowersTheIndex_andIsNotAViewOfTheNewPhotos() = runBlocking {
         val r = crawled()
         val before = dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated
         server.albums = server.albums.map { if (it.albumKey == "FfHCms") it.copy(imagesLastUpdated = server.daysAgo(20)) else it }
 
-        r.getAlbum("FfHCms", "k")
+        val album = r.getAlbum("FfHCms", "k")!!
+        r.markGalleryViewed(album) // a stale answer (a week-old cache while offline) was shown
 
         assertEquals(before, dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated)
+        assertTrue("what was shown is behind the index: the dot stays", "LCdk7F" in lit(r))
     }
 
     @Test fun theAlbumRequestAsksForImagesLastUpdated() = runBlocking {

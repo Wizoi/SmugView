@@ -906,7 +906,7 @@ class SmugViewModelTest {
     }
 
     @Test
-    fun testSelectAlbumMarksAsViewed() = runBlocking {
+    fun testSelectAlbumMarksAsViewedOncePageOneIsShown() = runBlocking {
         val albumKey = "album1"
         val mockAlbum = com.smugview.app.data.api.AlbumDetails(
             uri = "/api/v2/album/$albumKey",
@@ -953,7 +953,7 @@ class SmugViewModelTest {
         viewModel.selectAlbum(albumKey, "apiKey")
         
         Mockito.verify(mockRepository, Mockito.timeout(3000).atLeastOnce())
-            .markNodeAsViewed("node_album1")
+            .markGalleryViewed(mockAlbum)
     }
 
     @Test

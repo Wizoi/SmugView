@@ -85,9 +85,9 @@ class PasswordPromptScenarioTest {
     /**
      * R-24: a gallery tapped from Search under a locked password folder. The prompt is for the ROOT
      * (Family); after a good password the TARGET opens (the caller's navigation gets its AlbumKey, once)
-     * and the gallery is marked viewed.
+     * and the gallery is NOT marked viewed (6-12: opening is not viewing; the load marks it once page 1 is shown).
      */
-    @Test fun `a gallery opened from Search under a locked folder prompts for the root then opens the target and marks it viewed`() {
+    @Test fun `a gallery opened from Search under a locked folder prompts for the root then opens the target without marking it viewed`() {
         settleSiteA()
         awaitUntil("the album index has the gallery") { runBlocking { rig.dao.getGalleryIlusAtOrBelow("LCdk7F") }.isNotEmpty() }
         // What Search hands over: the gallery by NodeID, its AlbumKey only in albumUri, access unknown.
@@ -117,7 +117,7 @@ class PasswordPromptScenarioTest {
             .query("SELECT nodeId FROM viewed_gallery_updates").use { c ->
                 generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             }
-        assertEquals("the target is marked viewed, once", listOf("LCdk7F"), viewed)
+        assertEquals("a typed password opens the gallery; it does not mark it viewed (6-12)", emptyList<String>(), viewed)
     }
 
     /**
