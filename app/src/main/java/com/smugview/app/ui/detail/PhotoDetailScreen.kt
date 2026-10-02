@@ -724,77 +724,67 @@ internal fun shareProblem(e: Throwable): com.smugview.app.ui.text.Problem {
     }
 }
 
-fun getBaseNameFromUrl(url: String, fallbackKey: String): String {
-    val segment = url.substringAfterLast('/').substringBefore('?')
-    if (segment.isEmpty()) return "smugview_$fallbackKey"
-    
-    val decodedSegment = try {
-        java.net.URLDecoder.decode(segment, "UTF-8")
-    } catch (e: Exception) {
-        segment
-    }
-    
-    val baseName = if (decodedSegment.contains('.')) {
-        decodedSegment.substringBeforeLast('.')
-    } else {
-        decodedSegment
-    }
-    
-    return baseName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-}
 
-// Background utility to download files directly to user's public folder
+/**
+ * "Download photo" (design 3.11): the original into Pictures/SmugView, from the saved copy when there is one (so it works
+ * offline), else from the CDN. The toast says what happened, and why when it did not.
+ */
 suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, viewModel: SmugViewModel) {
+    val saved = viewModel.savedFileOf(photo.imageKey)
     var detailedPhoto = photo
-    if (detailedPhoto.archivedUri == null) {
-        withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Fetching high-resolution image details...", Toast.LENGTH_SHORT).show()
-        }
+    var detailsError: Throwable? = null
+    if (saved == null && detailedPhoto.archivedUri == null) {
+        Toast.makeText(context, "Fetching high-resolution image details...", Toast.LENGTH_SHORT).show()
         try {
             val result = viewModel.getImageDetails(photo.imageKey).first { it != null }
-            if (result != null && result.isSuccess) {
-                detailedPhoto = result.getOrThrow()
-            }
+            if (result != null && result.isSuccess) detailedPhoto = result.getOrThrow() else detailsError = result?.exceptionOrNull()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            e.printStackTrace()
+            detailsError = e
         }
     }
+    val sourceUrl = detailedPhoto.archivedUri ?: detailedPhoto.thumbnailUrl?.replace("/Th/", "/L/")?.replace("/th/", "/l/")
+    try {
+        if (saved == null && sourceUrl == null) throw detailsError ?: com.smugview.app.download.PhotoDownloader.NoSourceException()
+        val factory = (context.applicationContext as com.smugview.app.SmugViewApp).callFactory
+        com.smugview.app.download.PhotoDownloader(context, factory)
+            .download(photo.imageKey, detailedPhoto.fileName ?: photo.fileName, saved, sourceUrl)
+        Toast.makeText(context, com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED, Toast.LENGTH_LONG).show()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Toast.makeText(context, com.smugview.app.download.downloadMessage(e), Toast.LENGTH_LONG).show()
+    }
+}
 
-    val downloadUrl = detailedPhoto.archivedUri ?: detailedPhoto.thumbnailUrl?.replace("/Th/", "/L/")?.replace("/th/", "/l/") ?: return
-    withContext(Dispatchers.IO) {
-        try {
-            val url = URL(downloadUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.connect()
-
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val inputStream: java.io.InputStream = connection.inputStream
-                val path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val baseName = getBaseNameFromUrl(downloadUrl, detailedPhoto.imageKey)
-                val file = File(path, "$baseName.jpg")
-                val outputStream = FileOutputStream(file)
-
-                val buffer = ByteArray(4096)
-                var bytesRead: Int
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                }
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Saved to Downloads: ${file.name}", Toast.LENGTH_LONG).show()
-                }
-            } else {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, com.smugview.app.ui.text.UserMessages.downloadFailed(com.smugview.app.ui.text.Problem.Unexpected(com.smugview.app.ui.text.Subject.Photo, connection.responseCode.toString())), Toast.LENGTH_SHORT).show()
-                }
-            }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, com.smugview.app.ui.text.UserMessages.downloadFailed(com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Photo)), Toast.LENGTH_SHORT).show()
-            }
+/**
+ * The download button's action. Android 8 and 9 need the storage permission first: it is asked for once, the photo waits,
+ * and a refusal says so (DOWNLOAD_PERMISSION). Android 10 and later need none.
+ */
+@Composable
+fun rememberPhotoDownloadAction(viewModel: SmugViewModel): (AlbumImageData) -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var waiting by remember { mutableStateOf<AlbumImageData?>(null) }
+    val askPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val photo = waiting
+        waiting = null
+        if (photo == null) return@rememberLauncherForActivityResult
+        if (granted) scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
+        else Toast.makeText(context, com.smugview.app.ui.text.UserMessages.DOWNLOAD_PERMISSION, Toast.LENGTH_LONG).show()
+    }
+    return { photo ->
+        val needsPermission = android.os.Build.VERSION.SDK_INT < 29 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            waiting = photo
+            askPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
         }
     }
 }

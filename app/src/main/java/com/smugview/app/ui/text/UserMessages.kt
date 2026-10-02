@@ -212,6 +212,12 @@ object UserMessages {
     /** `DOWNLOAD_FAILED`: a photo could not be saved to this phone (the toast of the download button). */
     fun downloadFailed(cause: Problem): String = "Couldn't save the photo. ${shortCause(cause)}"
 
+    /** `DOWNLOAD_SAVED`, `DOWNLOAD_OFFLINE`, `DOWNLOAD_PERMISSION`, `DOWNLOAD_NO_SPACE`: the other download toasts (design 5). */
+    const val DOWNLOAD_SAVED = "Saved to Pictures/SmugView"
+    const val DOWNLOAD_OFFLINE = "You're offline, and this photo isn't saved on this phone."
+    const val DOWNLOAD_PERMISSION = "To save photos on this Android version, SmugView needs permission to use storage. You can allow it in Settings."
+    const val DOWNLOAD_NO_SPACE = "Not enough space on this phone to save this photo."
+
     /** `SHARE_CAPTION`: under the QR code of the share dialog. */
     const val SHARE_CAPTION = "Opens the SmugMug page. Password galleries ask for their password there."
 

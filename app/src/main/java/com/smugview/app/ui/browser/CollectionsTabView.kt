@@ -126,6 +126,7 @@ fun CollectionsTabView(
     val collections by viewModel.localCollections.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val downloadPhoto = com.smugview.app.ui.detail.rememberPhotoDownloadAction(viewModel)
     var newCollectionName by remember { mutableStateOf("") }
     var selectedCollectionForShortcuts by remember { mutableStateOf<OfflineCollection?>(null) }
 
@@ -649,7 +650,7 @@ fun CollectionsTabView(
                                                                     title = img.title,
                                                                     caption = img.title,
                                                                     thumbnailUrl = img.thumbnailUrl,
-                                                                    archivedUri = img.extraData ?: img.thumbnailUrl,
+                                                                    archivedUri = img.extraData?.takeIf { it.startsWith("https://") },
                                                                     date = null,
                                                                     dateTime = null,
                                                                     keywords = null,
@@ -659,13 +660,7 @@ fun CollectionsTabView(
                                                                     format = "JPG",
                                                                     videoUrl = null
                                                                 )
-                                                                scope.launch {
-                                                                    try {
-                                                                        com.smugview.app.ui.detail.downloadPhotoToGallery(context, detailItem, viewModel)
-                                                                    } catch (e: Exception) {
-                                                                        Toast.makeText(context, com.smugview.app.ui.text.UserMessages.downloadFailed(com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Photo)), Toast.LENGTH_SHORT).show()
-                                                                    }
-                                                                }
+                                                                downloadPhoto(detailItem)
                                                             },
                                                             modifier = Modifier.size(24.dp)
                                                         ) {

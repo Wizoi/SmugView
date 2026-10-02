@@ -365,6 +365,7 @@ fun PhotoActionCapsule(
     onRequestAddToCollection: () -> Unit
 ) {
     val context = LocalContext.current
+    val downloadPhoto = rememberPhotoDownloadAction(viewModel)
     var showShareDialog by remember { mutableStateOf(false) }
     // The web page of this photo (6-14): its own, or its gallery's from the index. Null once resolved = no link to share.
     var shareLink by remember(photo.imageKey, photo.webUri) { mutableStateOf<String?>(null) }
@@ -406,7 +407,7 @@ fun PhotoActionCapsule(
             )
         }
         IconButton(onClick = {
-            scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
+            downloadPhoto(photo)
         }) {
             Icon(Icons.Default.Download, "Download Photo", tint = Color.White, modifier = Modifier.size(26.dp))
         }
