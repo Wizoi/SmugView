@@ -22,11 +22,23 @@ class SsdpScanLoggingTest {
         ShadowLog.clear()
         val app = ApplicationProvider.getApplicationContext<Application>()
         val manager = DefaultCastManager(app, Dispatchers.IO)
+        val sent = mutableListOf<java.net.DatagramPacket>()
+        manager.ssdpSocketFactory = { QuietSocket(sent) }
 
         runBlocking { manager.scanForTest() }
+
+        assertEquals("both searches were sent through the fake socket, none through the network", 2, sent.size)
 
         val scan = ShadowLog.getLogs().filter { it.tag == "CastManager" && it.msg.contains("IOException during receive") }
         val errors = scan.filter { it.type >= Log.ERROR }
         assertEquals("a quiet network is not an error: ${errors.map { it.msg }}", emptyList<String>(), errors.map { it.msg })
+    }
+
+    /** A multicast socket that never opens a real one: sends are recorded and every receive times out, as on a quiet network. */
+    private class QuietSocket(private val sent: MutableList<java.net.DatagramPacket>) : java.net.MulticastSocket(null as java.net.SocketAddress?) {
+        override fun send(p: java.net.DatagramPacket) { sent.add(p) }
+        override fun joinGroup(group: java.net.InetAddress) {}
+        override fun receive(p: java.net.DatagramPacket) { Thread.sleep(50); throw java.net.SocketTimeoutException("quiet") }
+        override fun close() {}
     }
 }

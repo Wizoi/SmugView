@@ -26,6 +26,7 @@ android {
         targetSdk = 36
         versionCode = 27
         versionName = "0.8.1"
+        if (project.hasProperty("localBuild")) versionNameSuffix = "-local"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

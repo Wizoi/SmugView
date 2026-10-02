@@ -748,6 +748,11 @@ class DefaultCastManager @Inject constructor(
 
     internal suspend fun scanForTest(): List<CastDevice> = performSsdpDiscovery()
 
+    /** Seam so a test can scan without touching the real network; null binds to the wildcard address. */
+    internal var ssdpSocketFactory: (java.net.InetSocketAddress?) -> java.net.MulticastSocket = { address ->
+        if (address != null) java.net.MulticastSocket(address) else java.net.MulticastSocket()
+    }
+
     private suspend fun performSsdpDiscovery(): List<CastDevice> = withContext(ioDispatcher) {
         val discovered = mutableListOf<CastDevice>()
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
@@ -783,14 +788,14 @@ class DefaultCastManager @Inject constructor(
             val socket = if (localAddress != null) {
                 try {
                     SmugLog.d("CastManager") { "SSDP: Binding MulticastSocket to local Wi-Fi IP: $localAddress" }
-                    java.net.MulticastSocket(java.net.InetSocketAddress(localAddress, 0))
+                    ssdpSocketFactory(java.net.InetSocketAddress(localAddress, 0))
                 } catch (e: Exception) {
                     android.util.Log.e("CastManager", "SSDP: Failed to bind MulticastSocket to local IP, fallback to wildcard", e)
-                    java.net.MulticastSocket()
+                    ssdpSocketFactory(null)
                 }
             } else {
                 android.util.Log.w("CastManager", "SSDP: Local Wi-Fi IP not found, using wildcard binding")
-                java.net.MulticastSocket()
+                ssdpSocketFactory(null)
             }
             openSocket = socket
             socket.soTimeout = 2000

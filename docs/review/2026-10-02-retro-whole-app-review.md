@@ -23,10 +23,10 @@ verify says so. Proposed rule changes are listed at the end and are **not** appl
 | 3 | Parallel agents kept touching the same hot files (`ScreenRig`, `findings.md`, `SmugViewModel`). | No ownership map. | Name one owner per shared file in each plan; shared files are edited by me only. |
 | 4 | Flaky screen tests: `AndroidUiDispatcher.Main` wedged after a looper reset, and assert-after-await races (`ViewedMarkScenarioTest`). | Real timing under a paused main looper. The dispatcher cause was found by dumping it, after the hunt in item 1. | `ScreenRig.healUiDispatcher()` stays. A new wait helper is written to settle first and assert second, never the other way round. |
 | 5 | Several "obviously right" fixes rested on premises nobody measured: touch bounds were already 48 dp; the 404-on-CDN-original rule was first judged on too few photos (107 of 850 originals in one gallery answer 404 while the photo shows); the status-bar fix assumed "only the viewers are dark". | Reading code instead of data, or checking one example. | CLAUDE.md already says check the premise. Add: **a premise about "all" or "none" needs a count over the whole set, and the count goes in the findings row.** |
-| 6 | The emulator exit check (6-24) saw the white status bar on Home and the grid in the light theme, which 878 Robolectric tests missed, but recorded it as "a design question" and deferred it to P12. The phone then showed it was a real bug (#25). The androidTest smoke we said would catch such things was never written. | I saw the symptom and judged it by the premise "only viewers are dark" without checking every screen. Robolectric draws no real window, and the promise had no owner or step number. | A symptom seen on a device is a finding, not a deferral: it gets a row and a premise check in the same step. Write the smoke (section 5) or stop promising it. |
+| 6 | The emulator exit check (6-24) saw the white status bar on Home and the grid in the light theme, which 878 Robolectric tests missed, but recorded it as "a design question" and deferred it to P12. The phone then showed it was a real bug (#25). The androidTest smoke from 6-21 (`LiveSmokeTest`, J1/J3/J6) existed but never looked at both themes or every tab. | I saw the symptom and judged it by the premise "only viewers are dark" without checking every screen. Robolectric draws no real window, and the promise had no owner or step number. | A symptom seen on a device is a finding, not a deferral: it gets a row and a premise check in the same step. `ThemeSweepSmokeTest` now sweeps the main tabs in both themes (section 5). |
 | 7 | One first full run failed: 3 offline tests red plus a JVM `hs_err` crash. Three isolated runs and a second full run on the same source passed. | Unexplained. My best guess is a build collision or the mutated file left from a red check; not proven. | Left as unexplained on purpose. If it recurs, keep the log and the `hs_err` file before re-running. |
 | 8 | I wrote an unverified claim about finding #7 (release builds log nothing) and corrected it later. | I stated a conclusion from memory of one build. | Findings rows say "seen on X" or "from the code, not run". |
-| 9 | A test depended on the real LAN (the SSDP scan). | No fake for discovery. | 6-24 fixed the logging bug (a quiet scan is not an error), but `SsdpScanLoggingTest` still runs the real scan, so it can pass vacuously. Not fixed: give discovery a fake socket, so no test opens a real socket outside loopback. |
+| 9 | A test depended on the real LAN (the SSDP scan). | No fake for discovery. | 6-24 fixed the logging bug (a quiet scan is not an error), and the test now uses a fake socket (section 5), so it can no longer pass vacuously. |
 | 10 | The #26 breadcrumb bug was a `remember` keyed on the stack's size, caught by a 60-line Robolectric test, but only after you saw it on the phone. | No test drove two galleries at the same depth in a row. | The new `BreadcrumbScreenTest` does. Review rule: a `remember(x.size)` key is a smell, ask what else changes. |
 | 11 | My adb navigation from the phone checks left SmugView and opened your Claude app's "Add context" sheet. | I pressed Back repeatedly without reading the screen between presses. | Dump the UI after every Back; stop at the launcher. |
 | 12 | When you asked "is there a limit to the zoom?" I explained the 10x cap and recommended leaving it. You said a cap while there is zoom left defeats the point. | I treated an accidental limit as a design choice. The viewer's purpose is "as much as the pixels allow". | When asked "is there a limit", say first whether the limit serves the feature's purpose; if not, it is a bug and I propose the fix. |
@@ -99,18 +99,25 @@ pulled share/download file.
 
 Everything else runs on the emulator beforehand, scripted, and the run's output goes in findings.
 
-## 5. What to build or change (needs your yes)
+## 5. What was applied (2026-10-02, same day, at the owner's request)
 
-1. An emulator profile that matches the phone (sdk 37 if available, 1080x2424) plus a script that runs the P3, P4, P7,
-   P8, P12 steps and the full-screen light/dark sweep. About a day.
-2. The androidTest smoke (item 6 in section 2), or a decision to drop the promise.
-3. CLAUDE.md additions, proposed text:
-   - "A premise about all or none of something needs a count over the whole set, recorded in the findings row."
-   - "Every agent has a wall-clock box and commits or reports by it. I run the full suite myself before any commit."
-   - "Look at the light and the dark theme on every screen, not on the screen the change touched."
-   - "Phone-only means: real LAN, real touch/GPU, real chooser, your account. Anything else runs on the emulator first."
-4. Local test builds and Play builds share versionCode 26 today. Nothing broke, but the phone's "v0.8.0 (26)" could be
-   either. Give local test builds a version suffix.
+1. **Emulator profile and script: partly.** `scripts/emulator-checks.sh` has `avd`, `smoke`, `offline`, `disk` and `shots`
+   (it refuses any serial that is not `emulator-*`). `smoke` and `offline` were run on the Android 14 emulator and work.
+   **The Android 17 (API 37) emulator does not work on this machine:** the image installed (`android-37.0;google_apis;x86_64`)
+   and the AVD `SmugView37` (1080x2424) was created, but the system server crashed in a loop
+   (`SurfaceControl.nativeCreate`) with the default and the `swiftshader_indirect` GPU modes, and the device kept going offline with
+   `-gpu host`; I stopped there. So Android 17 behaviour stays a phone-only check. `disk` and `shots` were written but not run.
+2. **androidTest sweep: done.** `ThemeSweepSmokeTest` checks the status bar colour, its icons and a dark left edge on Search,
+   Tags and Collections in both system themes. Red check: with the status-bar colour set to white, 2 of its tests failed
+   (`expected:<-16316663> but was:<-1>`); green with the real code (5 tests with the three `LiveSmokeTest` ones, on emulator-5554).
+3. **CLAUDE.md rules: done** (premise counts, symptom is a finding, both themes, phone-only list, agent time box, per-class
+   test times, `-PlocalBuild`).
+4. **Version suffix: done.** `-PlocalBuild` adds `-local` to the version name, so `report.txt` shows `0.8.1-local (27)` for a
+   device-test build. Not run against a release build yet.
+5. **SSDP test off the real network: done.** `DefaultCastManager.ssdpSocketFactory` is a test seam; `SsdpScanLoggingTest` now
+   uses a fake socket and asserts both searches were sent through it. Red check: with the seam bypassed the new assertion fails
+   (`SsdpScanLoggingTest.kt:30`).
+Full unit suite after these changes: 899 tests, 4 skipped, 0 failures.
 
 ## 6. Open items (not fixed)
 
@@ -118,7 +125,6 @@ Everything else runs on the emulator beforehand, scripted, and the run's output 
 - The Save-to-collection dialog shows a blank "Selected Item:" for an untitled photo and clips the "New Collection
   Name..." hint.
 - About 10 `BuildConfig.DEBUG`-gated `Log.e` sites remain (finding #7).
-- `SsdpScanLoggingTest` still uses the real network (see item 9).
 - Not confirmed on a device: the never-opened-gallery offline state, the metered Wi-Fi wording, full-disk resume, a real
   404-original download and kept-gallery fall-back (#24).
 - v0.8.1 is on internal only. Promotion to production and a Play Console look at the release are yours to call.

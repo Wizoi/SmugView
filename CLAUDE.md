@@ -46,6 +46,20 @@ before starting on a bug.
   editing, even for a bug fix that "looks small". AGENTS.md already required this and was not
   loaded (findings #13).
 
+- **A premise about "all" or "none" needs a count over the whole set**, recorded in the findings row
+  (retro v7: "only viewers are dark", "originals 404" on too few photos).
+- **A symptom seen on a device is a finding in the same step**, with a row and a premise check. It is
+  never a deferral (#25 was seen on the emulator and parked).
+- **Look at every screen in both themes**, not only the screen the change touches.
+- **Phone-only means** real LAN (cast), real touch/GPU, the real chooser/Google Photos and the owner's
+  account. Everything else runs on the emulator first (`scripts/emulator-checks.sh`).
+- **Every implementing agent gets a wall-clock box** (45 min) and commits or reports by it. The lead runs
+  the full suite itself before any commit; an agent's "green" is a claim.
+- **Check per-class test times** when the suite passes 5 minutes or a class passes 60 s
+  (`settle()` once cost 162 of 184 s in one class).
+- **Phone and Play builds**: build a device-test APK with `-PlocalBuild` so it reports `-local` in
+  `report.txt` and cannot be mistaken for the Play build of the same versionCode.
+
 ## Things that are true here
 
 - `cached_nodes` is filled lazily, on browse. `cached_albums` is synced eagerly, but only with
