@@ -408,3 +408,13 @@ v0.7.5 versionCode 23.
 This retro also *surfaced* two Retro v4 items (tracker rows #1 and #2) that had been sitting open
 since 2026-07-17 — both since closed in the same session (see the tracker at the top of this file,
 which as of this writing has zero rows still genuinely open).
+
+## 📈 Whole-App Review Retro (2026-10-02 Retro v7)
+Full write-up: [docs/review/2026-10-02-retro-whole-app-review.md](../docs/review/2026-10-02-retro-whole-app-review.md).
+The short version, as standing rules (proposed in the retro; CLAUDE.md is not changed until the owner agrees):
+*   Every implementing agent gets a wall-clock box and commits or reports by it; the lead runs the full suite itself before any commit.
+*   A premise about "all" or "none" needs a count over the whole set, recorded in the findings row.
+*   A symptom seen on a device is a finding the same step, not a deferral (#25 was seen on the emulator in 6-24 and parked).
+*   Look at every screen in both themes, not only the screen a change touches.
+*   Phone-only means real LAN, real touch/GPU, the real chooser and the owner's account. Everything else runs on the emulator first.
+*   Check per-class test times when the suite passes 5 minutes or a class passes 60 s (`settle()` once cost 162 of 184 s in one class).
