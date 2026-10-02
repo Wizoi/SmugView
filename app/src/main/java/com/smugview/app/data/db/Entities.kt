@@ -251,6 +251,7 @@ data class OfflineFile(
     @ColumnInfo(defaultValue = "0") val attempts: Int = 0,
     val nextAttemptAt: Long? = null,
     val httpCode: Int? = null,
+    /** Dead since 6-N1, no longer read (the network rule is global, see `OfflineSettings`); no migration drops it. */
     @ColumnInfo(defaultValue = "0") val wifiOnly: Boolean = false,
     /** This process's run id while DOWNLOADING. */
     val claim: String? = null,
@@ -288,7 +289,7 @@ data class OfflineGallery(
     val listedAt: Long? = null,
     val listedIlu: String? = null,
     val photoCount: Int? = null,
-    /** The user's Wi-Fi rule for this gallery (Q3, design 8.1): 1 = Wi-Fi only, the default; 0 = any network. */
+    /** Dead since 6-N1, no longer read (the network rule is global, see `OfflineSettings`); always written as the default, 1. */
     @ColumnInfo(defaultValue = "1") val wifiOnly: Boolean = true
 )
 

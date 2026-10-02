@@ -81,8 +81,7 @@ class OfflineStore(
         title: String? = null,
         thumbnailUrl: String? = null,
         format: String? = null,
-        dateTaken: String? = null,
-        wifiOnly: Boolean = false
+        dateTaken: String? = null
     ): OfflineFile {
         val now = clock()
         val valid = isValidKey(imageKey)
@@ -92,12 +91,9 @@ class OfflineStore(
             format = format, dateTaken = dateTaken,
             state = if (valid) PENDING else FAILED,
             failure = if (valid) null else FailureReason.NO_SOURCE.name,
-            retryable = false, wifiOnly = wifiOnly, createdAt = now, updatedAt = now
+            retryable = false, createdAt = now, updatedAt = now
         )
         dao.insertFile(row)
-        // A row that exists wins (N4), except that mobile data may only ever be ALLOWED by a new wanter: a photo saved
-        // alone must not wait for Wi-Fi because a Wi-Fi-only gallery happened to list it first (5-7, design 8.1 Q3).
-        if (!wifiOnly) dao.loosenWifiOnly(row.fileKey, now)
         return dao.getFile(row.fileKey) ?: row
     }
 
@@ -115,7 +111,7 @@ class OfflineStore(
 
     /**
      * Applies one complete listing of a kept gallery in ONE transaction (design 2.4 step 3): the items are replaced,
-     * a file row is `INSERT OR IGNORE`d for each photo (with its source, size and MD5, and the gallery's Wi-Fi rule),
+     * a file row is `INSERT OR IGNORE`d for each photo (with its source, size and MD5),
      * a row that exists and is not DONE learns the source, size and MD5, a DONE row whose MD5 changed goes back to
      * PENDING, and the gallery is LISTED. Returns false when the gallery is gone (it was unbookmarked while the
      * listing was on the wire): nothing is written then. All of it or none of it: a failed listing never gets here.
@@ -142,36 +138,27 @@ class OfflineStore(
                         thumbnailUrl = image.thumbnailUrl, format = image.format, dateTaken = image.dateTaken,
                         state = if (valid) PENDING else FAILED,
                         failure = if (valid) null else FailureReason.NO_SOURCE.name,
-                        retryable = false, wifiOnly = current.wifiOnly, createdAt = now, updatedAt = now
+                        retryable = false, createdAt = now, updatedAt = now
                     )
                 )
                 if (!valid) continue
                 if (image.md5 != null) dao.resetChanged(fileKey, image.sourceUrl, image.bytes, image.md5, now)
                 dao.fillSource(fileKey, image.sourceUrl, image.bytes, image.md5, now)
-                if (!current.wifiOnly) dao.loosenWifiOnly(fileKey, now)
             }
             dao.markGalleryListed(current.collectionId, current.albumKey, now, ilu, items.size)
             true
         }
 
-    /** Wants the gallery's photos: LIST_PENDING (listed by the next pass), Wi-Fi only until the user says otherwise. */
+    /** Wants the gallery's photos: LIST_PENDING (listed by the next pass; the network is the global rule, [OfflineSettings]). */
     suspend fun keepGallery(collectionId: Long, albumKey: String, nickname: String, title: String?): Boolean =
         dao.insertGallery(
-            OfflineGallery(collectionId, albumKey, nickname, title, LIST_PENDING, wifiOnly = true)
+            OfflineGallery(collectionId, albumKey, nickname, title, LIST_PENDING)
         ) != -1L
-
-    /** Sets the gallery's Wi-Fi rule and re-derives the rule of its files that are not DONE. */
-    suspend fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean): Boolean =
-        db.withTransaction {
-            if (dao.setGalleryWifiOnly(collectionId, albumKey, wifiOnly) == 0) return@withTransaction false
-            dao.recomputeWifiOnlyForGallery(collectionId, albumKey, clock())
-            true
-        }
 
     suspend fun gallery(collectionId: Long, albumKey: String): OfflineGallery? = dao.getGallery(collectionId, albumKey)
 
-    suspend fun galleriesToList(unmetered: Boolean, limit: Int): List<OfflineGallery> =
-        dao.galleriesToList(clock() - GALLERY_RETRY_GAP_MS, unmetered, limit)
+    suspend fun galleriesToList(takeGalleryOnly: Boolean, limit: Int): List<OfflineGallery> =
+        dao.galleriesToList(clock() - GALLERY_RETRY_GAP_MS, takeGalleryOnly, limit)
 
     suspend fun cachedImagesLastUpdated(albumKey: String): String? = dao.cachedImagesLastUpdated(albumKey)
 
@@ -193,15 +180,15 @@ class OfflineStore(
     suspend fun retryNow(imageKey: String): Boolean = dao.retryNow(fileKeyOf(imageKey), clock()) > 0
 
     /** Rows a pass may try, oldest first (see [OfflineDao.candidates]). */
-    suspend fun candidates(now: Long, unmetered: Boolean, limit: Int): List<OfflineFile> =
-        dao.candidates(now, unmetered, limit)
+    suspend fun candidates(now: Long, takeGalleryOnly: Boolean, limit: Int): List<OfflineFile> =
+        dao.candidates(now, takeGalleryOnly, limit)
 
     // The scheduler's questions (5-5).
     suspend fun countWanted(): Int = dao.countWanted() + dao.countGalleriesWanted()
-    suspend fun countWantedWifiOnly(): Int = dao.countWantedWifiOnly() + dao.countGalleriesWantedWifiOnly()
-    suspend fun earliestRetryAt(unmetered: Boolean): Long? =
-        listOfNotNull(dao.earliestRetryAt(unmetered), dao.earliestGalleryRetryAt(GALLERY_RETRY_GAP_MS, unmetered)).minOrNull()
-    suspend fun countDue(now: Long, unmetered: Boolean): Int = dao.countDue(now, unmetered)
+    suspend fun countWantedGalleryOnly(): Int = dao.countWantedGalleryOnly() + dao.countGalleriesWanted()
+    suspend fun earliestRetryAt(takeGalleryOnly: Boolean): Long? =
+        listOfNotNull(dao.earliestRetryAt(takeGalleryOnly), dao.earliestGalleryRetryAt(GALLERY_RETRY_GAP_MS, takeGalleryOnly)).minOrNull()
+    suspend fun countDue(now: Long, takeGalleryOnly: Boolean): Int = dao.countDue(now, takeGalleryOnly)
 
     // ---- storage ---------------------------------------------------------------------------------------------
 

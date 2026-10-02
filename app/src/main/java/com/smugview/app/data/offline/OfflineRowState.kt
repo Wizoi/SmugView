@@ -25,7 +25,7 @@ data class RowState(
     enum class Kind { SAVED, SAVING, FAILED }
 }
 
-/** What a kept gallery's row says: its listing, its progress, and the Wi-Fi rule (Q1, Q3). */
+/** What a kept gallery's row says: its listing, its progress, and whether the global network rule ([OfflineSettings]) holds it back. */
 data class GallerySummary(
     val albumKey: String,
     val kind: Kind,
@@ -37,10 +37,8 @@ data class GallerySummary(
     val total: Int,
     /** "Keep offline · 103 MB" (size from the listing, or "size unknown" before it). */
     val keepLabel: String,
-    /** The user's rule: false = Wi-Fi only (the default), true = mobile data too. */
-    val useMobileDataToo: Boolean,
-    /** "Use mobile data (103 MB)" while the gallery waits for Wi-Fi; null otherwise. */
-    val useMobileDataAction: String? = null
+    /** [OfflineMessages.CHANGE_NETWORK_SETTING] while the gallery waits for Wi-Fi under the global rule; null otherwise. */
+    val action: String? = null
 ) {
     enum class Kind { LISTING, SAVING, WAITING_WIFI, OFFLINE, SAVED, FAILED }
 }
@@ -73,7 +71,7 @@ object OfflineRowState {
     }
 
     /**
-     * The summary of one kept gallery. [rows] are its photos' file rows (empty until the first listing).
+     * The summary of one kept gallery under the global [rule]. [rows] are its photos' file rows (empty until the first listing).
      * [needBytes] and [freeBytes] fill a storage failure's text. [connected] is false when the phone has no network
      * at all: a gallery that cannot move then says so instead of "Waiting for Wi-Fi".
      */
@@ -82,19 +80,17 @@ object OfflineRowState {
         rows: List<GalleryFileRow>,
         needBytes: Long = 0,
         freeBytes: Long = 0,
-        connected: Boolean = true
+        connected: Boolean = true,
+        rule: OfflineNetworkRule
     ): GallerySummary {
         val done = rows.count { it.state == OfflineStore.DONE }
         val total = gallery.photoCount ?: rows.size
-        val left = rows.filter { it.state != OfflineStore.DONE }
-        val remainingBytes = if (rows.isEmpty() || left.any { it.expectedBytes == null }) null else left.sumOf { it.expectedBytes ?: 0L }
         val sizeKnown = rows.isNotEmpty() && rows.all { it.expectedBytes != null }
         val listedBytes = if (sizeKnown) rows.sumOf { it.expectedBytes ?: 0L } else null
         val keep = OfflineMessages.keepOffline(listedBytes)
-        val mobileToo = !gallery.wifiOnly
 
         fun summary(kind: GallerySummary.Kind, text: String, detail: String? = null, action: String? = null) = GallerySummary(
-            gallery.albumKey, kind, text, detail, done, total, keep, mobileToo, action
+            gallery.albumKey, kind, text, detail, done, total, keep, action
         )
 
         // The gallery itself failed (locked, offline, busy while listing): its own cause, nothing was listed or the
@@ -122,13 +118,13 @@ object OfflineRowState {
                     detail ?: if (notListed) null else OfflineMessages.noConnectionProgress(done, total)
                 )
             }
-            // Nothing is on the wire until a Wi-Fi pass for a Wi-Fi-only gallery; the user may widen the rule.
-            if (gallery.wifiOnly && !downloading) {
+            // Under the global Wi-Fi-only rule nothing is on the wire until a Wi-Fi pass; the setting is the way out.
+            if (rule == OfflineNetworkRule.WIFI_ONLY && !downloading) {
                 return summary(
                     GallerySummary.Kind.WAITING_WIFI,
                     OfflineMessages.WAITING_FOR_WIFI,
                     detail ?: if (notListed) null else OfflineMessages.waitingWifi(done, total),
-                    OfflineMessages.useMobileData(if (notListed) null else remainingBytes)
+                    OfflineMessages.CHANGE_NETWORK_SETTING
                 )
             }
             if (notListed && rows.isEmpty()) return summary(GallerySummary.Kind.LISTING, OfflineMessages.SAVING, detail)

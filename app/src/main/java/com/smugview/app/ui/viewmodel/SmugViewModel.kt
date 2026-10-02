@@ -2151,8 +2151,9 @@ class SmugViewModel @Inject constructor(
     fun stopKeepingGalleryOffline(collectionId: Long, albumKey: String) =
         collections.stopKeepingGalleryOffline(collectionId, albumKey)
 
-    fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean) =
-        collections.setGalleryWifiOnly(collectionId, albumKey, wifiOnly)
+    val offlineNetworkRule get() = collections.offlineNetworkRule
+
+    fun setOfflineNetworkRule(rule: com.smugview.app.data.offline.OfflineNetworkRule) = collections.setOfflineNetworkRule(rule)
 
     // --- What is saved on this phone (5-9): reads come from OfflineReader, writes from OfflineCollections ---
 

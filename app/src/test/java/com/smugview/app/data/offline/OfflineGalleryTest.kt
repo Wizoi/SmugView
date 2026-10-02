@@ -64,6 +64,7 @@ class OfflineGalleryTest {
     private lateinit var db: AppDatabase
     private lateinit var store: OfflineStore
     private lateinit var downloader: OfflineDownloader
+    private val settings = InMemoryOfflineSettings()
     private lateinit var collections: OfflineCollections
     private lateinit var scheduler: OfflineScheduler
     private val passwords = FakePasswordStore()
@@ -88,9 +89,9 @@ class OfflineGalleryTest {
         val repository = SmugMugRepository(loopback.api(), db.collectionDao(), passwords, app)
         store = OfflineStore(db, filesDir, runId = "run0001", clock = { now }, freeBytes = { 50L shl 30 })
         val images = RetryingCallFactory(cdn.clientOver(loopback.client).forFileDownloads(), maxAttempts = 0)
-        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, clock = { now })
-        scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, clock = { now })
-        collections = OfflineCollections(db, store, scheduler)
+        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, settings = settings, clock = { now })
+        scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, settings = settings, clock = { now })
+        collections = OfflineCollections(db, store, scheduler, settings)
     }
 
     @After fun tearDown() {
@@ -202,39 +203,38 @@ class OfflineGalleryTest {
         assertEquals("one request per photo", 150, keys.sumOf { cdn.countFor(cdnPath(it)) })
     }
 
-    @Test fun aWifiOnlyGalleryIsNotListedOrDownloadedOnMobileDataUntilTheUserAllowsIt() {
+    @Test fun underWifiOnlyAGalleryIsNotListedOrDownloadedOnMobileDataUntilTheUserChangesTheSetting() {
         bookmarkGallery()
         keep()
-        assertTrue("the default is Wi-Fi only (Q3)", gallery()!!.wifiOnly)
+        assertEquals("the default is Wi-Fi only", OfflineNetworkRule.WIFI_ONLY, settings.rule.value)
 
         passAny()
 
         assertEquals("not listed on a metered network", "LIST_PENDING", gallery()!!.state)
         assertEquals(0, imageListRequests())
         assertEquals(0, cdn.requests.size)
-        assertTrue("a Wi-Fi-only gallery is a reason for the unmetered work", runBlocking { store.countWantedWifiOnly() } > 0)
+        assertTrue("a kept gallery is a reason for the unmetered work", runBlocking { store.countWantedGalleryOnly() } > 0)
 
-        runBlocking { collections.setGalleryWifiOnly(trip, album, false) }
-        assertFalse(gallery()!!.wifiOnly)
+        runBlocking { collections.setGalleryNetwork(OfflineNetworkRule.WIFI_AND_MOBILE) }
         passAny()
 
         assertEquals("LISTED", gallery()!!.state)
         assertAllDone(keys)
-        assertEquals("allowed on mobile data: no Wi-Fi pass was needed", 0, count("offline_files", "wifiOnly = 1"))
     }
 
     @Test fun takingTheMobileDataChoiceBackMakesTheUnfinishedFilesWaitForWifiAgain() {
         bookmarkGallery()
         keep()
-        runBlocking { collections.setGalleryWifiOnly(trip, album, false) }
+        runBlocking { collections.setGalleryNetwork(OfflineNetworkRule.WIFI_AND_MOBILE) }
         listedButNotDownloaded()
-        assertEquals(150, count("offline_files", "wifiOnly = 0 AND state = 'PENDING'"))
 
-        runBlocking { collections.setGalleryWifiOnly(trip, album, true) }
+        runBlocking { collections.setGalleryNetwork(OfflineNetworkRule.WIFI_ONLY) }
 
-        assertEquals(150, count("offline_files", "wifiOnly = 1 AND state = 'PENDING'"))
         passAny()
         assertEquals("nothing downloads on mobile data now", 0, cdn.requests.size)
+        assertEquals(150, count("offline_files", "state = 'PENDING'"))
+        passWifi()
+        assertAllDone(keys)
     }
 
     @Test fun keepingAGalleryAgainDoesNotResetAListedOne() {
@@ -254,7 +254,7 @@ class OfflineGalleryTest {
         bookmarkGallery()
         keep()
         val key = keys[5]
-        // The gallery listed its photos (Wi-Fi only) but the pass has not downloaded them yet.
+        // The gallery listed its photos (Wi-Fi only rule) but the pass has not downloaded them yet.
         runBlocking {
             val g = store.gallery(trip, album)!!
             store.applyListing(
@@ -262,15 +262,27 @@ class OfflineGalleryTest {
                 null
             )
         }
-        assertTrue(row(key)!!.wifiOnly)
-
         runBlocking { collections.savePhoto(photo(key, favorites), OfflineFixture.SITE) }
         passAny()
 
-        assertFalse("saved alone: any network", row(key)!!.wifiOnly)
         assertEquals("DONE", row(key)!!.state)
         assertEquals("only that photo is taken on mobile data", 1, count("offline_files", "state = 'DONE'"))
         assertEquals(1, cdn.requests.size)
+    }
+
+    /** The old stale-loosen bug (addendum C5): a photo saved alone and then removed is a gallery file again, and waits for Wi-Fi. */
+    @Test fun aPhotoRemovedFromItsCollectionIsAGalleryFileAgainAndWaitsForWifi() {
+        bookmarkGallery()
+        keep()
+        val key = keys[5]
+        listedButNotDownloaded()
+        runBlocking { collections.savePhoto(photo(key, favorites), OfflineFixture.SITE) }
+        runBlocking { collections.removePhoto(key, favorites) }
+
+        passAny()
+
+        assertEquals("nothing downloads on mobile data", 0, cdn.requests.size)
+        assertEquals("PENDING", row(key)!!.state)
     }
 
     // ---- unbookmarking ----
@@ -405,7 +417,7 @@ class OfflineGalleryTest {
             "INSERT INTO collection_bookmarks (collectionId, type, itemKey, title, albumKey, albumTitle, thumbnailUrl) " +
                 "VALUES ($trip, 'Image', '$key', 'IMG_$key', '$album', 'New School Year', NULL)"
         )
-        store.request(key, albumKey = album, sourceUrl = null, expectedBytes = null, md5 = null, wifiOnly = false)
+        store.request(key, albumKey = album, sourceUrl = null, expectedBytes = null, md5 = null)
     }
 
     @Test fun aPasswordGalleryPhotoWithNoSourceUrlIsResolvedAfterTheSavedPasswordUnlocksIt() {
@@ -546,7 +558,7 @@ class OfflineGalleryTest {
         cacheAlbum(fake.daysAgo(0))
 
         assertEquals(1, runBlocking { store.countWanted() })
-        assertEquals(1, runBlocking { store.countWantedWifiOnly() })
+        assertEquals(1, runBlocking { store.countWantedGalleryOnly() })
     }
 
     @Test fun threeGalleriesAtMostAreListedPerPassAndTheRestFollow() {

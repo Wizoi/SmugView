@@ -63,6 +63,7 @@ class OfflineCollectionsScenarioTest {
     private lateinit var db: AppDatabase
     private lateinit var store: OfflineStore
     private lateinit var downloader: OfflineDownloader
+    private val settings = InMemoryOfflineSettings()
     private lateinit var collections: OfflineCollections
     private var now = 1_800_000_000_000L
 
@@ -85,9 +86,9 @@ class OfflineCollectionsScenarioTest {
         val repository = SmugMugRepository(loopback.api(), db.collectionDao(), FakePasswordStore(), app)
         store = OfflineStore(db, filesDir, runId = "run0001", clock = { now }, freeBytes = { 50L shl 30 })
         val images = RetryingCallFactory(cdn.clientOver(loopback.client).forFileDownloads(), maxAttempts = 0)
-        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, clock = { now })
-        val scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, clock = { now })
-        collections = OfflineCollections(db, store, scheduler)
+        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, settings = settings, clock = { now })
+        val scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, settings = settings, clock = { now })
+        collections = OfflineCollections(db, store, scheduler, settings)
     }
 
     @After fun tearDown() {

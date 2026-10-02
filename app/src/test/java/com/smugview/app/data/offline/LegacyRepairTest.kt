@@ -63,6 +63,7 @@ class LegacyRepairTest {
     private lateinit var db: AppDatabase
     private lateinit var store: OfflineStore
     private lateinit var downloader: OfflineDownloader
+    private val settings = InMemoryOfflineSettings()
     private lateinit var scheduler: OfflineScheduler
     private val syncState = InMemorySyncStateStore()
     private val prefs = app.getSharedPreferences("smugview_prefs", Context.MODE_PRIVATE)
@@ -131,8 +132,8 @@ class LegacyRepairTest {
         val repository = SmugMugRepository(loopback.api(), db.collectionDao(), FakePasswordStore(), app)
         store = OfflineStore(db, filesDir, runId = runId, clock = { now }, freeBytes = { 50L shl 30 })
         val images = RetryingCallFactory(cdn.clientOver(loopback.client).forFileDownloads(), maxAttempts = 0)
-        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, clock = { now })
-        scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, clock = { now })
+        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, settings = settings, clock = { now })
+        scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, settings = settings, clock = { now })
     }
 
     // ---- the old files ---------------------------------------------------------------------------------------
@@ -232,7 +233,7 @@ class LegacyRepairTest {
         val result = repair(finished = setOf(album))
 
         assertEquals("LIST_PENDING", gallery(2, album)!!.state)
-        assertTrue("Wi-Fi only by default (Q3)", gallery(2, album)!!.wifiOnly)
+        assertEquals("Wi-Fi only by default: the global rule", OfflineNetworkRule.WIFI_ONLY, settings.rule.value)
         assertNull("a gallery with no flag is not kept offline", gallery(1, "N74KSK"))
         assertEquals("but its bookmark is still there as a shortcut", 1, count("collection_bookmarks", "itemKey = 'N74KSK' AND type = 'Album'"))
         assertEquals(1, result.galleriesKept)

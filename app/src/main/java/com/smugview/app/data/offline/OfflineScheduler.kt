@@ -15,10 +15,11 @@ import java.util.concurrent.TimeUnit
  * is a question to the database through [OfflineStore].
  *
  * Unique work, one chain per network class:
- *  - `offline-files` (CONNECTED): every wanted file that may use mobile data (single photos, galleries the user
- *    allowed on it). `APPEND_OR_REPLACE`: a second [kick] while a pass runs is queued BEHIND it, so two passes never
+ *  - `offline-files` (CONNECTED): the files a saved photo or Image bookmark wants, and every kept gallery too when the global
+ *    rule ([OfflineSettings]) is WIFI_AND_MOBILE. `APPEND_OR_REPLACE`: a second [kick] while a pass runs is queued BEHIND it, so two passes never
  *    run at once and a photo added just after the running pass looked is picked up by the appended run.
- *  - `offline-files-wifi` (UNMETERED): the `wifiOnly` rows (Q3), only enqueued while one is wanted.
+ *  - `offline-files-wifi` (UNMETERED): everything; only enqueued under WIFI_ONLY while a gallery-only file or a gallery listing
+ *    is wanted. The pass is the gate: the rule is read live by [OfflineDownloader], never enforced by cancelling work.
  *  - `offline-files-retry` / `offline-files-wifi-retry`: one delayed run for the earliest retryable failure.
  *    `REPLACE`: there is only ever one, with the delay of the earliest row.
  * A pass never ends in `Result.retry()` or `Result.failure()`: a stuck file must not hold back the adds behind it.
@@ -27,12 +28,13 @@ import java.util.concurrent.TimeUnit
 class OfflineScheduler(
     private val workManager: () -> WorkManager,
     private val store: OfflineStore,
+    private val settings: OfflineSettings,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
     /** Something was added or removed: run a pass on every chain that has work. Cheap; safe to call often. */
     suspend fun kick() {
         enqueue(NetworkClass.ANY, ExistingWorkPolicy.APPEND_OR_REPLACE, delayMs = 0)
-        if (store.countWantedWifiOnly() > 0) enqueue(NetworkClass.UNMETERED, ExistingWorkPolicy.APPEND_OR_REPLACE, delayMs = 0)
+        if (settings.rule.value == OfflineNetworkRule.WIFI_ONLY && store.countWantedGalleryOnly() > 0) enqueue(NetworkClass.UNMETERED, ExistingWorkPolicy.APPEND_OR_REPLACE, delayMs = 0)
     }
 
     /** At app start: only when something is not DONE (and not permanently failed). */
@@ -49,8 +51,8 @@ class OfflineScheduler(
             enqueue(network, ExistingWorkPolicy.APPEND_OR_REPLACE, delayMs = 0)
             return
         }
-        val unmetered = network == NetworkClass.UNMETERED
-        val at = store.earliestRetryAt(unmetered) ?: return
+        val takeGalleryOnly = network == NetworkClass.UNMETERED || settings.rule.value == OfflineNetworkRule.WIFI_AND_MOBILE
+        val at = store.earliestRetryAt(takeGalleryOnly) ?: return
         val delay = maxOf(MIN_RETRY_DELAY_MS, at - clock())
         enqueue(network, ExistingWorkPolicy.REPLACE, delayMs = delay, retry = true)
     }

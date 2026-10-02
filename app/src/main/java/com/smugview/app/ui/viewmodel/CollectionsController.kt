@@ -93,7 +93,7 @@ class CollectionsController(
         }
     }
 
-    /** "Keep offline" for a bookmarked gallery: Wi-Fi only until [setGalleryWifiOnly] says otherwise (5-7; the UI is 5-9). */
+    /** "Keep offline" for a bookmarked gallery: it is saved on the network the global rule ([setGalleryNetwork]) allows. */
     fun keepGalleryOffline(collectionId: Long, albumKey: String, title: String?) {
         scope.launch {
             offline.keepGalleryOffline(collectionId, albumKey, getActiveNickname() ?: "", title)
@@ -106,9 +106,11 @@ class CollectionsController(
         }
     }
 
-    fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean) {
+    val offlineNetworkRule: kotlinx.coroutines.flow.StateFlow<com.smugview.app.data.offline.OfflineNetworkRule> = offline.networkRule
+
+    fun setOfflineNetworkRule(rule: com.smugview.app.data.offline.OfflineNetworkRule) {
         scope.launch {
-            offline.setGalleryWifiOnly(collectionId, albumKey, wifiOnly)
+            offline.setGalleryNetwork(rule)
         }
     }
 

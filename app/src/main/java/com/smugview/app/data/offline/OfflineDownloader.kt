@@ -33,8 +33,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * What the pass runs on. [UNMETERED] (Wi-Fi): every wanted file. [ANY] (any connected network, maybe mobile data):
- * only the files whose `wifiOnly` is off (Q3: single photos and galleries the user allowed on mobile data).
+* What the pass runs on. [UNMETERED] (Wi-Fi): every wanted file. [ANY] (any connected network, maybe mobile data): the files a
+ * saved photo or Image bookmark wants, and kept galleries too when the global rule ([OfflineSettings]) is WIFI_AND_MOBILE.
  */
 enum class NetworkClass { ANY, UNMETERED }
 
@@ -67,6 +67,7 @@ class OfflineDownloader(
     private val images: Call.Factory,
     private val apiKey: () -> String,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val settings: OfflineSettings,
     private val clock: () -> Long = System::currentTimeMillis
 ) {
     private class Fetched(val bytes: Long, val md5: String, val contentType: String?)
@@ -90,18 +91,17 @@ class OfflineDownloader(
         store.collectGarbage()
         store.sweepOrphans()
 
-        val unmetered = network == NetworkClass.UNMETERED
         val tried = HashSet<String>()
         var downloaded = 0
         var failed = 0
         var bytes = 0L
         var consecutiveOffline = 0
         var stoppedFor: FailureReason? = null
-        var more = listGalleries(unmetered, started, budgetMs)
+        var more = listGalleries(network, started, budgetMs)
         // Once no gallery is waiting to be listed, the old offline_photos/ directory has nothing left to give (5-8).
         runCatching { store.cleanLegacyFiles() }
         while (true) {
-            val next = nextRow(unmetered, tried)
+            val next = nextRow(network, tried)
             if (next == null) break
             if (clock() - started >= budgetMs) { more = true; break }
             tried += next.fileKey
@@ -127,12 +127,12 @@ class OfflineDownloader(
      * (a page that fails leaves the earlier listing, if any, untouched); what the listing adds is only PENDING,
      * never DONE (5-7: offline or 429 half-way never leaves a row Done).
      */
-    private suspend fun listGalleries(unmetered: Boolean, started: Long, budgetMs: Long): Boolean {
+    private suspend fun listGalleries(network: NetworkClass, started: Long, budgetMs: Long): Boolean {
         val tried = HashSet<Pair<Long, String>>()
         var more = false
         var changed = false
         while (true) {
-            val next = store.galleriesToList(unmetered, tried.size + 1)
+            val next = store.galleriesToList(takeGalleryOnly(network), tried.size + 1)
                 .firstOrNull { (it.collectionId to it.albumKey) !in tried } ?: break
             if (tried.size >= OfflineStore.GALLERIES_PER_PASS || clock() - started >= budgetMs) { more = true; break }
             tried += next.collectionId to next.albumKey
@@ -201,9 +201,12 @@ class OfflineDownloader(
         }
     }
 
+    /** Read before every gallery and file, so a flip of the rule mid-pass takes effect on the next one (addendum 4). */
+    private fun takeGalleryOnly(network: NetworkClass) = network == NetworkClass.UNMETERED || settings.rule.value == OfflineNetworkRule.WIFI_AND_MOBILE
+
     /** The oldest wanted row this pass has not tried yet. */
-    private suspend fun nextRow(unmetered: Boolean, tried: Set<String>): OfflineFile? =
-        store.candidates(clock(), unmetered, tried.size + 1).firstOrNull { it.fileKey !in tried }
+    private suspend fun nextRow(network: NetworkClass, tried: Set<String>): OfflineFile? =
+        store.candidates(clock(), takeGalleryOnly(network), tried.size + 1).firstOrNull { it.fileKey !in tried }
 
     private suspend fun downloadOne(row: OfflineFile): Step {
         val fileKey = row.fileKey

@@ -40,11 +40,9 @@ class OfflineMessagesTest {
         assertEquals("Remove", OfflineMessages.REMOVE)
     }
 
-    @Test fun `the Q3 override texts say the size`() {
-        assertEquals("Use mobile data too", OfflineMessages.USE_MOBILE_DATA_TOO)
+    @Test fun `the network setting texts`() {
         assertEquals("Waiting for Wi-Fi", OfflineMessages.WAITING_FOR_WIFI)
-        assertEquals("Use mobile data (103 MB)", OfflineMessages.useMobileData(103L * 1024 * 1024))
-        assertEquals("Use mobile data (size unknown)", OfflineMessages.useMobileData(null))
+        assertEquals("Change network setting", OfflineMessages.CHANGE_NETWORK_SETTING)
     }
 
     @Test fun `the lock text is the 4-8 one, unchanged`() {

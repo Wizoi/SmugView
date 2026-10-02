@@ -449,8 +449,7 @@ fun CollectionsTabView(
                                     if (keep) viewModel.keepGalleryOffline(col.id, galleryKey, a.title)
                                     else askThenRemove({ viewModel.stopKeepingConfirm(col.id, galleryKey, a.title) }) { viewModel.stopKeepingGalleryOffline(col.id, galleryKey) }
                                 },
-                                onMobileDataTooChange = { too -> viewModel.setGalleryWifiOnly(col.id, galleryKey, !too) },
-                                onUseMobileData = { viewModel.setGalleryWifiOnly(col.id, galleryKey, false) }
+                                onChangeNetworkSetting = { }
                             )
                             }
                         }

@@ -65,6 +65,7 @@ class OfflineWorkerTest {
     private lateinit var db: AppDatabase
     private lateinit var store: OfflineStore
     private lateinit var downloader: OfflineDownloader
+    private val settings = InMemoryOfflineSettings()
     private lateinit var scheduler: OfflineScheduler
     private lateinit var factory: WorkerFactory
     private lateinit var wm: WorkManager
@@ -106,8 +107,8 @@ class OfflineWorkerTest {
         val repository = SmugMugRepository(loopback.api(), db.collectionDao(), FakePasswordStore(), app)
         store = OfflineStore(db, filesDir, runId = runId, clock = { now }, freeBytes = { free })
         val images = RetryingCallFactory(cdn.clientOver(loopback.client).forFileDownloads(), maxAttempts = 0)
-        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, clock = { now })
-        scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, clock = { now })
+        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, settings = settings, clock = { now })
+        scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, settings = settings, clock = { now })
     }
 
     @After fun tearDown() {
@@ -121,7 +122,17 @@ class OfflineWorkerTest {
     private val sql get() = db.openHelper.writableDatabase
     private fun cdnPath(key: String) = "/photos/i-$key/"
 
-    private fun want(key: String, wifiOnly: Boolean = false) = runBlocking {
+    /** A saved photo's Image bookmark wants [key]; with [galleryOnly] its only reference is a kept gallery's item. */
+    private fun want(key: String, galleryOnly: Boolean = false) = runBlocking {
+        if (galleryOnly) {
+            sql.execSQL("DELETE FROM collection_photos WHERE imageKey = '$key'")
+            sql.execSQL("DELETE FROM collection_bookmarks WHERE type = 'Image' AND itemKey = '$key'")
+            sql.execSQL(
+                "INSERT OR IGNORE INTO offline_galleries (collectionId, albumKey, nickname, title, state, retryable) " +
+                    "VALUES (1, '${OfflineFixture.GALLERY_ALBUM_KEY}', '${OfflineFixture.SITE}', 'Class photos', 'LISTED', 0)"
+            )
+            sql.execSQL("INSERT OR IGNORE INTO offline_gallery_items (collectionId, albumKey, imageKey, sortIndex) VALUES (1, '${OfflineFixture.GALLERY_ALBUM_KEY}', '$key', 0)")
+        } else {
         val exists = sql.query("SELECT COUNT(*) FROM collection_bookmarks WHERE type = 'Image' AND itemKey = '$key'")
             .use { it.moveToFirst(); it.getInt(0) } > 0
         if (!exists) {
@@ -130,10 +141,11 @@ class OfflineWorkerTest {
                     "VALUES (1, 'Image', '$key', 'IMG_$key', '${OfflineFixture.GALLERY_ALBUM_KEY}', 'Class photos', NULL)"
             )
         }
+        }
         now += 1
         store.request(
             key, albumKey = OfflineFixture.GALLERY_ALBUM_KEY, sourceUrl = FakeOriginals.archivedUri(key),
-            expectedBytes = FakeOriginals.size(key), md5 = FakeOriginals.md5(key), wifiOnly = wifiOnly
+            expectedBytes = FakeOriginals.size(key), md5 = FakeOriginals.md5(key)
         )
     }
 
@@ -204,8 +216,8 @@ class OfflineWorkerTest {
         assertEquals(1, cdn.countFor(cdnPath(b)))
     }
 
-    @Test fun kick_withAWifiOnlyRow_alsoEnqueuesTheUnmeteredWork() = runBlocking<Unit> {
-        want(a, wifiOnly = true)
+    @Test fun kick_withAGalleryOnlyRow_underWifiOnly_alsoEnqueuesTheUnmeteredWork() = runBlocking<Unit> {
+        want(a, galleryOnly = true)
 
         scheduler.kick()
 
@@ -348,8 +360,8 @@ class OfflineWorkerTest {
         assertEquals(emptyList<String>(), parts())
     }
 
-    @Test fun onMobileData_aWifiOnlyRowWaits_withoutARetryLoop_andAPhotoThatMayUseMobileDataDownloads() = runBlocking<Unit> {
-        want(a, wifiOnly = true); want(b, wifiOnly = false)
+    @Test fun onMobileData_aGalleryOnlyRowWaits_withoutARetryLoop_andASavedPhotoDownloads() = runBlocking<Unit> {
+        want(a, galleryOnly = true); want(b)
 
         assertEquals(ListenableWorker.Result.success(), run(NetworkClass.ANY))
 
@@ -363,8 +375,8 @@ class OfflineWorkerTest {
         assertDone(a)
     }
 
-    @Test fun aWifiOnlyRetry_isScheduledOnTheUnmeteredChain_notTheMobileOne() = runBlocking<Unit> {
-        want(a, wifiOnly = true)
+    @Test fun aGalleryOnlyRetry_isScheduledOnTheUnmeteredChain_notTheMobileOne() = runBlocking<Unit> {
+        want(a, galleryOnly = true)
         cdn.respondWith(cdnPath(a), 429, times = 1)
 
         run(NetworkClass.UNMETERED)
@@ -375,17 +387,17 @@ class OfflineWorkerTest {
         assertNull(row(a).relPath)
     }
 
-    // ---- galleries (5-7, Q3: a gallery is Wi-Fi only unless the user allows mobile data for it) -----------------
+    // ---- galleries (6-N1: one global rule says whether a kept gallery may use mobile data) -------------------------------
 
-    private fun keepGallery(wifiOnly: Boolean) = runBlocking {
+    private fun keepGallery(rule: OfflineNetworkRule) = runBlocking {
+        settings.set(rule)
         fake.imageCounts[OfflineFixture.GALLERY_ALBUM_KEY] = 3
         sql.execSQL("DELETE FROM offline_galleries")
         store.keepGallery(2, OfflineFixture.GALLERY_ALBUM_KEY, OfflineFixture.SITE, "New School Year")
-        if (!wifiOnly) assertTrue(store.setGalleryWifiOnly(2, OfflineFixture.GALLERY_ALBUM_KEY, false))
     }
 
-    @Test fun aWifiOnlyGallery_isNotListedOrDownloadedByTheMobileWorker_andIsByTheWifiOne() = runBlocking<Unit> {
-        keepGallery(wifiOnly = true)
+    @Test fun aGalleryUnderWifiOnly_isNotListedOrDownloadedByTheMobileWorker_andIsByTheWifiOne() = runBlocking<Unit> {
+        keepGallery(OfflineNetworkRule.WIFI_ONLY)
 
         assertEquals(ListenableWorker.Result.success(), run(NetworkClass.ANY))
 
@@ -400,8 +412,8 @@ class OfflineWorkerTest {
         for (k in fake.imageKeysOf(OfflineFixture.GALLERY_ALBUM_KEY)) assertDone(k)
     }
 
-    @Test fun aGalleryThatMayUseMobileData_isListedAndDownloadedByTheMobileWorker() = runBlocking<Unit> {
-        keepGallery(wifiOnly = false)
+    @Test fun aGalleryUnderWifiAndMobile_isListedAndDownloadedByTheMobileWorker() = runBlocking<Unit> {
+        keepGallery(OfflineNetworkRule.WIFI_AND_MOBILE)
 
         assertEquals(ListenableWorker.Result.success(), run(NetworkClass.ANY))
 
@@ -409,8 +421,8 @@ class OfflineWorkerTest {
         for (k in fake.imageKeysOf(OfflineFixture.GALLERY_ALBUM_KEY)) assertDone(k)
     }
 
-    @Test fun kick_addsTheUnmeteredWork_forAWifiOnlyGallery_butNotForOneThatMayUseMobileData() = runBlocking<Unit> {
-        keepGallery(wifiOnly = true)
+    @Test fun kick_addsTheUnmeteredWork_underWifiOnly_butNotUnderWifiAndMobile() = runBlocking<Unit> {
+        keepGallery(OfflineNetworkRule.WIFI_ONLY)
         scheduler.kick()
         assertEquals(1, infos(OfflineScheduler.NAME).size)
         assertEquals("the gallery needs the unmetered chain", 1, infos(OfflineScheduler.NAME_WIFI).size)
@@ -418,7 +430,7 @@ class OfflineWorkerTest {
 
         wm.cancelAllWork().result.get()
         wm.pruneWork().result.get()
-        keepGallery(wifiOnly = false)
+        keepGallery(OfflineNetworkRule.WIFI_AND_MOBILE)
         scheduler.kick()
 
         assertEquals(1, infos(OfflineScheduler.NAME).size)

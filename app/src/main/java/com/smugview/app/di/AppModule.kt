@@ -263,6 +263,12 @@ object AppModule {
         return WorkManager.getInstance(context)
     }
 
+    /** The one global network rule for kept galleries (phase 6 addendum). One per process: the pass, the scheduler and the screens read the same instance. */
+    @Provides
+    @Singleton
+    fun provideOfflineSettings(@ApplicationContext context: Context): com.smugview.app.data.offline.OfflineSettings =
+        com.smugview.app.data.offline.PrefsOfflineSettings(context)
+
     /** The only owner of offline files (phase 5). One per process: its run id is the claim of its downloads. */
     @Provides
     @Singleton
@@ -274,21 +280,24 @@ object AppModule {
     fun provideOfflineDownloader(
         store: com.smugview.app.data.offline.OfflineStore,
         repository: com.smugview.app.data.repository.SmugMugRepository,
-        @javax.inject.Named("images") images: okhttp3.Call.Factory
+        @javax.inject.Named("images") images: okhttp3.Call.Factory,
+        settings: com.smugview.app.data.offline.OfflineSettings
     ): com.smugview.app.data.offline.OfflineDownloader = com.smugview.app.data.offline.OfflineDownloader(
         store = store,
         repo = repository,
         images = images,
-        apiKey = { com.smugview.app.BuildConfig.SMUGMUG_API_KEY }
+        apiKey = { com.smugview.app.BuildConfig.SMUGMUG_API_KEY },
+        settings = settings
     )
 
     @Provides
     @Singleton
     fun provideOfflineScheduler(
         @ApplicationContext context: Context,
-        store: com.smugview.app.data.offline.OfflineStore
+        store: com.smugview.app.data.offline.OfflineStore,
+        settings: com.smugview.app.data.offline.OfflineSettings
     ): com.smugview.app.data.offline.OfflineScheduler =
-        com.smugview.app.data.offline.OfflineScheduler(workManager = { WorkManager.getInstance(context) }, store = store)
+        com.smugview.app.data.offline.OfflineScheduler(workManager = { WorkManager.getInstance(context) }, store = store, settings = settings)
 
     /** The one-time repair of an install that upgraded from the pre-17 offline code (5-8). */
     @Provides
@@ -311,9 +320,10 @@ object AppModule {
     fun provideOfflineCollections(
         database: AppDatabase,
         store: com.smugview.app.data.offline.OfflineStore,
-        scheduler: com.smugview.app.data.offline.OfflineScheduler
+        scheduler: com.smugview.app.data.offline.OfflineScheduler,
+        settings: com.smugview.app.data.offline.OfflineSettings
     ): com.smugview.app.data.offline.OfflineCollections =
-        com.smugview.app.data.offline.OfflineCollections(database, store, scheduler)
+        com.smugview.app.data.offline.OfflineCollections(database, store, scheduler, settings)
 
     /** What the screens read about saved files (phase 5, 5-9). */
     @Provides
@@ -321,9 +331,10 @@ object AppModule {
     fun provideOfflineReader(
         @ApplicationContext context: Context,
         database: AppDatabase,
-        store: com.smugview.app.data.offline.OfflineStore
+        store: com.smugview.app.data.offline.OfflineStore,
+        settings: com.smugview.app.data.offline.OfflineSettings
     ): com.smugview.app.data.offline.OfflineReader =
-        com.smugview.app.data.offline.OfflineReader(database, store, networkAvailableFlow(context))
+        com.smugview.app.data.offline.OfflineReader(database, store, settings, networkAvailableFlow(context))
 
     /** True while the phone has a default network with internet (any kind). Emits the current state first. */
     private fun networkAvailableFlow(context: Context): kotlinx.coroutines.flow.Flow<Boolean> =

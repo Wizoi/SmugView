@@ -29,8 +29,8 @@ object OfflineMessages {
     const val TRY_AGAIN = "Try again"
     const val REMOVE = "Remove"
 
-    // Q3 override (design 8.1); used from 5-9, defined here with the other words.
-    const val USE_MOBILE_DATA_TOO = "Use mobile data too"
+    /** The link on a waiting kept gallery; opens the network setting (addendum 2.2). */
+    const val CHANGE_NETWORK_SETTING = "Change network setting"
     const val WAITING_FOR_WIFI = "Waiting for Wi-Fi"
 
     /** 5-11: a kept gallery that cannot move because the phone has no network at all (not "Waiting for Wi-Fi"). */
@@ -39,7 +39,6 @@ object OfflineMessages {
 
     fun saving(done: Int, total: Int) = "Saving to this phone… $done of $total"
     fun waitingWifi(done: Int, total: Int) = "Will save on Wi-Fi. $done of $total saved so far."
-    fun useMobileData(sizeBytes: Long?) = "Use mobile data (${size(sizeBytes)})"
 
     fun storage(needBytes: Long, freeBytes: Long) =
         "Not enough space on this phone to save more photos (needs about ${size(needBytes)}, ${size(freeBytes)} free). " +

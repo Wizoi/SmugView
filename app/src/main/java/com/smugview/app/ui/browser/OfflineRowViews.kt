@@ -47,16 +47,15 @@ internal fun OfflineRowLine(state: RowState?, onTryAgain: () -> Unit, onRemove: 
 }
 
 /**
- * The "Keep offline" controls of a gallery shortcut (Q1, Q3): the switch, the progress or failure line, the
- * "Use mobile data" action while it waits for Wi-Fi, and the per-gallery "Use mobile data too" switch.
+ * The "Keep offline" controls of a gallery shortcut (Q1): the switch, the progress or failure line, and the
+ * "Change network setting" link while it waits for Wi-Fi (the rule is global, never per gallery).
  * [kept] is the gallery's summary, or null when it is not kept.
  */
 @Composable
 internal fun GalleryKeepOffline(
     kept: GallerySummary?,
     onKeepChange: (Boolean) -> Unit,
-    onMobileDataTooChange: (Boolean) -> Unit,
-    onUseMobileData: () -> Unit
+    onChangeNetworkSetting: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
         Row(
@@ -79,16 +78,8 @@ internal fun GalleryKeepOffline(
                 fontSize = 11.sp
             )
             kept.detail?.let { Text(text = it, color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f), fontSize = 11.sp) }
-            kept.useMobileDataAction?.let { label ->
-                TextButton(onClick = onUseMobileData) { Text(label, color = NeonBlue, fontSize = 12.sp) }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(OfflineMessages.USE_MOBILE_DATA_TOO, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                Switch(checked = kept.useMobileDataToo, onCheckedChange = onMobileDataTooChange)
+            kept.action?.let { label ->
+                TextButton(onClick = onChangeNetworkSetting) { Text(label, color = NeonBlue, fontSize = 12.sp) }
             }
         }
     }

@@ -55,6 +55,7 @@ class OfflineDownloaderTest {
     private lateinit var db: AppDatabase
     private lateinit var store: OfflineStore
     private lateinit var downloader: OfflineDownloader
+    private val settings = InMemoryOfflineSettings()
     private var now = 1_800_000_000_000L
     private var free = 50L shl 30
     private var seq = 0
@@ -67,7 +68,7 @@ class OfflineDownloaderTest {
         val repository = SmugMugRepository(loopback.api(), db.collectionDao(), FakePasswordStore(), app)
         store = OfflineStore(db, filesDir, runId = "run0001", clock = { now }, freeBytes = { free })
         val images = RetryingCallFactory(cdn.clientOver(loopback.client).forFileDownloads(), maxAttempts = 0)
-        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, clock = { now })
+        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, settings = settings, clock = { now })
     }
 
     @After fun tearDown() {
@@ -82,23 +83,35 @@ class OfflineDownloaderTest {
 
     private fun cdnPath(key: String) = "/photos/i-$key/"
 
-    /** An Image bookmark makes [key] wanted (the reference count is a query over it), as the app's "keep offline" does. */
-    private fun want(key: String, resolve: Boolean = false, wifiOnly: Boolean = false) = runBlocking {
-        val exists = sql.query("SELECT COUNT(*) FROM collection_bookmarks WHERE type = 'Image' AND itemKey = '$key'")
-            .use { it.moveToFirst(); it.getInt(0) } > 0
-        if (!exists) {
+    /**
+     * An Image bookmark makes [key] wanted (the reference count is a query over it), as saving a photo does. With [galleryOnly] the
+     * only reference is a kept gallery's item, so the global network rule decides whether a mobile-data pass takes it.
+     */
+    private fun want(key: String, resolve: Boolean = false, galleryOnly: Boolean = false) = runBlocking {
+        if (galleryOnly) {
+            sql.execSQL("DELETE FROM collection_photos WHERE imageKey = '$key'")
+            sql.execSQL("DELETE FROM collection_bookmarks WHERE type = 'Image' AND itemKey = '$key'")
             sql.execSQL(
-                "INSERT INTO collection_bookmarks (collectionId, type, itemKey, title, albumKey, albumTitle, thumbnailUrl) " +
-                    "VALUES (1, 'Image', '$key', 'IMG_$key', '${OfflineFixture.GALLERY_ALBUM_KEY}', 'Class photos', NULL)"
+                "INSERT OR IGNORE INTO offline_galleries (collectionId, albumKey, nickname, title, state, retryable) " +
+                    "VALUES (1, '${OfflineFixture.GALLERY_ALBUM_KEY}', '${OfflineFixture.SITE}', 'Class photos', 'LISTED', 0)"
             )
+            sql.execSQL("INSERT OR IGNORE INTO offline_gallery_items (collectionId, albumKey, imageKey, sortIndex) VALUES (1, '${OfflineFixture.GALLERY_ALBUM_KEY}', '$key', 0)")
+        } else {
+            val exists = sql.query("SELECT COUNT(*) FROM collection_bookmarks WHERE type = 'Image' AND itemKey = '$key'")
+                .use { it.moveToFirst(); it.getInt(0) } > 0
+            if (!exists) {
+                sql.execSQL(
+                    "INSERT INTO collection_bookmarks (collectionId, type, itemKey, title, albumKey, albumTitle, thumbnailUrl) " +
+                        "VALUES (1, 'Image', '$key', 'IMG_$key', '${OfflineFixture.GALLERY_ALBUM_KEY}', 'Class photos', NULL)"
+                )
+            }
         }
         now += 1 // oldest first: the order of the calls is the order of the pass
         store.request(
             key, albumKey = OfflineFixture.GALLERY_ALBUM_KEY,
             sourceUrl = if (resolve) null else FakeOriginals.archivedUri(key),
             expectedBytes = if (resolve) null else FakeOriginals.size(key),
-            md5 = if (resolve) null else FakeOriginals.md5(key),
-            wifiOnly = wifiOnly
+            md5 = if (resolve) null else FakeOriginals.md5(key)
         )
     }
 
@@ -399,8 +412,8 @@ class OfflineDownloaderTest {
         assertEquals(0, cdn.requests.size)
     }
 
-    @Test fun onMobileData_aWifiOnlyPhotoWaits_andAnyNetworkPhotoDownloads() {
-        want(a, wifiOnly = true); want(b, wifiOnly = false)
+    @Test fun onMobileData_aGalleryOnlyPhotoWaitsUnderWifiOnly_andASavedPhotoDownloads() {
+        want(a, galleryOnly = true); want(b)
 
         pass(NetworkClass.ANY)
 
@@ -410,6 +423,44 @@ class OfflineDownloaderTest {
 
         pass(NetworkClass.UNMETERED)
         assertDoneWithFile(a)
+    }
+
+    @Test fun onMobileData_underWifiAndMobile_aGalleryOnlyPhotoDownloads() {
+        runBlocking { settings.set(OfflineNetworkRule.WIFI_AND_MOBILE) }
+        want(a, galleryOnly = true); want(b, galleryOnly = true)
+
+        pass(NetworkClass.ANY)
+
+        assertDoneWithFile(a)
+        assertDoneWithFile(b)
+    }
+
+    @Test fun aStaleWifiOnlyZeroOnAGalleryRow_doesNotLetMobileDataTakeItUnderWifiOnly() {
+        want(a, galleryOnly = true)
+        sql.execSQL("UPDATE offline_galleries SET wifiOnly = 0")
+        sql.execSQL("UPDATE offline_files SET wifiOnly = 0")
+
+        pass(NetworkClass.ANY)
+
+        assertEquals("PENDING", row(a).state)
+        assertEquals(0, cdn.countFor(cdnPath(a)))
+    }
+
+    @Test fun theRuleFlippedMidPass_letsTheCurrentFileFinish_andStartsNoNewGalleryFile() {
+        runBlocking { settings.set(OfflineNetworkRule.WIFI_AND_MOBILE) }
+        want(a, galleryOnly = true); want(b, galleryOnly = true)
+        cdn.hold(cdnPath(a))
+
+        val running = Thread { pass(NetworkClass.ANY) }
+        running.start()
+        assertTrue("the pass reached the first file", cdn.awaitEntered(cdnPath(a)))
+        runBlocking { settings.set(OfflineNetworkRule.WIFI_ONLY) }
+        cdn.release(cdnPath(a))
+        running.join(30_000)
+
+        assertDoneWithFile(a)
+        assertEquals("PENDING", row(b).state)
+        assertEquals(0, cdn.countFor(cdnPath(b)))
     }
 
     @Test fun aRowNoLongerWanted_isNotDownloadedAndItsFileIsCollected() {

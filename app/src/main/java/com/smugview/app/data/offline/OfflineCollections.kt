@@ -25,7 +25,8 @@ import kotlinx.coroutines.CancellationException
 class OfflineCollections(
     private val db: AppDatabase,
     private val store: OfflineStore,
-    private val scheduler: OfflineScheduler
+    private val scheduler: OfflineScheduler,
+    private val settings: OfflineSettings
 ) {
     private val dao get() = db.collectionDao()
 
@@ -41,8 +42,7 @@ class OfflineCollections(
                 sourceUrl = photo.archivedUri?.takeIf { it.isNotEmpty() },
                 title = photo.title,
                 thumbnailUrl = photo.thumbnailUrl,
-                dateTaken = photo.dateTaken,
-                wifiOnly = false
+                dateTaken = photo.dateTaken
             )
         }
         kick()
@@ -64,8 +64,7 @@ class OfflineCollections(
                     nickname = nickname,
                     sourceUrl = sourceUrl?.takeIf { it.isNotEmpty() },
                     title = bookmark.title,
-                    thumbnailUrl = bookmark.thumbnailUrl,
-                    wifiOnly = false
+                    thumbnailUrl = bookmark.thumbnailUrl
                 )
             }
         }
@@ -73,7 +72,7 @@ class OfflineCollections(
     }
 
     /**
-     * "Keep offline" for a bookmarked gallery (Q1 (a)): the gallery is wanted LIST_PENDING and Wi-Fi only (Q3). The
+     * "Keep offline" for a bookmarked gallery (Q1 (a)): the gallery is wanted LIST_PENDING; the global rule ([OfflineSettings]) says on which network. The
      * next pass lists it and downloads its photos. Asking again changes nothing (a LISTED gallery stays LISTED).
      */
     suspend fun keepGalleryOffline(collectionId: Long, albumKey: String, nickname: String, title: String?) {
@@ -90,9 +89,13 @@ class OfflineCollections(
         afterRemoval()
     }
 
-    /** The user's per-gallery "Use mobile data" choice (design 8.1 Q3). A looser rule kicks the any-network work. */
-    suspend fun setGalleryWifiOnly(collectionId: Long, albumKey: String, wifiOnly: Boolean) {
-        if (store.setGalleryWifiOnly(collectionId, albumKey, wifiOnly)) kickIfWanted()
+    /** What the screens show and the dialog edits. */
+    val networkRule: kotlinx.coroutines.flow.StateFlow<OfflineNetworkRule> get() = settings.rule
+
+    /** The one global rule for kept galleries (addendum 2.1). Always kicks: both directions need their chain at once. */
+    suspend fun setGalleryNetwork(rule: OfflineNetworkRule) {
+        settings.set(rule)
+        kick()
     }
 
     suspend fun removePhoto(imageKey: String, collectionId: Long) {
