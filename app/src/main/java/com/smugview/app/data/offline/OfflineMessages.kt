@@ -20,8 +20,8 @@ object OfflineMessages {
     /** The 4-8 lock text, reused unchanged (design section 4). */
     const val LOCKED = "This gallery needs its password. Open it once to unlock it."
 
-    /** Not in design section 4: a photo with no usable source. Flagged to the owner in the 5-1 report. */
-    const val NO_SOURCE = "SmugMug didn't say where to download this photo. Open it once online, then try again."
+    /** A photo with no usable source: SmugMug gave no address, or answered for none of its sizes (findings #24). */
+    const val NO_SOURCE = "SmugMug has no downloadable copy of this photo. You can still view it online, or remove it from this collection."
 
     /** The Q1 switch before the gallery is kept (its size is only known once listed, then it reads [keepOffline]). */
     const val KEEP_OFFLINE = "Keep offline"
@@ -101,7 +101,7 @@ object OfflineMessages {
             FailureReason.GONE -> "$photos can't be saved: removed from SmugMug"
             FailureReason.FORBIDDEN -> "$photos can't be saved: SmugMug refused the download"
             FailureReason.DAMAGED -> "$photos can't be saved: the download arrived damaged"
-            FailureReason.NO_SOURCE -> "$photos can't be saved: SmugMug didn't say where to download them"
+            FailureReason.NO_SOURCE -> "$photos can't be saved: SmugMug has no downloadable copy of them"
             FailureReason.STORAGE_FULL -> "$photos can't be saved: not enough space on this phone"
             FailureReason.UNEXPECTED -> "$photos can't be saved: SmugMug answered with error ${httpCode ?: "unknown"}"
         }

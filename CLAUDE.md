@@ -82,6 +82,8 @@ before starting on a bug.
 - **A video's `ArchivedUri` is a JPEG still, not the video.** A CDN original's ETag is its MD5
   and its path hash is not checked. **A 404 on an original does not mean the photo is gone**:
   107 of 850 originals in one gallery answer 404 while the photo displays (findings #24, `SMUGMUG.md`).
+  Downloads and kept galleries fall back to the largest rendition (`Renditions`); a photo is gone
+  only when its own `image/{key}-0` record is 404 too.
 - **"Offline" for a screen means `SmugMugErrorMapper.isOffline`** (IOException or the synthetic
   504). A 429 or 5xx is SmugMug answering and must not be shown as "you're offline" or
   replaced by saved photos.
