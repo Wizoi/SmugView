@@ -748,9 +748,12 @@ suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, view
     try {
         if (saved == null && sourceUrl == null) throw detailsError ?: com.smugview.app.download.PhotoDownloader.NoSourceException()
         val factory = (context.applicationContext as com.smugview.app.SmugViewApp).callFactory
-        com.smugview.app.download.PhotoDownloader(context, factory)
-            .download(photo.imageKey, detailedPhoto.fileName ?: photo.fileName, saved, sourceUrl)
-        Toast.makeText(context, com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED, Toast.LENGTH_LONG).show()
+        val smaller = com.smugview.app.download.Renditions.fromThumbnail(detailedPhoto.thumbnailUrl)
+            .ifEmpty { com.smugview.app.download.Renditions.fromOriginal(detailedPhoto.archivedUri) }
+        val result = com.smugview.app.download.PhotoDownloader(context, factory)
+            .download(photo.imageKey, detailedPhoto.fileName ?: photo.fileName, saved, sourceUrl, smaller)
+        val said = if (result.original) com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED else com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED_SMALLER
+        Toast.makeText(context, said, Toast.LENGTH_LONG).show()
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {

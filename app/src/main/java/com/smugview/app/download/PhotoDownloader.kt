@@ -43,20 +43,34 @@ class PhotoDownloader(
         MediaScannerConnection.scanFile(context, arrayOf(path), arrayOf(mime), null)
     }
 ) {
-    /** The name the photo was saved under. Throws [PermissionNeededException], [ShareFiles.HttpFailure], [IOException] or [NoSourceException]. */
-    suspend fun download(imageKey: String, fileName: String?, saved: File?, sourceUrl: String?): String = withContext(io) {
+    /** The name the photo was saved under, and whether it is the original; [fallbackUrls] are tried in order only when the original answers 404. Throws [PermissionNeededException], [ShareFiles.HttpFailure], [IOException] or [NoSourceException]. */
+    suspend fun download(
+        imageKey: String,
+        fileName: String?,
+        saved: File?,
+        sourceUrl: String?,
+        fallbackUrls: List<String> = emptyList()
+    ): Saved = withContext(io) {
         if (sdkInt < 29 && !hasLegacyPermission()) throw PermissionNeededException()
         val savedFile = saved?.takeIf { it.isFile && it.length() > 0 }
         if (savedFile != null) {
-            savedFile.inputStream().use { write(it, savedFile.length(), mimeOfFile(savedFile), nameFor(imageKey, fileName)) }
+            Saved(savedFile.inputStream().use { write(it, savedFile.length(), mimeOfFile(savedFile), nameFor(imageKey, fileName)) }, original = true)
         } else {
-            val url = sourceUrl?.takeIf { it.startsWith("https://") } ?: throw NoSourceException()
-            images.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                if (!response.isSuccessful) throw ShareFiles.HttpFailure(response.code)
-                val body = response.body ?: throw IOException("empty body")
-                val mime = body.contentType()?.let { "${it.type}/${it.subtype}" }?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
-                write(body.byteStream(), body.contentLength(), mime, nameFor(imageKey, fileName))
+            val first = sourceUrl?.takeIf { it.startsWith("https://") } ?: throw NoSourceException()
+            // Only a 404 moves on to a smaller size: it is the original that is missing (findings #24). A 429 or 5xx is SmugMug busy.
+            val candidates = listOf(first) + fallbackUrls.filter { it.startsWith("https://") && it != first }
+            var result: Saved? = null
+            for ((index, url) in candidates.withIndex()) {
+                result = images.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                    if (response.code == 404 && index < candidates.lastIndex) return@use null
+                    if (!response.isSuccessful) throw ShareFiles.HttpFailure(response.code)
+                    val body = response.body ?: throw IOException("empty body")
+                    val mime = body.contentType()?.let { "${it.type}/${it.subtype}" }?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
+                    Saved(write(body.byteStream(), body.contentLength(), mime, nameFor(imageKey, fileName)), original = index == 0)
+                }
+                if (result != null) break
             }
+            result ?: throw ShareFiles.HttpFailure(404)
         }
     }
 
@@ -117,6 +131,9 @@ class PhotoDownloader(
         return file
     }
 
+    /** The name the photo was saved under, and whether it is the original (false: SmugMug had none, so a smaller rendition was saved). */
+    data class Saved(val name: String, val original: Boolean)
+
     class PermissionNeededException : Exception("storage permission needed")
 
     /** The phone would not take the file (not a network or disk-full problem). */
@@ -163,11 +180,11 @@ fun downloadMessage(e: Throwable): String {
     return when {
         e is PhotoDownloader.PermissionNeededException -> UserMessages.DOWNLOAD_PERMISSION
         e is IOException && (e.message.orEmpty().contains("ENOSPC") || e.message.orEmpty().contains("No space left")) -> UserMessages.DOWNLOAD_NO_SPACE
+        e is ShareFiles.HttpFailure && e.code == 404 -> UserMessages.DOWNLOAD_NO_COPY
         e is ShareFiles.HttpFailure -> UserMessages.downloadFailed(
             when (e.code) {
                 429 -> Problem.RateLimited(photo)
                 in 500..599 -> Problem.SmugMugTrouble(photo, e.code)
-                404 -> Problem.Gone(photo)
                 else -> Problem.Unexpected(photo, e.code.toString())
             }
         )

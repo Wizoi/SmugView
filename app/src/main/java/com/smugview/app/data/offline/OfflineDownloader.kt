@@ -6,6 +6,7 @@ import com.smugview.app.data.db.OfflineGallery
 import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.data.repository.ImageSource
 import com.smugview.app.data.repository.SmugMugRepository
+import com.smugview.app.download.Renditions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -218,6 +219,9 @@ class OfflineDownloader(
         try {
             var current = row
             var reResolved = false
+            var recordChecked = false
+            var smallerStarted = false
+            val smaller = ArrayDeque<String>()
 
             if (current.sourceUrl == null) {
                 when (val r = resolve(current, fresh = false)) {
@@ -266,6 +270,26 @@ class OfflineDownloader(
                                     continue
                                 }
                             }
+                        }
+                        if (failure.reason == FailureReason.GONE && failure.httpCode == 404) {
+                            // findings #24: SmugMug serves 404 for some originals of photos that exist. The photo is gone only when its
+                            // own record is 404; otherwise take the largest size SmugMug does serve (no size or MD5 to check it against).
+                            if (!recordChecked) {
+                                recordChecked = true
+                                when (val r = resolve(current, fresh = true)) {
+                                    is Resolved.Fail -> { currentCoroutineContext().ensureActive(); store.fail(fileKey, r.failure, write.part); return Step.FAILED }
+                                    is Resolved.Ok -> {
+                                        val moved = applySource(current, r.source)
+                                            ?: run { store.fail(fileKey, DownloadFailure.noSource(), write.part); return Step.FAILED }
+                                        if (moved.sourceUrl != current.sourceUrl) { current = moved; continue }
+                                    }
+                                }
+                            }
+                            if (!smallerStarted) { smallerStarted = true; smaller.addAll(Renditions.fromOriginal(current.sourceUrl)) }
+                            val next = smaller.removeFirstOrNull()
+                            if (next == null) { store.fail(fileKey, DownloadFailure.noSource(), write.part); return Step.FAILED }
+                            current = current.copy(sourceUrl = next, expectedBytes = null, md5 = null)
+                            continue
                         }
                         store.fail(fileKey, failure, write.part)
                         return if (failure.reason == FailureReason.STORAGE_FULL) Step.STOP else Step.FAILED

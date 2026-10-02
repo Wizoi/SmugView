@@ -89,15 +89,18 @@ class PhotoDownloaderTest {
     private var contentType = "image/jpeg"
     private var claimedLength = -1L
     private var offline = false
+    private val codeFor = HashMap<String, Int>()
+    private val bodyFor = HashMap<String, ByteArray>()
     private val cdn = "https://photos.smugmug.com/photos/i-AbC123/0/abcd1234/D/i-AbC123-D.jpg"
 
     private val images = OkHttpClient.Builder().addInterceptor(Interceptor { chain ->
-        requested += chain.request().url.toString()
+        val asked = chain.request().url.toString()
+        requested += asked
         if (offline) throw IOException("Unable to resolve host")
-        val bytes = body
+        val bytes = bodyFor[asked] ?: body
         val length = if (claimedLength >= 0) claimedLength else bytes.size.toLong()
         val type = contentType.toMediaType()
-        Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(code).message("x")
+        Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(codeFor[asked] ?: code).message("x")
             .body(object : ResponseBody() {
                 override fun contentType(): MediaType = type
                 override fun contentLength() = length
@@ -123,7 +126,7 @@ class PhotoDownloaderTest {
     /** Red on the old code: it wrote `Downloads/{name}.jpg` with no photo-store row at all. */
     @Test fun `on Android 13 one row lands in Pictures slash SmugView, published, with the original bytes`() = runBlocking {
         body = bytes
-        val name = downloader().download("AbC123", "Beach Day.jpg", null, cdn)
+        val name = downloader().download("AbC123", "Beach Day.jpg", null, cdn).name
 
         assertEquals("Beach Day.jpg", name)
         val row = FakePhotoStore.rows.single()
@@ -136,7 +139,7 @@ class PhotoDownloaderTest {
     /** Red on the old code: every download was named `.jpg`, whatever it was. */
     @Test fun `a PNG original is saved as a png`() = runBlocking {
         body = bytes; contentType = "image/png"
-        val name = downloader().download("AbC123", "Scan 4.jpg", null, cdn)
+        val name = downloader().download("AbC123", "Scan 4.jpg", null, cdn).name
 
         assertEquals("Scan 4.png", name)
         assertEquals("image/png", FakePhotoStore.rows.single().values.getAsString(MediaStore.Images.Media.MIME_TYPE))
@@ -167,7 +170,7 @@ class PhotoDownloaderTest {
     @Test fun `a saved copy is used, and offline nothing is requested`() = runBlocking {
         val saved = File(work, "saved.orig.jpg").also { it.writeBytes(bytes) }
         offline = true
-        val name = downloader().download("AbC123", "Beach.jpg", saved, cdn)
+        val name = downloader().download("AbC123", "Beach.jpg", saved, cdn).name
 
         assertTrue("no CDN request: $requested", requested.isEmpty())
         assertEquals("Beach.jpg", name)
@@ -205,8 +208,8 @@ class PhotoDownloaderTest {
         body = bytes
         val scanned = ArrayList<String>()
         val d = downloader(sdk = 28, scanned = scanned)
-        val first = d.download("AbC123", "Beach.jpg", null, cdn)
-        val second = d.download("AbC123", "Beach.jpg", null, cdn)
+        val first = d.download("AbC123", "Beach.jpg", null, cdn).name
+        val second = d.download("AbC123", "Beach.jpg", null, cdn).name
 
         val dir = File(work, "Pictures/SmugView")
         assertEquals("Beach.jpg", first)
@@ -233,5 +236,69 @@ class PhotoDownloaderTest {
     @Test fun `nothing saved and no address is its own failure`() {
         val e = try { runBlocking { downloader().download("AbC123", "Beach.jpg", null, null) }; null } catch (e: Exception) { e }
         assertTrue(e is PhotoDownloader.NoSourceException)
+    }
+
+    private val original = cdn
+    private val x5 = "https://photos.smugmug.com/photos/i-AbC123/0/abcd1234/X5/i-AbC123-X5.jpg"
+    private val x3 = "https://photos.smugmug.com/photos/i-AbC123/0/abcd1234/X3/i-AbC123-X3.jpg"
+    private val smaller = ByteArray(900) { (it * 3).toByte() }
+
+    /** Red on the old code: an original that answers 404 (107 of 850 in one gallery, findings #24) failed the save, with "Error 404.", while the photo was on screen. */
+    @Test fun `an original that answers 404 saves the largest size SmugMug has, and says it is not the original`() = runBlocking {
+        codeFor[original] = 404; bodyFor[x5] = smaller
+        val saved = downloader().download("AbC123", "Beach.jpg", null, original, Renditions.fromOriginal(original))
+
+        assertEquals(listOf(original, x5), requested)
+        assertFalse("not the original", saved.original)
+        assertEquals("Beach.jpg", saved.name)
+        assertArrayEquals(smaller, FakePhotoStore.rows.single().file.readBytes())
+    }
+
+    @Test fun `a size that is missing too is skipped for the next one`() = runBlocking {
+        codeFor[original] = 404; codeFor[x5] = 404; bodyFor[x3] = smaller
+        val saved = downloader().download("AbC123", "Beach.jpg", null, original, listOf(x5, x3))
+
+        assertEquals(listOf(original, x5, x3), requested)
+        assertArrayEquals(smaller, FakePhotoStore.rows.single().file.readBytes())
+        assertFalse(saved.original)
+    }
+
+    @Test fun `an original that answers is saved as the original and no smaller size is asked for`() = runBlocking {
+        body = bytes
+        val saved = downloader().download("AbC123", "Beach.jpg", null, original, listOf(x5, x3))
+
+        assertEquals(listOf(original), requested)
+        assertTrue(saved.original)
+    }
+
+    @Test fun `a 503 on the original does not fall back, because SmugMug is busy and not missing the photo`() {
+        code = 503
+        val e = try { runBlocking { downloader().download("AbC123", "Beach.jpg", null, original, listOf(x5)) }; null } catch (e: Exception) { e }
+
+        assertEquals(listOf(original), requested)
+        assertTrue(downloadMessage(e!!), downloadMessage(e).contains("having trouble"))
+    }
+
+    /** Red on the old code: the toast said "Couldn't save the photo. Error 404." with no cause and no way out. */
+    @Test fun `when SmugMug has no size of the photo at all, the message says so and not Error 404`() {
+        code = 404
+        val e = try { runBlocking { downloader().download("AbC123", "Beach.jpg", null, original, listOf(x5, x3)) }; null } catch (e: Exception) { e }
+
+        assertEquals(listOf(original, x5, x3), requested)
+        assertEquals(UserMessages.DOWNLOAD_NO_COPY, downloadMessage(e!!))
+        assertFalse(UserMessages.DOWNLOAD_NO_COPY.contains("404"))
+        assertTrue("no row left", FakePhotoStore.rows.isEmpty())
+    }
+
+    @Test fun `the smaller sizes come from the thumbnail or the original, largest first, and from nothing else`() {
+        val th = "https://photos.smugmug.com/photos/i-K/0/h/Th/i-K-Th.jpg"
+        assertEquals(
+            listOf("X5", "X4", "X3", "XL", "L").map { "https://photos.smugmug.com/photos/i-K/0/h/$it/i-K-$it.jpg" },
+            Renditions.fromThumbnail(th)
+        )
+        assertEquals("https://p.example/Family/i-K/0/X5/i-K-X5.jpg", Renditions.fromOriginal("https://p.example/Family/i-K/0/D/i-K-D.jpg").first())
+        assertTrue(Renditions.fromThumbnail(null).isEmpty())
+        assertTrue(Renditions.fromThumbnail("https://p.example/some/other.jpg").isEmpty())
+        assertTrue(Renditions.fromOriginal("http://p.example/D/i-K-D.jpg").isEmpty())
     }
 }

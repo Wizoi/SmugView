@@ -38,6 +38,12 @@ object FakeOriginals {
 
     fun size(key: String, video: Boolean = false): Long = bytes(key, video).size.toLong()
 
+    /** What a smaller size of the photo holds: the first half of the original, so it can never be mistaken for it (findings #24). */
+    fun renditionBytes(key: String): ByteArray = bytes(key).copyOf(bytes(key).size / 2)
+
+    fun renditionKeyOf(path: String): Pair<String, String>? =
+        Regex("""/photos/i-([^/]+)/0/[^/]+/(X5|X4|X3|XL|L)/i-\1-\2\.jpg""").find(path)?.let { it.groupValues[1] to it.groupValues[2] }
+
     /** The live shape: `https://photos.smugmug.com/photos/i-{key}/0/{hash}/D/i-{key}-D.jpg` (a wrong hash still answers 200, P2). */
     fun archivedUri(key: String, video: Boolean = false): String =
         "https://photos.smugmug.com/photos/i-$key/0/${md5(key, video).take(8)}/D/i-$key-D.jpg"
@@ -68,6 +74,12 @@ class FakeCdn : AutoCloseable {
 
     /** Keys whose original is gone: 404 (P4). */
     val gone: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** Keys whose original answers 404 while the photo and its smaller sizes are served: the live shape of findings #24. */
+    val originalsGone: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** Sizes (`X5`, `X4`...) that answer 404 for every photo. */
+    val missingSizes: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     /** Keys whose original is a video: the body is the 164,821 B JPEG still (P7). */
     val videos: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
@@ -185,8 +197,12 @@ class FakeCdn : AutoCloseable {
             sc.times--
             return Triple(sc.code, sc.headers + mapOf("Content-Type" to "text/html", "Cache-Control" to "no-store"), ByteArray(0))
         }
+        FakeOriginals.renditionKeyOf(path)?.let { (k, size) ->
+            if (k in gone || size in missingSizes) return Triple(404, mapOf("Content-Type" to "text/html", "Cache-Control" to "no-store"), "<html>Not Found</html>".toByteArray())
+            return Triple(200, mapOf("Content-Type" to "image/jpeg", "Cache-Control" to "max-age=31536000"), FakeOriginals.renditionBytes(k))
+        }
         val key = FakeOriginals.keyOf(path)
-        if (key == null || key in gone) {
+        if (key == null || key in gone || key in originalsGone) {
             return Triple(404, mapOf("Content-Type" to "text/html", "Cache-Control" to "no-store"), "<html>Not Found</html>".toByteArray())
         }
         val video = key in videos

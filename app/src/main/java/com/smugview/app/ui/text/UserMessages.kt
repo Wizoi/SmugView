@@ -217,6 +217,8 @@ object UserMessages {
     const val DOWNLOAD_OFFLINE = "You're offline, and this photo isn't saved on this phone."
     const val DOWNLOAD_PERMISSION = "To save photos on this Android version, SmugView needs permission to use storage. You can allow it in Settings."
     const val DOWNLOAD_NO_SPACE = "Not enough space on this phone to save this photo."
+    const val DOWNLOAD_NO_COPY = "SmugMug has no copy of this photo to save. It may have been removed. Go back and refresh the gallery."
+    const val DOWNLOAD_SAVED_SMALLER = "Saved to Pictures/SmugView. SmugMug couldn't provide the original, so this is the largest size it has."
 
     /** `SHARE_CAPTION`: under the QR code of the share dialog. */
     const val SHARE_CAPTION = "Opens the SmugMug page. Password galleries ask for their password there."

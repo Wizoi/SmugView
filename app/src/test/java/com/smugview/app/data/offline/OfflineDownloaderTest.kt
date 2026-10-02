@@ -260,6 +260,60 @@ class OfflineDownloaderTest {
         assertDoneWithFile(b)
     }
 
+    private fun renditionSaved(key: String) {
+        val r = row(key)
+        assertEquals("$key should be DONE", "DONE", r.state)
+        assertTrue("it is a smaller size, not the original", File(filesDir, r.relPath!!).readBytes().contentEquals(FakeOriginals.renditionBytes(key)))
+    }
+
+    /** Red on the old code: a 404 on the original was GONE, though the photo is on SmugMug and its smaller sizes answer (findings #24). */
+    @Test fun originalAnswers404_butThePhotoExists_savesTheLargestSize() {
+        want("s00001")
+        cdn.originalsGone += "s00001"
+
+        pass()
+
+        renditionSaved("s00001")
+        assertEquals("one look at the photo's own record", 1, resolveRequests("s00001"))
+        assertTrue("the largest size first", cdn.requests.map { it.path }.filter { "s00001" in it }.let { it[1].contains("/X5/") })
+        assertEquals("a pass leaves no part file", emptyList<String>(), parts())
+    }
+
+    @Test fun aSizeThatIsMissingIsSkipped() {
+        want("s00001")
+        cdn.originalsGone += "s00001"; cdn.missingSizes += "X5"
+
+        pass()
+
+        renditionSaved("s00001")
+        assertTrue(cdn.requests.any { it.path.contains("/X4/") })
+    }
+
+    /** The record exists, nothing is served: not "removed" (that needs the record to be 404), and not worth retrying. */
+    @Test fun originalAndEverySizeAnswer404_whileTheRecordExists_isNotGone() {
+        want("s00001")
+        cdn.originalsGone += "s00001"; cdn.missingSizes.addAll(listOf("X5", "X4", "X3", "XL", "L"))
+
+        pass()
+
+        val r = row("s00001")
+        assertEquals("FAILED", r.state)
+        assertEquals("NO_SOURCE", r.failure)
+        assertFalse(r.retryable)
+        assertEquals(emptyList<String>(), parts())
+    }
+
+    /** The photo's record is 404 too: that is gone. (The key is unknown to the fake API, as a deleted photo is.) */
+    @Test fun originalAnswers404_andTheRecordIsGone_isGone() {
+        want(a)
+        cdn.gone += a
+
+        pass()
+
+        assertEquals("GONE", row(a).failure)
+        assertTrue("no smaller size was asked for", cdn.requests.none { it.path.contains("/X5/") })
+    }
+
     @Test fun forbidden403_looksTheSourceUpOnce_thenIsForbidden() {
         want("s00001")
         cdn.respondWith(cdnPath("s00001"), 403)
