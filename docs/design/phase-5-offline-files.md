@@ -512,6 +512,8 @@ claims):
 
 ### 8.1 Owner sign-off (2026-10-01)
 
+**Superseded 2026-10-02 (Phase 6 addendum `phase-6-addendum-network-setting.md`):** the per-gallery "Use mobile data too" switch and "Use mobile data" action below were replaced by one global rule, `OfflineSettings`; both `wifiOnly` columns are dead. Single photos are unchanged.
+
 All eight questions answered; Q1, Q2, Q4, Q5, Q6, Q7 and Q8 are **as recommended**. **Q3 is (a) with an
 override:** the owner wants a way to override the Wi-Fi rule, so a kept gallery can be saved over any
 network if the user chooses. Consequences for the steps (the implementer follows these over any earlier

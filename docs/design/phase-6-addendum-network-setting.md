@@ -1,6 +1,9 @@
+| 6-N1 | Test fixture: the fixture's keys `Hk42gZp`, `n83tQ3s`, `XVRvVTM` are all collection photos, so the `want(..., galleryOnly)` helpers first delete the key's photo and bookmark rows. | Without that a "gallery-only" file was always photo-wanted and every test passed on any network. |
+| 6-N2 | The "what will use data" line comes from `OfflineStore.galleryWaiting()` (a DAO sum of `expectedBytes`, 8 MB for an unknown size, plus an "unlisted" flag), read by a `NetworkSettingHost` with `produceState` and read again after each change, not from the gallery summaries. | The dialog is not tied to one collection, so it cannot take the summaries of one. |
+| 6-N3 | `onCapabilitiesChanged` is also collected (not only `onAvailable`/`onLost`). | A hotspot can become metered with no availability event. |
 # Design addendum: Phase 6: one network setting for saving offline
 
-Status: **SIGNED OFF 2026-10-01: all six questions as recommended (1a, 2a, 3a, 4a, 5a, 6a).** Steps 6-N1..6-N4 run after 6-16 and before 6-17.
+Status: **SIGNED OFF 2026-10-01: all six questions as recommended (1a, 2a, 3a, 4a, 5a, 6a). 6-N1, 6-N2, 6-N3 and 6-N4 committed 2026-10-02; the emulator and phone checks are in 6-21 and 6-22.** Steps 6-N1..6-N4 run after 6-16 and before 6-17.
 Written 2026-10-01 by the planning agent, read-only, against `main` at `ea2dbdc` (6-11b), with uncommitted
 work by another agent in the tree. **Not re-run:** the suite and Gradle (another agent is building).
 Owner decision that starts this addendum *(given, 2026-10-01)*: **replace the per-gallery "Use mobile data
@@ -228,3 +231,6 @@ a minute, without a restart. Switch back mid-gallery → requests stop after the
 
 | Step | Deviation | Why |
 |---|---|---|
+| 6-N1 | Test fixture: the fixture's keys `Hk42gZp`, `n83tQ3s`, `XVRvVTM` are all collection photos, so the `want(..., galleryOnly)` helpers first delete the key's photo and bookmark rows. | Without that a "gallery-only" file was always photo-wanted, and every gallery test passed on any network. |
+| 6-N2 | The "what will use data" line comes from `OfflineStore.galleryWaiting()` (a DAO sum of `expectedBytes`, 8 MB for an unknown size, plus an "unlisted" flag), read by a `NetworkSettingHost` with `produceState` and read again after each change, not from the gallery summaries. | The dialog belongs to no one collection, so it cannot take one collection's summaries. |
+| 6-N3 | `onCapabilitiesChanged` is collected too, not only `onAvailable` and `onLost`. | A hotspot can become metered with no availability event. |

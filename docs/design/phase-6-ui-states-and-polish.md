@@ -1,3 +1,4 @@
+| **Superseded 2026-10-02:** the owner chose one global network rule after all; see `phase-6-addendum-network-setting.md` (steps 6-N1 to 6-N4). |
 # Design: Phase 6: UI states and polish (T7, T10, casting)
 
 Status: **SIGNED OFF 2026-10-01 (§9.1: all 16 as recommended).** Was: DRAFT, needs owner sign-off (§9). Steps **6-0** (harness and evidence), **6-1** (folder
@@ -684,7 +685,7 @@ Deferred, with the reason:
 - **R-60, R-62** (filtering on Main, hardcoded dispatchers): performance, not in the Phase 6 row.
 - **R-65, R-66, R-68** (test hygiene): not in the Phase 6 row; R-66's copied functions are untouched
   by Phase 6.
-- **A Settings screen** (Q15 (a)).
+- **A Settings screen** (Q15 (a)). *Superseded 2026-10-02: a one-option dialog on the Collections top bar (not a screen) holds the global network rule; see the addendum.*
 - **Anything that changes what SmugMug serves** (N8): outside the app.
 
 ## 14. Recorded deviations
