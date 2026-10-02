@@ -2309,6 +2309,29 @@ class SmugViewModel @Inject constructor(
         return repository.getNodeById(nodeId)
     }
 
+    /**
+     * The web page to share for [photo] (6-14, design 3.10): its own `WebUri`, else the gallery's page from the index plus
+     * `/i-{key}` (found by the photo's album link, else by the gallery path in its thumbnail URL, else by the nearest cached
+     * gallery node), else null. Never an `ArchivedUri` or a CDN address.
+     */
+    suspend fun shareLinkFor(photo: AlbumImageData): String? {
+        if (com.smugview.app.share.ShareContent.isShareable(photo.webUri)) return photo.webUri?.trim()
+        val gallery = try {
+            val key = com.smugview.app.share.ShareContent.albumKeyOf(photo.uris?.album ?: photo.uris?.imageAlbum)
+                ?: getAlbumKeyFromWebUri(photo.thumbnailUrl)
+            key?.let { repository.cachedGalleryWebUri(it) }
+                ?: getNearestCachedAncestorNode(photo.thumbnailUrl)?.takeIf { it.type == "Album" }?.webUri
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        return com.smugview.app.share.ShareContent.photoLink(photo.webUri, gallery, photo.imageKey)
+    }
+
+    /** The saved copy of [imageKey] (a DONE file on this phone), or null. */
+    suspend fun savedFileOf(imageKey: String): java.io.File? = offlineReader.localFile(imageKey)
+
     suspend fun getAlbumName(albumKey: String): String {
         val cachedNode = getCachedNodeById(albumKey)
         if (cachedNode != null) return cachedNode.title

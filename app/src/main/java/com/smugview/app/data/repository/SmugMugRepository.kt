@@ -1584,6 +1584,9 @@ class SmugMugRepository @Inject constructor(
         return dao.getAlbumByUrlPath(nickname, path)
     }
 
+    /** A gallery's web page from the index (6-14): the share link of a photo that has none of its own. */
+    suspend fun cachedGalleryWebUri(albumKey: String): String? = dao.getAlbumByKey(albumKey)?.webUri
+
     suspend fun clearSearchHistory(nickname: String = "") {
         if (nickname.isNotEmpty()) {
             dao.clearSearchHistory(nickname)

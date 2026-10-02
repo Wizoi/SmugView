@@ -619,7 +619,7 @@ fun CollectionsTabView(
                                                                     title = img.title,
                                                                     caption = img.title,
                                                                     thumbnailUrl = img.thumbnailUrl,
-                                                                    archivedUri = img.extraData ?: img.thumbnailUrl,
+                                                                    archivedUri = null,
                                                                     date = null,
                                                                     dateTime = null,
                                                                     keywords = null,
@@ -629,7 +629,9 @@ fun CollectionsTabView(
                                                                     format = "JPG",
                                                                     videoUrl = null
                                                                 )
-                                                                com.smugview.app.ui.detail.sharePhoto(context, scope, detailItem)
+                                                                scope.launch {
+                                                                    com.smugview.app.ui.detail.sharePhoto(context, scope, viewModel, detailItem, viewModel.shareLinkFor(detailItem))
+                                                                }
                                                             },
                                                             modifier = Modifier.size(24.dp)
                                                         ) {

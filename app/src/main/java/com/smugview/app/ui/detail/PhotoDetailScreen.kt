@@ -665,95 +665,63 @@ fun ExifCardItem(
     }
 }
 
-fun sharePhotoLink(context: Context, photo: AlbumImageData) {
-    val shareUrl = photo.webUri ?: photo.archivedUri ?: return
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, shareUrl)
-    }
-    context.startActivity(Intent.createChooser(intent, "Share Photo Link"))
-}
+/**
+ * "Share picture" (design 3.10): the saved copy, else the X3 rendition, stripped of camera data and location
+ * ([com.smugview.app.share.ShareFiles]), handed to the share sheet with the photo's web page as the text. [link] is null
+ * when the photo has no page (the picture is still shared, with no text).
+ */
+fun sharePhoto(
+    context: Context,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    viewModel: SmugViewModel,
+    photo: AlbumImageData,
+    link: String?
+) {
+    Toast.makeText(context, com.smugview.app.ui.text.UserMessages.SHARE_PREPARING, Toast.LENGTH_SHORT).show()
 
-fun sharePhoto(context: Context, coroutineScope: kotlinx.coroutines.CoroutineScope, photo: AlbumImageData) {
-    val imageUrl = photo.archivedUri ?: photo.thumbnailUrl ?: return
-    val webLink = photo.webUri ?: photo.archivedUri ?: ""
-
-    Toast.makeText(context, "Preparing image for sharing...", Toast.LENGTH_SHORT).show()
-
-    coroutineScope.launch(Dispatchers.IO) {
+    coroutineScope.launch {
         try {
-            val url = URL(imageUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.connect()
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val inputStream = connection.inputStream
-                val sharedDir = File(context.cacheDir, "shared_images").apply { mkdirs() }
-                val file = File(sharedDir, "shared_image_${photo.imageKey}.jpg")
-                val outputStream = FileOutputStream(file)
-                val buffer = ByteArray(4096)
-                var bytesRead: Int
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                }
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
+            val factory = (context.applicationContext as com.smugview.app.SmugViewApp).callFactory
+            val file = com.smugview.app.share.ShareFiles(context.cacheDir, factory)
+                .prepare(photo.imageKey, viewModel.savedFileOf(photo.imageKey), photo.thumbnailUrl)
+            val fileUri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val description = photo.fileName?.takeIf { it.isNotBlank() }
+                ?: photo.title?.takeIf { it.isNotBlank() }
+                ?: "Photo ${photo.imageKey}"
 
-                val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    file
-                )
-
-                val imageDescription = photo.fileName?.takeIf { it.isNotBlank() }
-                    ?: getFileNameFromUrl(imageUrl, photo.imageKey)
-
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "image/jpeg"
-                    putExtra(Intent.EXTRA_STREAM, fileUri)
-                    putExtra(Intent.EXTRA_TEXT, webLink)
-                    putExtra(Intent.EXTRA_SUBJECT, imageDescription)
-                    clipData = ClipData.newRawUri("", fileUri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-
-                withContext(Dispatchers.Main) {
-                    val chooser = Intent.createChooser(intent, "Share Photo").apply {
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(chooser)
-                }
-            } else {
-                withContext(Dispatchers.Main) {
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, webLink)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Share Link"))
-                }
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, fileUri)
+                if (link != null) putExtra(Intent.EXTRA_TEXT, link)
+                putExtra(Intent.EXTRA_SUBJECT, description)
+                clipData = ClipData.newRawUri("", fileUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
+            val chooser = Intent.createChooser(intent, com.smugview.app.ui.text.UserMessages.SHARE_PICTURE).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(chooser)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            e.printStackTrace()
-            withContext(Dispatchers.Main) {
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, webLink)
-                }
-                context.startActivity(Intent.createChooser(intent, "Share Link"))
-            }
+            Toast.makeText(context, com.smugview.app.ui.text.UserMessages.shareFailed(shareProblem(e)), Toast.LENGTH_SHORT).show()
         }
     }
 }
 
-fun getFileNameFromUrl(url: String, fallbackKey: String): String {
-    val segment = url.substringAfterLast('/').substringBefore('?')
-    if (segment.isEmpty()) return "shared_image_$fallbackKey.jpg"
-    val decodedSegment = try {
-        java.net.URLDecoder.decode(segment, "UTF-8")
-    } catch (e: Exception) {
-        segment
+/** What a failed share says (design 3.5): a status from SmugMug is never "you went offline" (CLAUDE.md, offline means no answer). */
+internal fun shareProblem(e: Throwable): com.smugview.app.ui.text.Problem {
+    val photo = com.smugview.app.ui.text.Subject.Photo
+    return when {
+        e is com.smugview.app.share.ShareFiles.HttpFailure -> when (e.code) {
+            429 -> com.smugview.app.ui.text.Problem.RateLimited(photo)
+            in 500..599 -> com.smugview.app.ui.text.Problem.SmugMugTrouble(photo, e.code)
+            404 -> com.smugview.app.ui.text.Problem.Gone(photo)
+            else -> com.smugview.app.ui.text.Problem.Unexpected(photo, e.code.toString())
+        }
+        e is com.smugview.app.share.ShareFiles.NotAPictureException -> com.smugview.app.ui.text.Problem.Unexpected(photo, "unreadable")
+        else -> com.smugview.app.ui.text.Problem.from(e, photo)
     }
-    return decodedSegment.replace(Regex("[\\\\/:*?\"<>|]"), "_")
 }
 
 fun getBaseNameFromUrl(url: String, fallbackKey: String): String {

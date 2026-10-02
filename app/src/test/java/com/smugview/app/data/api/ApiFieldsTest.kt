@@ -53,6 +53,14 @@ class ApiFieldsTest {
         assertTrue("_filter lists both", requested("_filter").containsAll(listOf("ArchivedSize", "ArchivedMD5")))
     }
 
+    /** Red on the old filter: the album listing did not ask for WebUri, so a gallery photo had no web page and its share fell back to the CDN original (6-14, L6). */
+    @Test fun `an album's photos carry their own web page`() = runBlocking {
+        val image = api.getAlbumImages("N74KSK", "test-key").response.images!!.first()
+
+        assertTrue("WebUri is the gallery page plus /i-{key}: ${image.webUri}", image.webUri?.endsWith("/i-${image.imageKey}") == true && image.webUri!!.startsWith("https://"))
+        assertTrue("_filter lists WebUri", "WebUri" in requested("_filter"))
+    }
+
     /** A real `album!images` answer (read-only, live, 2026-10-01) parses into the new fields. */
     @Test fun `a real album listing parses ArchivedSize and ArchivedMD5`() {
         val json = ApiFieldsTest::class.java.classLoader!!
@@ -83,7 +91,7 @@ class ApiFieldsTest {
         assertNotNull("Uris.ImageSizeDetails", image.uris?.imageSizeDetails)
     }
 
-    /** DateTime, WebUri and ImageAlbum are never present (P4): asking for them only lengthens the URL. */
+    /** DateTime, WebUri (except on an album's listing) and ImageAlbum are never present (P4): asking for them only lengthens the URL. */
     @Test fun `fields that are never present are not requested`() = runBlocking {
         val calls: List<Pair<String, suspend () -> Any?>> = listOf(
             "getAlbumImages" to { api.getAlbumImages("N74KSK", "test-key") },
@@ -97,7 +105,8 @@ class ApiFieldsTest {
             val fields = requested("_filter")
             val links = requested("_filteruri")
             assertFalse("$name requests DateTime", "DateTime" in fields)
-            assertFalse("$name requests WebUri", "WebUri" in fields)
+            // An album's listing does answer WebUri (L6, 6-14); search, tags, recent and a single photo do not.
+            if (name != "getAlbumImages") assertFalse("$name requests WebUri", "WebUri" in fields)
             assertFalse("$name requests ImageAlbum", "ImageAlbum" in links)
         }
     }

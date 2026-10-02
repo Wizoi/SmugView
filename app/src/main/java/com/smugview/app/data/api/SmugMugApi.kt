@@ -85,7 +85,7 @@ interface SmugMugApi {
         // Every page is this same call with `start`; Pages.NextPage drops _expand (R-27), so it is never followed.
         @Query("start") start: Int? = null,
         @Query("_expand") expand: String = "LargestVideo",
-        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,ArchivedSize,ArchivedMD5,Keywords,KeywordArray,Uris",
+        @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,ArchivedUri,Date,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,ArchivedSize,ArchivedMD5,Keywords,KeywordArray,Uris",
         // ImageSizeDetails is only present when listed here (P4, R-29): the zoom reads its real tiers from it.
         @Query("_filteruri") filterUri: String = "LargestVideo,Album,ImageSizeDetails",
         @Query("_verbosity") verbosity: Int = 1,

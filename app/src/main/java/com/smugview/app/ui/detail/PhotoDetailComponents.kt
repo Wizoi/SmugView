@@ -366,6 +366,13 @@ fun PhotoActionCapsule(
 ) {
     val context = LocalContext.current
     var showShareDialog by remember { mutableStateOf(false) }
+    // The web page of this photo (6-14): its own, or its gallery's from the index. Null once resolved = no link to share.
+    var shareLink by remember(photo.imageKey, photo.webUri) { mutableStateOf<String?>(null) }
+    var linkResolved by remember(photo.imageKey, photo.webUri) { mutableStateOf(false) }
+    LaunchedEffect(photo.imageKey, photo.webUri, photo.thumbnailUrl) {
+        shareLink = viewModel.shareLinkFor(photo)
+        linkResolved = true
+    }
     Row(
         modifier = Modifier
             .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(32.dp))
@@ -386,13 +393,17 @@ fun PhotoActionCapsule(
             Icon(Icons.Default.BookmarkBorder, "Save", tint = Color.White, modifier = Modifier.size(26.dp))
         }
         IconButton(onClick = {
-            if (photo.webUri != null || photo.archivedUri != null) {
-                showShareDialog = true
-            } else {
-                Toast.makeText(context, "Loading photo details, please wait...", Toast.LENGTH_SHORT).show()
+            when {
+                !linkResolved -> Toast.makeText(context, "Loading photo details, please wait...", Toast.LENGTH_SHORT).show()
+                shareLink == null -> Toast.makeText(context, com.smugview.app.ui.text.UserMessages.SHARE_NO_LINK, Toast.LENGTH_LONG).show()
+                else -> showShareDialog = true
             }
         }) {
-            Icon(Icons.Default.Share, "Share Link", tint = Color.White, modifier = Modifier.size(26.dp))
+            Icon(
+                Icons.Default.Share, "Share Link",
+                tint = Color.White.copy(alpha = if (linkResolved && shareLink == null) 0.35f else 1f),
+                modifier = Modifier.size(26.dp)
+            )
         }
         IconButton(onClick = {
             scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
@@ -405,14 +416,11 @@ fun PhotoActionCapsule(
     }
 
     if (showShareDialog) {
-        val shareUrl = photo.webUri ?: photo.archivedUri ?: ""
         com.smugview.app.ui.component.QrShareDialog(
             title = photo.title?.takeIf { it.isNotBlank() } ?: (photo.fileName ?: "Photo"),
-            url = shareUrl,
+            url = shareLink.orEmpty(),
             onDismissRequest = { showShareDialog = false },
-            // Keep the richer native flow: it shares the actual downloaded image file plus the
-            // link, not just the link as plain text.
-            onShareVia = { ctx -> sharePhoto(ctx, scope, photo) }
+            onSharePicture = { ctx -> sharePhoto(ctx, scope, viewModel, photo, shareLink) }
         )
     }
 }

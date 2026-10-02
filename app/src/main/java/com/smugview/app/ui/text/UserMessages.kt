@@ -212,6 +212,25 @@ object UserMessages {
     /** `DOWNLOAD_FAILED`: a photo could not be saved to this phone (the toast of the download button). */
     fun downloadFailed(cause: Problem): String = "Couldn't save the photo. ${shortCause(cause)}"
 
+    /** `SHARE_CAPTION`: under the QR code of the share dialog. */
+    const val SHARE_CAPTION = "Opens the SmugMug page. Password galleries ask for their password there."
+
+    /** `SHARE_LINK` / `SHARE_PICTURE`: the buttons of the share dialog. */
+    const val SHARE_LINK = "Share link"
+    const val SHARE_PICTURE = "Share picture"
+
+    /** `SHARE_NO_LINK`: nothing to show a QR code for, or to copy or send. */
+    const val SHARE_NO_LINK = "No web link for this photo yet. Open its gallery once while online."
+
+    /** `SHARE_PREPARING`: toast while the picture is made ready. */
+    const val SHARE_PREPARING = "Preparing the picture…"
+
+    /** `SHARE_STRIPPED`: small print under "Share picture". */
+    const val SHARE_STRIPPED = "Camera details and location are removed from shared pictures."
+
+    /** `SHARE_FAILED`: the picture could not be made ready (toast). */
+    fun shareFailed(cause: Problem): String = "Couldn't prepare the picture. ${shortCause(cause)}"
+
     /** `PASSWORD_NOT_KEPT` (design 5, Q5 (a)): the password prompt, once, when this phone's secure storage isn't working. */
     const val PASSWORD_NOT_KEPT =
         "This phone's secure storage isn't working, so this password will be asked for again next time SmugView starts."

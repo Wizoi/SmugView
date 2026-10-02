@@ -6,6 +6,8 @@ import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -21,6 +23,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,8 +31,12 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.smugview.app.share.ShareContent
+import com.smugview.app.ui.text.UserMessages
 import com.smugview.app.ui.theme.NeonBlue
 import com.smugview.app.ui.theme.SurfaceDark
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The single sharing surface for a folder/gallery/photo link: shows a scannable QR code for the
@@ -37,20 +44,25 @@ import com.smugview.app.ui.theme.SurfaceDark
  * can scan it to open that SmugMug page — plus a fallback into that native share sheet for
  * anything else (messaging apps, email, etc.). This dialog IS the existing "Share" action's
  * destination; it's not a second button anywhere.
+ *
+ * A blank, non-`https` or CDN [url] (design 3.10) shows [UserMessages.SHARE_NO_LINK] instead of a code, and its
+ * buttons are off. The code is drawn on `Dispatchers.Default`.
  */
 @Composable
 fun QrShareDialog(
     title: String,
     url: String,
     onDismissRequest: () -> Unit,
-    // Overridable so a photo can still hand the native share sheet the actual image file (plus
-    // this link) instead of just the link as plain text, which is all the default does.
-    onShareVia: ((android.content.Context) -> Unit)? = null
+    // A photo also offers its picture (stripped of camera data) next to the link.
+    onSharePicture: ((android.content.Context) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val hasLink = ShareContent.isShareable(url)
 
-    val qrBitmap = remember(url) { generateQrCodeBitmap(url) }
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, url) {
+        value = if (hasLink) withContext(Dispatchers.Default) { generateQrCodeBitmap(url) } else null
+    }
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -66,7 +78,7 @@ fun QrShareDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -77,39 +89,50 @@ fun QrShareDialog(
                         .background(Color.White),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (qrBitmap != null) {
-                        Image(
-                            bitmap = qrBitmap.asImageBitmap(),
+                    val bitmap = qrBitmap
+                    when {
+                        !hasLink -> Text(
+                            text = UserMessages.SHARE_NO_LINK,
+                            color = Color.Black,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                        bitmap != null -> Image(
+                            bitmap = bitmap.asImageBitmap(),
                             contentDescription = "QR code for $title",
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(12.dp)
                         )
-                    } else {
-                        CircularProgressIndicator(color = NeonBlue)
+                        else -> CircularProgressIndicator(color = NeonBlue)
                     }
                 }
 
-                Text(
-                    text = "Scan to open on the web",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 13.sp
-                )
+                if (hasLink) {
+                    Text(
+                        text = UserMessages.SHARE_CAPTION,
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
 
-                Text(
-                    text = url,
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    Text(
+                        text = url,
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
+                        enabled = hasLink,
                         onClick = {
                             clipboardManager.setText(AnnotatedString(url))
                             Toast.makeText(context, "Link copied", Toast.LENGTH_SHORT).show()
@@ -123,24 +146,37 @@ fun QrShareDialog(
                     }
 
                     Button(
+                        enabled = hasLink,
                         onClick = {
-                            if (onShareVia != null) {
-                                onShareVia(context)
-                            } else {
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, "Checkout '$title': $url")
-                                }
-                                context.startActivity(Intent.createChooser(intent, "Share"))
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, "Checkout '$title': $url")
                             }
+                            context.startActivity(Intent.createChooser(intent, UserMessages.SHARE_LINK))
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = NeonBlue, contentColor = Color.Black)
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Share via…", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(UserMessages.SHARE_LINK, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+
+                if (onSharePicture != null) {
+                    OutlinedButton(
+                        onClick = { onSharePicture(context) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) {
+                        Text(UserMessages.SHARE_PICTURE, fontSize = 13.sp)
+                    }
+                    Text(
+                        text = UserMessages.SHARE_STRIPPED,
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         },
@@ -163,13 +199,10 @@ private fun generateQrCodeBitmap(url: String, sizePx: Int = 512): Bitmap? {
     return try {
         val hints = mapOf(EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M, EncodeHintType.MARGIN to 0)
         val bitMatrix = QRCodeWriter().encode(url, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565)
-        for (x in 0 until sizePx) {
-            for (y in 0 until sizePx) {
-                bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
-            }
+        val pixels = IntArray(sizePx * sizePx) { i ->
+            if (bitMatrix[i % sizePx, i / sizePx]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
         }
-        bitmap
+        Bitmap.createBitmap(pixels, sizePx, sizePx, Bitmap.Config.RGB_565)
     } catch (e: Exception) {
         null
     }
