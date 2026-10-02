@@ -80,7 +80,8 @@ before starting on a bug.
   gallery's item refers to it (a query, not a counter). Screens read through `OfflineReader`, and
   only a DONE row's file is ever opened.
 - **A video's `ArchivedUri` is a JPEG still, not the video.** A CDN original's ETag is its MD5
-  and its path hash is not checked: a 404 there means the photo is gone (`SMUGMUG.md`).
+  and its path hash is not checked. **A 404 on an original does not mean the photo is gone**:
+  107 of 850 originals in one gallery answer 404 while the photo displays (findings #24, `SMUGMUG.md`).
 - **"Offline" for a screen means `SmugMugErrorMapper.isOffline`** (IOException or the synthetic
   504). A 429 or 5xx is SmugMug answering and must not be shown as "you're offline" or
   replaced by saved photos.

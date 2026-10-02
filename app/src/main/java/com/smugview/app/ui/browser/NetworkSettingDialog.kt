@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,7 +22,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,7 +65,7 @@ internal fun NetworkSettingDialog(
                         rule == OfflineNetworkRule.WIFI_AND_MOBILE
                     ) { onChoose(OfflineNetworkRule.WIFI_AND_MOBILE) }
                 }
-                Text(OfflineMessages.NETWORK_PHOTOS_NOTE, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+                Text(OfflineMessages.NETWORK_PHOTOS_NOTE, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
         },
         confirmButton = { TextButton(onClick = onClose) { Text(OfflineMessages.CLOSE) } }
@@ -81,7 +81,7 @@ private fun NetworkRow(label: String, hint: String, selected: Boolean, onSelect:
         RadioButton(selected = selected, onClick = null)
         Column(Modifier.padding(start = 12.dp)) {
             Text(label, fontSize = 15.sp)
-            Text(hint, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+            Text(hint, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
     }
 }
