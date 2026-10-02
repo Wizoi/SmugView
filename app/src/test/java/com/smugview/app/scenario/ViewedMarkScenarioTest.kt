@@ -174,7 +174,7 @@ class ViewedMarkScenarioTest {
         val rows = viewed()
         assertEquals("one row, for the gallery's NodeID", setOf("LCdk7F"), rows.keys)
         assertEquals(instant(serverIlu("FfHCms")), instant(rows.getValue("LCdk7F")))
-        assertFalse("and the dot is out", "LCdk7F" in lit())
+        awaitUntil("and the dot is out") { "LCdk7F" !in lit() }
     }
 
     /**

@@ -198,15 +198,6 @@ fun PhotoGridScreen(
         val density = LocalDensity.current
         val headerHeightPx = remember(headerHeight) { with(density) { headerHeight.toPx() } }
 
-        val headerTranslationY = remember(scrollOffset.value) {
-            (-scrollOffset.value * 0.5f).coerceAtLeast(-headerHeightPx)
-        }
-
-        val headerAlpha = remember(scrollOffset.value) {
-            val progress = (scrollOffset.value / headerHeightPx).coerceIn(0f, 1f)
-            1f - progress
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -586,8 +577,10 @@ fun PhotoGridScreen(
                 albumTitle = albumTitle,
                 coverUrl = coverUrl,
                 modifier = Modifier.graphicsLayer {
-                    translationY = headerTranslationY
-                    alpha = headerAlpha
+                    // Read in the layer, not in composition: the offset changes every scroll frame.
+                    val offset = scrollOffset.value
+                    translationY = (-offset * 0.5f).coerceAtLeast(-headerHeightPx)
+                    alpha = 1f - (offset / headerHeightPx).coerceIn(0f, 1f)
                 }
             )
 
@@ -699,25 +692,6 @@ fun PhotoGridScreen(
                     val castedAlbumKey by viewModel.castedAlbumKeyFlow.collectAsState()
                     var showCastSelector by remember { mutableStateOf(false) }
                     var showRecastDialog by remember { mutableStateOf(false) }
-                    var showAmazonDialog by remember { mutableStateOf(false) }
-
-                    if (showAmazonDialog) {
-                        val companionUrl by viewModel.webCompanionUrl.collectAsState()
-                        val companionFailure by viewModel.webCompanionFailure.collectAsState()
-                        AlertDialog(
-                            onDismissRequest = { showAmazonDialog = false },
-                            title = { Text("Cast to a screen") },
-                            text = {
-                                Text(UserMessages.castCompanionLine(companionUrl, companionFailure))
-                            },
-                            confirmButton = {
-                                TextButton(onClick = { showAmazonDialog = false }) {
-                                    Text("OK")
-                                }
-                            }
-                        )
-                    }
-
                     val cState = activeDevice?.state ?: com.smugview.app.data.cast.ConnectionState.DISCONNECTED
                     com.smugview.app.ui.component.CastButton(
                         connectionState = cState,

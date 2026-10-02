@@ -209,23 +209,6 @@ fun FoldersTabView(
             val density = LocalDensity.current
             val headerHeightPx = remember(headerHeight) { with(density) { headerHeight.toPx() } }
 
-            val headerTranslationY = remember(scrollOffset.value, headerHeightPx) {
-                if (headerHeightPx > 0f) {
-                    (-scrollOffset.value * 0.5f).coerceAtLeast(-headerHeightPx)
-                } else {
-                    0f
-                }
-            }
-
-            val headerAlpha = remember(scrollOffset.value, headerHeightPx) {
-                if (headerHeightPx > 0f) {
-                    val progress = (scrollOffset.value / headerHeightPx).coerceIn(0f, 1f)
-                    1f - progress
-                } else {
-                    1f
-                }
-            }
-
             val isRoot = navStack.isEmpty()
             // At the site root, title the header with the site's name (fall back to the nickname)
             // instead of a generic "Galleries".
@@ -284,9 +267,11 @@ fun FoldersTabView(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(headerHeight)
-                        .graphicsLayer { 
-                            translationY = headerTranslationY 
-                            alpha = headerAlpha
+                        .graphicsLayer {
+                            // Read in the layer, not in composition: the offset changes every scroll frame.
+                            val offset = scrollOffset.value
+                            translationY = if (headerHeightPx > 0f) (-offset * 0.5f).coerceAtLeast(-headerHeightPx) else 0f
+                            alpha = if (headerHeightPx > 0f) 1f - (offset / headerHeightPx).coerceIn(0f, 1f) else 1f
                         }
                         .background(SurfaceDark)
                 ) {

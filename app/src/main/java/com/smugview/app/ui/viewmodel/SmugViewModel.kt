@@ -583,13 +583,13 @@ class SmugViewModel @Inject constructor(
     }
 
     // EXIF Metadata cache
-    private val _exifStates = mutableMapOf<String, MutableStateFlow<Result<ExifData>?>>()
+    private val _exifStates = KeyedResultCache<ExifData>()
 
     // Image details cache
-    private val _imageDetailsStates = mutableMapOf<String, MutableStateFlow<Result<AlbumImageData>?>>()
+    private val _imageDetailsStates = KeyedResultCache<AlbumImageData>()
 
     // Image size details cache (used by pinch-to-zoom to pick real tiers)
-    private val _imageSizeDetailsStates = mutableMapOf<String, MutableStateFlow<Result<ImageSizeDetailsPayload>?>>()
+    private val _imageSizeDetailsStates = KeyedResultCache<ImageSizeDetailsPayload>()
 
     // --- Dynamic Explorer & Validation States ---
     private val _activeNickname = MutableStateFlow<String?>(null)
@@ -1931,35 +1931,22 @@ class SmugViewModel @Inject constructor(
 
     // --- Image EXIF Metadata ---
 
-    fun getImageExif(imageKey: String): StateFlow<Result<ExifData>?> {
-        val flow = _exifStates.getOrPut(imageKey) {
-            val stateFlow = MutableStateFlow<Result<ExifData>?>(null)
+    fun getImageExif(imageKey: String): StateFlow<Result<ExifData>?> =
+        _exifStates.flowFor(imageKey) { out ->
             session.scope.launch {
-                repository.getImageExif(imageKey, apiKey).collect {
-                    stateFlow.value = it
-                }
+                repository.getImageExif(imageKey, apiKey).collect { out.publish(it) }
             }
-            stateFlow
         }
-        return flow.asStateFlow()
-    }
 
-    fun getImageSizeDetails(imageKey: String, uri: String): StateFlow<Result<ImageSizeDetailsPayload>?> {
-        val flow = _imageSizeDetailsStates.getOrPut(imageKey) {
-            val stateFlow = MutableStateFlow<Result<ImageSizeDetailsPayload>?>(null)
+    fun getImageSizeDetails(imageKey: String, uri: String): StateFlow<Result<ImageSizeDetailsPayload>?> =
+        _imageSizeDetailsStates.flowFor(imageKey) { out ->
             session.scope.launch {
-                repository.getImageSizeDetails(uri, apiKey).collect {
-                    stateFlow.value = it
-                }
+                repository.getImageSizeDetails(uri, apiKey).collect { out.publish(it) }
             }
-            stateFlow
         }
-        return flow.asStateFlow()
-    }
 
-    fun getImageDetails(imageKey: String): StateFlow<Result<AlbumImageData>?> {
-        val flow = _imageDetailsStates.getOrPut(imageKey) {
-            val stateFlow = MutableStateFlow<Result<AlbumImageData>?>(null)
+    fun getImageDetails(imageKey: String): StateFlow<Result<AlbumImageData>?> =
+        _imageDetailsStates.flowFor(imageKey) { out ->
             session.scope.launch(defaultDispatcher) {
                 val albumKey = _currentAlbumKey.value
                 val searchPhoto = searchPhotosList.find { it.imageKey == imageKey }
@@ -2068,7 +2055,7 @@ class SmugViewModel @Inject constructor(
                     }
                 }
 
-                stateFlow.value = finalResult
+                out.publish(finalResult)
 
                 detailedImage?.let { img ->
                     val apiAlbumKey = img.uris?.imageAlbum?.substringAfterLast("/")
@@ -2087,7 +2074,7 @@ class SmugViewModel @Inject constructor(
                     )
                     
                     val updatedImg = img.copy(uris = finalUris)
-                    stateFlow.value = Result.success(updatedImg)
+                    out.publish(Result.success(updatedImg))
 
                     withContext(Dispatchers.Main) {
                         val index = searchPhotosList.indexOfFirst { it.imageKey == imageKey }
@@ -2108,10 +2095,7 @@ class SmugViewModel @Inject constructor(
                     }
                 }
             }
-            stateFlow
         }
-        return flow.asStateFlow()
-    }
 
     // --- Local Collections & Sync ---
 

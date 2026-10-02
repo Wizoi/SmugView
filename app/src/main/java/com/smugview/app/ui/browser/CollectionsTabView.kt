@@ -644,7 +644,7 @@ fun CollectionsTabView(
                                                     }
                                                     Row(
                                                         verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
                                                         IconButton(
                                                             onClick = {
@@ -667,7 +667,6 @@ fun CollectionsTabView(
                                                                     com.smugview.app.ui.detail.sharePhoto(context, scope, viewModel, detailItem, viewModel.shareLinkFor(detailItem))
                                                                 }
                                                             },
-                                                            modifier = Modifier.size(24.dp)
                                                         ) {
                                                             Icon(
                                                                 imageVector = Icons.Default.Share,
@@ -695,7 +694,6 @@ fun CollectionsTabView(
                                                                 )
                                                                 downloadPhoto(detailItem)
                                                             },
-                                                            modifier = Modifier.size(24.dp)
                                                         ) {
                                                             Icon(
                                                                 imageVector = Icons.Default.Download,
@@ -706,7 +704,6 @@ fun CollectionsTabView(
                                                         }
                                                         IconButton(
                                                             onClick = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), img.itemKey, img.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${img.itemKey}", dropsPhotoRow = false, dropsBookmark = true) }) { viewModel.removeBookmark(col.id, "Image", img.itemKey) } },
-                                                            modifier = Modifier.size(24.dp)
                                                         ) {
                                                             Icon(
                                                                 imageVector = Icons.Default.Close,
@@ -812,7 +809,7 @@ fun CollectionsTabView(
                                 // Action buttons top-right (Cast & Delete)
                                 Row(
                                     modifier = Modifier.align(Alignment.TopEnd),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     IconButton(
@@ -827,7 +824,6 @@ fun CollectionsTabView(
                                                 showCastSelector = true
                                             }
                                         },
-                                        modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.Cast,
@@ -839,7 +835,6 @@ fun CollectionsTabView(
 
                                     IconButton(
                                         onClick = { requestDelete(col) },
-                                        modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Close,
