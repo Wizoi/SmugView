@@ -218,7 +218,7 @@ fun PhotoGridScreen(
                     albumUri = null
                 )
             }
-            val fullNavStack = remember(folderNavStack.size, albumTitle) {
+            val fullNavStack = remember(folderNavStack.toList(), albumTitle) {
                 folderNavStack + albumNode
             }
 
