@@ -9,13 +9,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -41,19 +35,6 @@ private val LightColorScheme = lightColorScheme(
     onBackground = Color(0xFF1C1B1F),
     onSurface = Color(0xFF1C1B1F)
 )
-
-/** How many screens that are dark by design (the photo viewers) are showing; the system bars follow them, whatever the system theme. */
-private val LocalDarkScreens = compositionLocalOf<MutableIntState?> { null }
-
-/** Put in a screen that is black by design: the status bar goes black with light icons while it is shown. */
-@Composable
-fun DarkSystemBars() {
-    val screens = LocalDarkScreens.current ?: return
-    DisposableEffect(screens) {
-        screens.intValue++
-        onDispose { screens.intValue-- }
-    }
-}
 
 @Composable
 fun SmugViewTheme(
@@ -82,22 +63,19 @@ fun SmugViewTheme(
             }
         }
     }
-    val darkScreens = remember { mutableIntStateOf(0) }
-    val darkBars = darkScreens.intValue > 0
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = if (darkBars) Color.Black.toArgb() else colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme && !darkBars
+            // Every screen paints its own dark background (DeepDarkBackground), in the light system theme too.
+            window.statusBarColor = DeepDarkBackground.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
 
-    CompositionLocalProvider(LocalDarkScreens provides darkScreens) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            typography = Typography,
-            content = content
-        )
-    }
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
 }
