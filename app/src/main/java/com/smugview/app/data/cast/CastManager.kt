@@ -746,6 +746,8 @@ class DefaultCastManager @Inject constructor(
         slideshowIndex = 0
     }
 
+    internal suspend fun scanForTest(): List<CastDevice> = performSsdpDiscovery()
+
     private suspend fun performSsdpDiscovery(): List<CastDevice> = withContext(ioDispatcher) {
         val discovered = mutableListOf<CastDevice>()
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
@@ -875,6 +877,8 @@ class DefaultCastManager @Inject constructor(
                             discovered.add(CastDevice(ip, name, ip, type))
                         }
                     }
+                } catch (e: java.net.SocketTimeoutException) {
+                    break
                 } catch (e: java.io.IOException) {
                     android.util.Log.e("CastManager", "SSDP: IOException during receive", e)
                     break

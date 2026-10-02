@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.smugview.app.ui.component.AddToCollectionsDialog
+import com.smugview.app.ui.theme.DarkSystemBars
 import com.smugview.app.ui.theme.SurfaceGlass
 import com.smugview.app.ui.viewmodel.SmugViewModel
 import kotlinx.coroutines.flow.first
@@ -97,6 +98,8 @@ fun KeywordPhotoDetailScreen(
     var showAddToCollectionDialog by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(false) }
     var isResolvingAlbum by remember { mutableStateOf(false) }
+
+    DarkSystemBars()
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         Box(

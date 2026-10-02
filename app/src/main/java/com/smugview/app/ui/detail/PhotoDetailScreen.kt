@@ -100,6 +100,7 @@ import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.data.api.ExifData
 import com.smugview.app.data.api.isVideo
+import com.smugview.app.ui.theme.DarkSystemBars
 import com.smugview.app.ui.theme.DeepDarkBackground
 import com.smugview.app.ui.theme.GlowGreen
 import com.smugview.app.ui.theme.NeonBlue
@@ -238,6 +239,8 @@ fun PhotoDetailScreen(
     var showExifSheet by remember { mutableStateOf(false) }
     var showAddToCollectionDialog by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(false) }
+
+    DarkSystemBars()
 
     Box(
         modifier = Modifier
@@ -1044,6 +1047,7 @@ private fun ViewerWithoutPhoto(
     viewModel: SmugViewModel,
     onBackClick: () -> Unit
 ) {
+    DarkSystemBars()
     Box(
         modifier = Modifier
             .fillMaxSize()
