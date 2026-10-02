@@ -1,6 +1,7 @@
 package com.smugview.app.ui.text
 
 import com.smugview.app.data.repository.AlbumLockedException
+import com.smugview.app.data.cast.WebCompanionFailure
 import com.smugview.app.data.repository.TransientReason
 import okhttp3.Protocol
 import okhttp3.Request
@@ -227,12 +228,24 @@ class UserMessagesTest {
     }
 
     @Test fun castTexts_areTheDesignWords_andTheCompanionUrlIsTheBoundOne() {
-        assertEquals("On the Echo Show, open the Silk browser and go to http://192.168.1.20:8081", UserMessages.castCompanion("http://192.168.1.20:8081"))
+        assertEquals("On the screen you're casting to, open its web browser and go to http://192.168.1.20:8081", UserMessages.castCompanion("http://192.168.1.20:8081"))
         assertEquals(
             "Couldn't start the screen link on this phone: ports 8080 to 8089 are in use. Close other apps that share your screen, then try again.",
             UserMessages.CAST_COMPANION_FAILED
         )
         assertEquals("TV or streaming device", UserMessages.CAST_DIAL_DEVICE)
+    }
+
+    @Test fun castCompanionLine_noWifiHasItsOwnWords_andPortsInUseKeepsTheirs() {
+        assertEquals(
+            "SmugView can't find a Wi-Fi connection on this phone, so the screen link can't start. Connect to the same Wi-Fi as the screen, then try again.",
+            UserMessages.castCompanionLine(null, WebCompanionFailure.NoWifi)
+        )
+        assertEquals(UserMessages.CAST_COMPANION_FAILED, UserMessages.castCompanionLine(null, WebCompanionFailure.PortsInUse))
+        // Nothing known (a stale or missing reason) is the ports text, as before.
+        assertEquals(UserMessages.CAST_COMPANION_FAILED, UserMessages.castCompanionLine(null, null))
+        // A bound server always shows its URL, whatever the reason flow says.
+        assertEquals(UserMessages.castCompanion("http://192.168.1.20:8081"), UserMessages.castCompanionLine("http://192.168.1.20:8081", WebCompanionFailure.NoWifi))
     }
 
     @Test fun passwordNotKept_isTheDesignWords() {

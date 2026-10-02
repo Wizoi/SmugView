@@ -243,6 +243,7 @@ class CastManagerTest {
 
         assertTrue(castManager.isWebCompanionActive.value)
         assertEquals("http://192.168.1.20:8081", castManager.webCompanionUrl.value)
+        assertNull(castManager.webCompanionFailure.value)
     }
 
     @Test
@@ -255,6 +256,7 @@ class CastManagerTest {
         assertEquals(ConnectionState.CONNECTED, castManager.activeDevice.value?.state)
         assertTrue("companion mode is on for this device", castManager.isWebCompanionActive.value)
         assertNull("but no URL: nothing is listening", castManager.webCompanionUrl.value)
+        assertEquals(WebCompanionFailure.PortsInUse, castManager.webCompanionFailure.value)
     }
 
     @Test
@@ -266,6 +268,7 @@ class CastManagerTest {
 
         assertNull(castManager.webCompanionUrl.value)
         assertFalse("nothing is left listening that nobody can find", io.serverBound)
+        assertEquals("no Wi-Fi is not the ports-in-use problem", WebCompanionFailure.NoWifi, castManager.webCompanionFailure.value)
     }
 
     @Test
@@ -280,6 +283,7 @@ class CastManagerTest {
 
         assertNull(castManager.webCompanionUrl.value)
         assertFalse(castManager.isWebCompanionActive.value)
+        assertNull("Stop clears the reason too", castManager.webCompanionFailure.value)
         assertEquals("closing the server waits for its workers: not on the thread that pressed Stop", stopsBefore, io.serverStops.get())
         runCurrent()
         assertEquals("it is closed once the I/O dispatcher runs", stopsBefore + 1, io.serverStops.get())

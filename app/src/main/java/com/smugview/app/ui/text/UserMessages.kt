@@ -1,6 +1,7 @@
 package com.smugview.app.ui.text
 
 import com.smugview.app.data.api.isSyntheticCacheMiss
+import com.smugview.app.data.cast.WebCompanionFailure
 import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.data.repository.TransientReason
 import retrofit2.HttpException
@@ -92,7 +93,7 @@ object UserMessages {
     /** `CAST_DIAL_DEVICE` (design 5): a device that answered DIAL and does not say who made it. */
     const val CAST_DIAL_DEVICE = "TV or streaming device"
 
-    /** `CAST_COMPANION_FAILED`: no port from 8080 to 8089 could be bound for the Echo Show screen link. */
+    /** `CAST_COMPANION_FAILED`: no port from 8080 to 8089 could be bound for the screen link. */
     const val CAST_COMPANION_FAILED =
         "Couldn't start the screen link on this phone: ports 8080 to 8089 are in use. Close other apps that share your screen, then try again."
 
@@ -171,8 +172,19 @@ object UserMessages {
     fun isOfflineKind(problem: Problem): Boolean =
         problem is Problem.OfflineNothingSaved || (problem is Problem.LockedPending && problem.reason == TransientReason.Offline)
 
-    /** `CAST_COMPANION`: what to type on the Echo Show; [url] is the one the server really bound. */
-    fun castCompanion(url: String): String = "On the Echo Show, open the Silk browser and go to $url"
+    /** `CAST_COMPANION`: what to type in the browser of the screen being cast to; [url] is the one the server really bound. */
+    fun castCompanion(url: String): String = "On the screen you're casting to, open its web browser and go to $url"
+
+    /** `CAST_COMPANION_NO_WIFI`: the phone has no Wi-Fi address, so there is nothing to type on the screen (6-11c). */
+    const val CAST_COMPANION_NO_WIFI =
+        "SmugView can't find a Wi-Fi connection on this phone, so the screen link can't start. Connect to the same Wi-Fi as the screen, then try again."
+
+    /** The line under "Web Companion Setup": the URL when bound, else the reason it is not (no Wi-Fi, or ports in use). */
+    fun castCompanionLine(url: String?, failure: WebCompanionFailure?): String = when {
+        url != null -> castCompanion(url)
+        failure == WebCompanionFailure.NoWifi -> CAST_COMPANION_NO_WIFI
+        else -> CAST_COMPANION_FAILED
+    }
 
     /** `HOME_FAILED`: the featured-galleries row when the request failed and nothing saved could stand in. */
     fun homeFailed(problem: Problem): String = "Couldn't load the galleries. ${shortCause(problem)}"

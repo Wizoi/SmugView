@@ -14,6 +14,7 @@ import com.smugview.app.ui.viewmodel.BrowserUiState
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -22,6 +23,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
+import kotlinx.coroutines.runBlocking
 
 /**
  * Step 6-11 (design 3.8, Q4 (a), N5): a bookmark is removed by the user and by nothing else. A 404 is also how a locked folder
@@ -62,8 +64,8 @@ class GoneBookmarkScenarioTest {
     private fun file(imageKey: String) = File(screens.rig.offlineFilesDir, "offline/$imageKey.jpg")
 
     /** The site is open, the Family password is saved (so a 404 below it is "gone", not "locked"), and two collections exist. */
-    private fun openSite() {
-        screens.rig.passwords.savePassword("2sDN5x", "family-pw")
+    private fun openSite(saveFamilyPassword: Boolean = true) {
+        if (saveFamilyPassword) screens.rig.passwords.savePassword("2sDN5x", "family-pw")
         screens.viewModel.selectSite(FakeSmugMugServer.SITE_A)
         screens.awaitSiteQuiet()
         sql.execSQL("INSERT INTO offline_collections (id, name, siteNickname, createdAt) VALUES ($favorites, 'Favorites', '${FakeSmugMugServer.SITE_A}', $now)")
@@ -94,18 +96,6 @@ class GoneBookmarkScenarioTest {
 
     /** The gallery was deleted on SmugMug: its own record and its image list both answer 404. */
     private fun galleryIsDeleted() = screens.server.respondWith("album/$album", 404, times = 20)
-
-    /**
-     * `handleAlbumLoadError` still raises the password prompt on any 404 whose node it can place (not changed by 6-11: owner
-     * decision, see design 14), so the prompt is on screen beside the GONE view. The user closes it (its Cancel also goes back; the
-     * test's back is a no-op) before using the button, so the dialogs do not share a "Cancel".
-     */
-    private fun closeThePasswordPromptIfAny() {
-        val deadline = System.currentTimeMillis() + 1_500
-        while (screens.viewModel.passwordPromptNode == null && System.currentTimeMillis() < deadline) screens.waitUntil(message = "idle") { true }
-        screens.viewModel.dismissPasswordPrompt()
-        screens.settle()
-    }
 
     private fun showGallery() {
         screens.setContent {
@@ -152,11 +142,11 @@ class GoneBookmarkScenarioTest {
         galleryIsDeleted()
         showGallery()
         awaitText(UserMessages.REMOVE_FROM_COLLECTIONS)
-        closeThePasswordPromptIfAny()
 
         compose.onNodeWithText(UserMessages.REMOVE_FROM_COLLECTIONS).performClick()
         awaitText("2 photos saved on this phone", substring = true)
         assertTrue("the question names the gallery", shown("New School Year", substring = true))
+        assertFalse("the gallery is gone from SmugMug: its photos do not stay there", shown("They stay on SmugMug", substring = true))
         compose.onNodeWithText("Cancel").performClick()
         screens.settle()
         assertFalse(shown("2 photos saved on this phone", substring = true))
@@ -184,7 +174,6 @@ class GoneBookmarkScenarioTest {
         galleryIsDeleted()
         showGallery()
         awaitText(UserMessages.REMOVE_FROM_COLLECTIONS)
-        closeThePasswordPromptIfAny()
         assertEquals("both bookmarks survived the 404", 2, count("collection_bookmarks", "itemKey = '$album'"))
 
         compose.onNodeWithText(UserMessages.REMOVE_FROM_COLLECTIONS).performClick()
@@ -221,5 +210,116 @@ class GoneBookmarkScenarioTest {
         screens.settle()
 
         assertEquals("a 404 never removes a bookmark", 1, count("collection_bookmarks", "type = 'Folder' AND itemKey = 'ZzGone1'"))
+    }
+
+    // ---- 6-11c: a 404 under a root that is unlocked this launch is "gone", not "locked" ----
+
+    private val family = "2sDN5x"
+    private val unlocks get() = screens.rig.repository.unlocks
+    private fun familyAccess() = screens.viewModel.passwordAccess.value[family]
+
+    /** The prompt is raised a moment after the load fails (it asks UnlockManager for the root first): wait it out, then say none came. */
+    private fun assertNoPasswordPrompt(why: String) {
+        val deadline = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < deadline) {
+            assertNull(why, screens.viewModel.passwordPromptNode)
+            screens.settle()
+            Thread.sleep(20) // the prompt is raised from a background launch: give it real time to arrive
+        }
+    }
+    private fun http(code: Int) = retrofit2.HttpException(
+        retrofit2.Response.error<Any>(code, okhttp3.ResponseBody.create(null, "{}"))
+    )
+
+    /** Fixture F as cached rows: Family (password) -> School -> gallery (NodeID LCdk7F, AlbumKey FfHCms), so the gallery's root is known. */
+    private fun cacheTopology() {
+        val site = FakeSmugMugServer.SITE_A
+        fun row(id: String, parent: String, type: String, title: String, access: String? = null, albumUri: String? = null) = CachedNode(
+            nodeId = id, parentNodeId = parent, type = type, title = title, description = null, access = access, passwordHint = null,
+            uri = "/api/v2/node/$id", childNodesUri = if (type == "Folder") "/api/v2/node/$id!children" else null, albumUri = albumUri, nickname = site
+        )
+        runBlocking {
+            screens.rig.dao.insertNodes(
+                listOf(
+                    row(family, "4zqWw", "Folder", "Family", access = "Password"),
+                    row("P4BKB", family, "Folder", "School"),
+                    row("LCdk7F", "P4BKB", "Album", "New School Year", albumUri = "/api/v2/album/$album")
+                )
+            )
+        }
+        val node = runBlocking { screens.rig.repository.getNodeById("LCdk7F") }
+        assertEquals("the gallery's NodeID differs from its AlbumKey", album, node?.getAlbumKey())
+    }
+
+    @Test fun `a 404 under a Family folder unlocked this launch says gone and raises no password prompt`() {
+        openSite()
+        cacheTopology()
+        screens.waitUntil(message = "Family has a live session") { familyAccess() == com.smugview.app.data.repository.UnlockManager.Access.Session }
+        galleryIsDeleted()
+        showGallery()
+
+        awaitText("Not found on SmugMug")
+        screens.settle()
+
+        assertNoPasswordPrompt("a live session means the 404 is not a lock: no prompt")
+        assertFalse("no password dialog beside the GONE view", shown("Cancel"))
+        assertEquals("and the saved password is untouched", "family-pw", screens.rig.passwords.getPassword(family))
+    }
+
+    @Test fun `a password prompt that was already up for the gallery closes when the 404 arrives under a live session`() {
+        openSite()
+        cacheTopology()
+        screens.waitUntil(message = "Family has a live session") { familyAccess() == com.smugview.app.data.repository.UnlockManager.Access.Session }
+        val node = runBlocking { screens.rig.repository.getNodeById("LCdk7F")!! }
+        screens.viewModel.requestPassword(node)
+        screens.waitUntil(message = "the prompt is up") { screens.viewModel.passwordPromptNode != null }
+        galleryIsDeleted()
+        showGallery()
+
+        awaitText("Not found on SmugMug")
+        screens.waitUntil(message = "the prompt closed") { screens.viewModel.passwordPromptNode == null }
+        assertTrue(shown(UserMessages.BUTTON_GO_BACK))
+    }
+
+    @Test fun `a 404 with nothing unlocked still raises the password prompt, because that is how a locked folder answers`() {
+        openSite(saveFamilyPassword = false)
+        cacheTopology()
+        screens.rig.passwords.savePassword("unrelated-key", "x") // another saved password must not count as Family's
+        assertTrue("no session for Family", familyAccess() != com.smugview.app.data.repository.UnlockManager.Access.Session)
+        galleryIsDeleted()
+        showGallery()
+
+        screens.waitUntil(message = "the prompt is up") { screens.viewModel.passwordPromptNode != null }
+        assertEquals("the prompt asks for Family's password", family, screens.viewModel.passwordPromptNode?.nodeId)
+    }
+
+    @Test fun `the session expiring mid-visit brings the prompt back for the next 404`() {
+        openSite()
+        cacheTopology()
+        screens.waitUntil(message = "Family has a live session") { familyAccess() == com.smugview.app.data.repository.UnlockManager.Access.Session }
+        galleryIsDeleted()
+        showGallery()
+        awaitText("Not found on SmugMug")
+        assertNoPasswordPrompt("live session: a 404 is gone, no prompt")
+
+        // The session expires: SmugMug rejects the saved password at the next unlock, so the root is no longer live.
+        screens.server.unlockCode = 401
+        runBlocking { unlocks.reauthorize(album, "test-key") }
+        assertTrue("the root is no longer live", familyAccess() != com.smugview.app.data.repository.UnlockManager.Access.Session)
+        screens.viewModel.selectAlbum(album, force = true)
+
+        screens.waitUntil(message = "without a live session the 404 prompts again") { screens.viewModel.passwordPromptNode != null }
+        assertEquals(family, screens.viewModel.passwordPromptNode?.nodeId)
+    }
+
+    @Test fun `a 401 under a live session still raises the prompt, only a 404 is read as gone`() {
+        openSite()
+        cacheTopology()
+        screens.waitUntil(message = "Family has a live session") { familyAccess() == com.smugview.app.data.repository.UnlockManager.Access.Session }
+        screens.server.respondWith("album/$album", 401, times = 20)
+        showGallery()
+
+        screens.waitUntil(message = "a 401 prompts") { screens.viewModel.passwordPromptNode != null }
+        assertEquals(family, screens.viewModel.passwordPromptNode?.nodeId)
     }
 }

@@ -269,6 +269,7 @@ class SmugViewModel @Inject constructor(
     val isCastMuted = cast.isCastMuted
     val isWebCompanionActive = cast.isWebCompanionActive
     val webCompanionUrl = cast.webCompanionUrl
+    val webCompanionFailure = cast.webCompanionFailure
     val castedAlbumKeyFlow: StateFlow<String?> = cast.castedAlbumKeyFlow
 
     var castedAlbumKey: String?
@@ -1222,6 +1223,15 @@ class SmugViewModel @Inject constructor(
     val passwordAccess: StateFlow<Map<String, com.smugview.app.data.repository.UnlockManager.Access>>
         get() = repository.unlocks.access
 
+    /** UnlockManager's cache-only answer; false when it cannot say (6-11c). */
+    private suspend fun hasLiveSession(node: CachedNode): Boolean = try {
+        repository.unlocks.hasLiveSession(node)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false
+    }
+
     fun handleAlbumLoadError(albumKey: String, error: Throwable? = null) {
         // R-11: an album that is no longer on screen has no say about passwords or prompts.
         albums.currentKey?.let { if (it != albumKey) return }
@@ -1254,7 +1264,15 @@ class SmugViewModel @Inject constructor(
                     }
                 }
                 if (node != null) {
-                    requestPassword(node)
+                    if ((error as retrofit2.HttpException).code() == 404 && hasLiveSession(node)) {
+                        // 6-11c: the root's session is live this launch, so this 404 is "gone", not "locked" (the cookie is there):
+                        // the grid says so and offers "Remove from collections". A prompt that was already up for it goes away.
+                        // A 401 is never read this way, and a session that expired is no longer live, so both still prompt.
+                        val up = passwordPromptNode
+                        if (up != null && hasLiveSession(up)) dismissPasswordPrompt()
+                    } else {
+                        requestPassword(node)
+                    }
                 }
             }
         }

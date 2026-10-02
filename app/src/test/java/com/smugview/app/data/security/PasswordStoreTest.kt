@@ -128,19 +128,80 @@ class PasswordStoreTest {
         assertFalse(File(prefsDir(), "smugview_passwords.xml").exists())
     }
 
-    @Test fun fallbackEntries_keystoreStillBroken_workThisSession_butNothingIsWrittenOrDeleted() {
+    @Test fun fallbackEntries_keystoreStillBroken_workThisSession_theOldFileIsDeletedAtOnce_andNothingNewIsWritten() {
         seedPlain("smugview_passwords_fallback", "familyRoot" to secret)
-        val before = allPrefsFiles()
 
         val s = store(brokenKeystore)
 
-        assertEquals("a saved password keeps working until the secure store opens again", secret, s.getPassword("familyRoot"))
+        assertEquals("a saved password keeps working for this session", secret, s.getPassword("familyRoot"))
         s.savePassword("newRoot", "brand-new-secret")
         assertEquals("brand-new-secret", s.getPassword("newRoot"))
         val after = allPrefsFiles()
-        assertEquals("the old file is left alone: deleting it would lose the password", before, after)
-        assertFalse("nothing new is written in plain text", after.values.any { it.contains("brand-new-secret") })
+        assertFalse("the plain file is deleted at once, not left holding the password", File(prefsDir(), "smugview_passwords_fallback.xml").exists())
+        assertTrue("no plain file holds either password", after.values.none { it.contains(secret) || it.contains("brand-new-secret") })
+        assertTrue("the grey line says it won't be kept", s.keptOnlyThisSession.value)
+        assertEquals(setOf("familyRoot", "newRoot"), s.unlockedKeys.value)
+    }
+
+    @Test fun fallbackEntries_keystoreStillBroken_theNextStartAsksAgain_andNothingStaleIsLeftBehind() {
+        seedPlain("smugview_passwords_fallback", "familyRoot" to secret)
+        store(brokenKeystore).getPassword("familyRoot") // the start that deleted the plain file
+
+        val nextStart = store(brokenKeystore)
+
+        assertNull("owner decision: the user is asked for it again", nextStart.getPassword("familyRoot"))
+        assertTrue(nextStart.all().isEmpty())
+        assertTrue(nextStart.keptOnlyThisSession.value)
+        assertTrue(allPrefsFiles().values.none { it.contains(secret) })
+    }
+
+    @Test fun bothPlainFiles_keystoreStillBroken_areDeleted_andTheNewerFallbackValueWinsInMemory() {
+        seedPlain("smugview_passwords", "oldNode" to "legacy-secret", "shared" to "legacy-value")
+        seedPlain("smugview_passwords_fallback", "shared" to "fallback-value")
+
+        val s = store(brokenKeystore)
+
+        assertEquals("legacy-secret", s.getPassword("oldNode"))
+        assertEquals("fallback-value", s.getPassword("shared"))
+        assertFalse(File(prefsDir(), "smugview_passwords.xml").exists())
+        assertFalse(File(prefsDir(), "smugview_passwords_fallback.xml").exists())
+    }
+
+    @Test fun emptyFallbackFile_keystoreStillBroken_isRemovedToo() {
+        seedPlain("smugview_passwords_fallback", "x" to "y")
+        plain("smugview_passwords_fallback").edit().clear().commit()
+
+        val s = store(brokenKeystore)
+
+        assertTrue(s.all().isEmpty())
+        assertFalse(File(prefsDir(), "smugview_passwords_fallback.xml").exists())
         assertTrue(s.keptOnlyThisSession.value)
+    }
+
+    @Test fun halfMigrated_thenTheKeystoreBreaks_theMovedPasswordIsStillInTheSecureStoreWhenItComesBack() {
+        // Start 1 copied the entry into the secure store but was killed before it deleted the plain file.
+        plain("test_secure_store").edit().putString("familyRoot", secret).commit()
+        seedPlain("smugview_passwords_fallback", "familyRoot" to secret)
+
+        val broken = store(brokenKeystore) // start 2: the Keystore is down; the plain file goes at once
+        assertEquals(secret, broken.getPassword("familyRoot"))
+        assertFalse(File(prefsDir(), "smugview_passwords_fallback.xml").exists())
+
+        val recovered = store(workingKeystore()) // start 3: the Keystore is back
+        assertEquals("a password that WAS moved is never lost", secret, recovered.getPassword("familyRoot"))
+    }
+
+    @Test fun halfMigrated_aNewerSecureValueIsNotOverwrittenByTheStalePlainOne() {
+        // The copy finished, the delete did not, and the user then changed the password (the secure store has the newer one).
+        plain("test_secure_store").edit().putString("familyRoot", "newer-secret").commit()
+        seedPlain("smugview_passwords_fallback", "familyRoot" to "stale-secret", "onlyInPlain" to "plain-only-secret")
+
+        val s = store(workingKeystore())
+
+        assertEquals("newer-secret", s.getPassword("familyRoot"))
+        assertEquals("newer-secret", plain("test_secure_store").getString("familyRoot", null))
+        assertEquals("an entry the secure store does not have yet is still moved", "plain-only-secret", plain("test_secure_store").getString("onlyInPlain", null))
+        assertFalse(plainFileHasEntries("smugview_passwords_fallback"))
     }
 
     @Test fun migrationKilledMidway_theTargetCouldNotBeWritten_keepsTheFallbackEntries_andTheNextOpenFinishesIt() {

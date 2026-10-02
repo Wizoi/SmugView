@@ -703,11 +703,12 @@ fun PhotoGridScreen(
 
                     if (showAmazonDialog) {
                         val companionUrl by viewModel.webCompanionUrl.collectAsState()
+                        val companionFailure by viewModel.webCompanionFailure.collectAsState()
                         AlertDialog(
                             onDismissRequest = { showAmazonDialog = false },
-                            title = { Text("Cast to Amazon Echo Show") },
+                            title = { Text("Cast to a screen") },
                             text = {
-                                Text(companionUrl?.let { UserMessages.castCompanion(it) } ?: UserMessages.CAST_COMPANION_FAILED)
+                                Text(UserMessages.castCompanionLine(companionUrl, companionFailure))
                             },
                             confirmButton = {
                                 TextButton(onClick = { showAmazonDialog = false }) {

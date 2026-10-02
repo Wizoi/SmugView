@@ -24,10 +24,13 @@ interface CastManager {
     val isMuted: StateFlow<Boolean>
     val isWebCompanionActive: StateFlow<Boolean>
     /**
-     * The address to type on the Echo Show: `http://{phone ip}:{port}` once the Web Companion server is really bound, else null.
+     * The address to type on the screen: `http://{phone ip}:{port}` once the Web Companion server is really bound, else null.
      * While [isWebCompanionActive] with a null URL, the server could not be started (R-58). Never show a URL that is not this.
      */
     val webCompanionUrl: StateFlow<String?>
+
+    /** Why [webCompanionUrl] is null while [isWebCompanionActive]: ports in use, or no Wi-Fi address. Null when there is a URL or no link. */
+    val webCompanionFailure: StateFlow<WebCompanionFailure?>
 
     fun startDiscovery()
     fun stopDiscovery()
@@ -107,6 +110,8 @@ class DefaultCastManager @Inject constructor(
     override val isWebCompanionActive: StateFlow<Boolean> = _isWebCompanionActive.asStateFlow()
     private val _webCompanionUrl = MutableStateFlow<String?>(null)
     override val webCompanionUrl: StateFlow<String?> = _webCompanionUrl.asStateFlow()
+    private val _webCompanionFailure = MutableStateFlow<WebCompanionFailure?>(null)
+    override val webCompanionFailure: StateFlow<WebCompanionFailure?> = _webCompanionFailure.asStateFlow()
     private var useWebCompanion = false
 
     private var discoveryJob: Job? = null
@@ -468,11 +473,14 @@ class DefaultCastManager @Inject constructor(
                         _isWebCompanionActive.value = true
                         // Only the cast target device may fetch the (potentially private) media. The URL is published only
                         // when the server really is bound, on the port it really got (R-58); otherwise the UI says it failed.
-                        _webCompanionUrl.value = bindWebCompanion(device.ipAddress)
+                        val bound = bindWebCompanion(device.ipAddress)
+                        _webCompanionUrl.value = bound.first
+                        _webCompanionFailure.value = bound.second
                     } else {
                         useWebCompanion = false
                         _isWebCompanionActive.value = false
                         _webCompanionUrl.value = null
+                        _webCompanionFailure.value = null
                         io.stopServer()
                     }
                     val connectedDevice = device.copy(state = ConnectionState.CONNECTED)
@@ -489,21 +497,21 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
-    /** Binds the Web Companion server for [clientIp]; the URL to show, or null when it could not be bound or this phone has no Wi-Fi address. */
-    private fun bindWebCompanion(clientIp: String): String? =
+    /** Binds the Web Companion server for [clientIp]: the URL to show, or null with the reason (ports in use, or no Wi-Fi address). */
+    private fun bindWebCompanion(clientIp: String): Pair<String?, WebCompanionFailure?> =
         when (val started = io.startServer(port = WebCompanionServer.DEFAULT_FIRST_PORT, allowedClientIp = clientIp)) {
             is WebCompanionStart.Bound -> {
                 val ip = io.localIpAddress()
                 if (ip == null) {
                     io.stopServer() // nothing could be shown to type, so nothing is left listening
-                    null
+                    null to WebCompanionFailure.NoWifi
                 } else {
-                    webCompanionUrlFor(ip, started.port)
+                    webCompanionUrlFor(ip, started.port) to null
                 }
             }
             is WebCompanionStart.Failed -> {
                 SmugLog.d("CastManager") { "Web Companion could not start: ${started.reason}" }
-                null
+                null to WebCompanionFailure.PortsInUse
             }
         }
 
@@ -515,6 +523,7 @@ class DefaultCastManager @Inject constructor(
             useWebCompanion = false
             _isWebCompanionActive.value = false
             _webCompanionUrl.value = null
+            _webCompanionFailure.value = null
             // Closing the server waits for its workers (up to a second): never on the caller's thread, which is Main.
             val stopGeneration = connectGeneration.get()
             scope.launch(ioDispatcher) {

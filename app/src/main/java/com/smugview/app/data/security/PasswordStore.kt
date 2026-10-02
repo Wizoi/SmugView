@@ -56,9 +56,13 @@ interface PasswordStore {
  *
  * Passwords an older version left in plain files (`smugview_passwords_fallback`, written when the Keystore failed, and the
  * pre-encryption `smugview_passwords`) move into the secure store the next time it opens, and only after the secure store has
- * confirmed the write (`commit()` returned true) are those files emptied and deleted. If the move fails, or the Keystore still
- * fails, the plain files are left alone (deleting them would lose the user's passwords) and their entries are read into memory so
- * they keep working this session. Run twice, the move changes nothing: it is safe to kill at any point.
+ * confirmed the write (`commit()` returned true) are those files emptied and deleted. When the Keystore is still unusable the plain
+ * files are deleted AT ONCE (owner decision, 6-11c: a password must not stay in plain text on the phone): their entries are held in
+ * memory so they keep working this session, and the user is asked for them again at the next start ([keptOnlyThisSession] says so).
+ * If the secure store opens but the write fails, the plain files are left alone (deleting them would lose passwords that were not
+ * moved) and their entries are held in memory; the next start tries again. A key the secure store already has is never overwritten
+ * by the plain one: after a start killed between the copy and the delete, the secure value is the newer. Run twice, the move
+ * changes nothing: it is safe to kill at any point.
  */
 @Singleton
 class EncryptedPasswordStore internal constructor(
@@ -131,7 +135,10 @@ class EncryptedPasswordStore internal constructor(
         }
         val plain = readPlaintextFiles()
         if (store == null) {
+            // The Keystore is still unusable: nothing can be moved, and the passwords must not stay in plain text. They live in
+            // memory for this session; after that the user types them again.
             inMemory.putAll(plain.entries)
+            deletePlainFiles(plain)
             _keptOnlyThisSession.value = true
         } else {
             if (!moveIntoSecure(store, plain)) inMemory.putAll(plain.entries)
@@ -163,13 +170,22 @@ class EncryptedPasswordStore internal constructor(
         return PlainFiles(entries, present)
     }
 
+    /** Empties and deletes every plain file that exists. Safe to repeat. */
+    private fun deletePlainFiles(plain: PlainFiles) {
+        for (name in plain.present) {
+            context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+            context.deleteSharedPreferences(name)
+        }
+    }
+
     /** True when the plain files are gone (nothing to move, or moved and confirmed). False leaves them as they are. */
     private fun moveIntoSecure(target: SharedPreferences, plain: PlainFiles): Boolean {
         if (plain.present.isEmpty()) return true
         if (plain.entries.isNotEmpty()) {
             val written = try {
                 val editor = target.edit()
-                for ((k, v) in plain.entries) editor.putString(k, v)
+                // Never over a value the secure store already holds: after a kill between the copy and the delete it is the newer.
+                for ((k, v) in plain.entries) if (!target.contains(k)) editor.putString(k, v)
                 editor.commit()
             } catch (e: Exception) {
                 Log.e(TAG, "Could not move saved passwords into secure storage; they stay where they are for now", e)
@@ -177,10 +193,7 @@ class EncryptedPasswordStore internal constructor(
             }
             if (!written) return false
         }
-        for (name in plain.present) {
-            context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
-            context.deleteSharedPreferences(name)
-        }
+        deletePlainFiles(plain)
         SmugLog.i(TAG) { "Moved ${plain.entries.size} saved password entries into secure storage" }
         return true
     }

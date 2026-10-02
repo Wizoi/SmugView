@@ -324,6 +324,16 @@ class UnlockManager(
             ?: node.getAlbumKey().takeIf { it.isNotEmpty() && it != node.nodeId }?.let { savedFor(it, rootId) }) == null
     }
 
+    /**
+     * Step 6-11c: does the password root that protects [node] have a live session, i.e. an `!unlock` succeeded in this process (a saved
+     * password that unlocked at launch counts; a saved password nothing has unlocked yet does not)? Cache-only, so false when the
+     * cache cannot place the node under a root. A 404 under a live session is "gone", not "locked" (L2): the cookie is there.
+     */
+    suspend fun hasLiveSession(node: CachedNode): Boolean {
+        val rootId = protectingRoot(node, null) ?: return false
+        return accessOf(rootId) == Access.Session
+    }
+
     /** The lock a list row shows (design 7 Q7). */
     enum class RowLock { None, Locked, Open }
 

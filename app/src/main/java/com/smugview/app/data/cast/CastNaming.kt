@@ -20,5 +20,14 @@ internal fun routeIdFor(sessionDeviceId: String, routes: List<CastRouteRef>): St
 internal fun unnamedDialDeviceLabel(manufacturer: String?): String =
     if (manufacturer?.contains("Amazon", ignoreCase = true) == true) "Amazon Device" else UserMessages.CAST_DIAL_DEVICE
 
-/** What to type on the Echo Show for a server bound on [port] of this phone at [ip]. */
+/** What to type on the screen for a server bound on [port] of this phone at [ip]. */
 internal fun webCompanionUrlFor(ip: String, port: Int): String = "http://$ip:$port"
+
+/** Step 6-11c: why the screen link has no URL. They are different problems with different fixes, so the UI says which. */
+enum class WebCompanionFailure {
+    /** No port from 8080 to 8089 could be bound. */
+    PortsInUse,
+
+    /** The server could bind, but this phone has no Wi-Fi address to type on the screen. */
+    NoWifi
+}

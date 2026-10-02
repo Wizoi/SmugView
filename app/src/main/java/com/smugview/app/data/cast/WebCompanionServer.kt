@@ -23,7 +23,7 @@ sealed interface WebCompanionStart {
 
 /**
  * A tiny HTTP server that mirrors the currently-cast photo/video to a device that cannot
- * receive a normal cast stream (e.g. an Amazon Echo Show's built-in browser).
+ * receive a normal cast stream (e.g. a smart display's built-in browser).
  *
  * SECURITY: this serves the URLs of what may be *private* SmugMug galleries over cleartext
  * HTTP on the local network. To limit exposure it:

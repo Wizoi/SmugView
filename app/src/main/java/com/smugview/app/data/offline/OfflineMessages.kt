@@ -53,6 +53,10 @@ object OfflineMessages {
     fun deleteConfirm(name: String, photos: Int, sizeBytes: Long) =
         "Delete “$name”? $photos photos saved on this phone (${size(sizeBytes)}) will be removed. They stay on SmugMug."
 
+    /** Removing a gallery that SmugMug no longer has (6-11c): its photos are not "on SmugMug" any more, so only what is lost here is said. */
+    fun removeGalleryConfirm(name: String, photos: Int, sizeBytes: Long) =
+        "Delete “$name”? $photos photos saved on this phone (${size(sizeBytes)}) will be removed."
+
     fun offlineGallery(photos: Int) =
         "You're offline. Showing the ${if (photos == 1) "1 photo" else "$photos photos"} saved on this phone."
 

@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.smugview.app.data.cast.CastDevice
 import com.smugview.app.data.cast.ConnectionState
+import com.smugview.app.data.cast.WebCompanionFailure
 
 @Composable
 fun CastControllerScreen(
@@ -37,6 +38,7 @@ fun CastControllerScreen(
     isMuted: Boolean,
     isWebCompanionActive: Boolean = false,
     webCompanionUrl: String? = null,
+    webCompanionFailure: WebCompanionFailure? = null,
     onPlayPauseToggle: () -> Unit,
     onNextClick: () -> Unit,
     onPrevClick: () -> Unit,
@@ -183,7 +185,7 @@ fun CastControllerScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     // No URL unless the server really is bound, and then the port it really got (R-58).
                     Text(
-                        text = if (webCompanionUrl != null) UserMessages.castCompanion(webCompanionUrl) else UserMessages.CAST_COMPANION_FAILED,
+                        text = UserMessages.castCompanionLine(webCompanionUrl, webCompanionFailure),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,

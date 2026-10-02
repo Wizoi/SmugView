@@ -30,6 +30,11 @@ class OfflineMessagesTest {
             "Delete “Trip”? 12 photos saved on this phone (48 MB) will be removed. They stay on SmugMug.",
             OfflineMessages.deleteConfirm("Trip", 12, 48L * 1024 * 1024)
         )
+        // The gone-gallery question (6-11c) says nothing about SmugMug: the gallery is not there any more.
+        assertEquals(
+            "Delete “Trip”? 12 photos saved on this phone (48 MB) will be removed.",
+            OfflineMessages.removeGalleryConfirm("Trip", 12, 48L * 1024 * 1024)
+        )
         assertEquals("You're offline. Showing the 7 photos saved on this phone.", OfflineMessages.offlineGallery(7))
         assertEquals("Try again", OfflineMessages.TRY_AGAIN)
         assertEquals("Remove", OfflineMessages.REMOVE)

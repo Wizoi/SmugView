@@ -94,6 +94,6 @@ class OfflineReader(
     suspend fun removeGalleryConfirm(albumKey: String, name: String): DeleteConfirm? {
         val stats = dao.savedOnlyByGallery(albumKey)
         if (stats.photos == 0) return null
-        return DeleteConfirm(stats.photos, stats.bytes, OfflineMessages.deleteConfirm(name, stats.photos, stats.bytes))
+        return DeleteConfirm(stats.photos, stats.bytes, OfflineMessages.removeGalleryConfirm(name, stats.photos, stats.bytes))
     }
 }
