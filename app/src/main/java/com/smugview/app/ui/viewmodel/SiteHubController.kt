@@ -41,7 +41,8 @@ class SiteHubController(
     private val siteScope: () -> CoroutineScope,
     private val getRootNodeId: () -> String?,
     private val getAlbumKeyFromWebUri: suspend (String?) -> String?,
-    private val setUserAlbums: (List<AlbumDetails>) -> Unit
+    private val setUserAlbums: (List<AlbumDetails>) -> Unit,
+    private val isLockedAway: suspend (AlbumImageData) -> Boolean
 ) {
     // Live validation / preview for the Site Explorer
     private val _sitePreview = MutableStateFlow<Result<UserData>?>(null)
@@ -57,6 +58,18 @@ class SiteHubController(
     // Hub dashboard data for the active site
     private val _activeSiteRecentImages = MutableStateFlow<List<AlbumImageData>>(emptyList())
     val activeSiteRecentImages: StateFlow<List<AlbumImageData>> = _activeSiteRecentImages.asStateFlow()
+
+    /** The recent photos as SmugMug sent them, kept so a password unlocked later brings its photos back (6-13). */
+    private var recentUnfiltered: List<AlbumImageData> = emptyList()
+
+    /** Step 6-13 (Q6 (a)): SmugMug serves a password folder's photos to anyone, so Home must not show those the phone has no session for. */
+    private suspend fun withoutLockedAway(images: List<AlbumImageData>): List<AlbumImageData> =
+        images.filterNot { isLockedAway(it) }
+
+    /** Re-applies the lock rule after a password was unlocked or forgotten. */
+    fun refilterRecent() {
+        siteScope().launch { _activeSiteRecentImages.value = withoutLockedAway(recentUnfiltered) }
+    }
 
     private val _activeSiteAlbums = MutableStateFlow<List<HubAlbumItem>>(emptyList())
     val activeSiteAlbums: StateFlow<List<HubAlbumItem>> = _activeSiteAlbums.asStateFlow()
@@ -257,7 +270,8 @@ class SiteHubController(
                     val computedTotalPhotos = albums.sumOf { it.imageCount }
                     setPageOneTotals(galleries = null, photos = computedTotalPhotos)
 
-                    _activeSiteRecentImages.value = resolvedRecentImages
+                    recentUnfiltered = resolvedRecentImages
+                    _activeSiteRecentImages.value = withoutLockedAway(resolvedRecentImages)
                     _activeSiteAlbums.value = albums
                     _activeSiteTopKeywords.value = topKeywords.take(12)
                 }

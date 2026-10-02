@@ -749,7 +749,8 @@ class SmugViewModel @Inject constructor(
             _splashState.value.let { if (it is SplashUiState.Success) it.rootNodeId else null }
         },
         getAlbumKeyFromWebUri = { webUri -> getAlbumKeyFromWebUri(webUri) },
-        setUserAlbums = { albums -> _userAlbums = albums }
+        setUserAlbums = { albums -> _userAlbums = albums },
+        isLockedAway = { img -> isLockedAway(img) }
     )
 
     val sitePreview: StateFlow<Result<UserData>?> get() = siteHub.sitePreview
@@ -835,6 +836,7 @@ class SmugViewModel @Inject constructor(
 
     init {
         loadHistoryAndActiveSite()
+        viewModelScope.launch { repository.unlocks.access.collect { siteHub.refilterRecent() } }
         // The keyword image-loading observe is started by TagSearchController's own init.
         // No launch unlock here: the site sync unlocks the saved password roots first, then crawls,
         // so the crawl runs with the session cookie (design 3.8).
@@ -1203,6 +1205,19 @@ class SmugViewModel @Inject constructor(
      */
     suspend fun needsPassword(node: CachedNode): Boolean = try {
         repository.unlocks.needsPassword(node, apiKey)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false
+    }
+
+    /**
+     * Step 6-13: is this recent photo in a gallery under a password folder the phone has no session for? Cache-only: a photo whose
+     * gallery the cache cannot place shows, as it always did.
+     */
+    private suspend fun isLockedAway(img: AlbumImageData): Boolean = try {
+        val node = getNearestCachedAncestorNode(img.thumbnailUrl)
+        node != null && lockOf(node) == com.smugview.app.data.repository.UnlockManager.RowLock.Locked
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
