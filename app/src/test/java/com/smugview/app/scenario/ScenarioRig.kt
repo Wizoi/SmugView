@@ -39,7 +39,9 @@ class ScenarioRig(
     /** What `Dispatchers.Main` is for this rig; null (the default) is a private single thread named "main". Screen tests pass the Robolectric main looper. */
     mainDispatcher: kotlinx.coroutines.CoroutineDispatcher? = null,
     /** What the repository sees as its DAO (a test wraps [dao] to hold or watch a query); `dao` itself stays the plain one. */
-    repositoryDao: (CollectionDao) -> CollectionDao = { it }
+    repositoryDao: (CollectionDao) -> CollectionDao = { it },
+    /** Builds the cast manager the view model gets (a journey passes the real one over a fake `CastIo`); null is a Mockito mock. */
+    private val castFactory: ((Application) -> CastManager)? = null
 ) {
     val server = FakeSmugMugServer()
     private val cacheDir: java.io.File? = if (httpCache) java.nio.file.Files.createTempDirectory("smugview-http-cache").toFile() else null
@@ -89,6 +91,9 @@ class ScenarioRig(
         }
 
     private fun newViewModel(repo: SmugMugRepository, handle: SavedStateHandle): SmugViewModel {
+        castFactory?.let { make ->
+            return SmugViewModel(app, repo, offline(), reader, make(app), passwords, Dispatchers.Default, reporter, handle)
+        }
         val cast = Mockito.mock(CastManager::class.java)
         Mockito.`when`(cast.discoveredDevices).thenReturn(MutableStateFlow(emptyList()))
         Mockito.`when`(cast.activeDevice).thenReturn(MutableStateFlow(null))

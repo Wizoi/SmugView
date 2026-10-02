@@ -39,11 +39,12 @@ import com.smugview.app.ui.grid.PhotoGridScreen
 class ScreenRig(
     val compose: ComposeContentTestRule,
     retrying: Boolean = false,
-    repositoryDao: (com.smugview.app.data.db.CollectionDao) -> com.smugview.app.data.db.CollectionDao = { it }
+    repositoryDao: (com.smugview.app.data.db.CollectionDao) -> com.smugview.app.data.db.CollectionDao = { it },
+    castFactory: ((android.app.Application) -> com.smugview.app.data.cast.CastManager)? = null
 ) {
     // Dispatchers.Main is the Robolectric main looper, the real app's arrangement. Coil's AsyncImagePainter reads
     // Compose snapshot state from Dispatchers.Main and crashes on any other thread; the view model's work follows it.
-    val rig = ScenarioRig(retrying, mainDispatcher = android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher(), repositoryDao = repositoryDao)
+    val rig = ScenarioRig(retrying, mainDispatcher = android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher(), repositoryDao = repositoryDao, castFactory = castFactory)
     val viewModel get() = rig.viewModel
     val server get() = rig.server
 
@@ -133,6 +134,9 @@ class ScreenRig(
 
     /** Renders [content] under the app theme. */
     fun setContent(content: @Composable () -> Unit) = compose.setContent { SmugViewTheme { content() } }
+
+    /** Phase 6 journeys (design 8.1): the app's own `NavHost` and screens over this rig's view model, as `MainActivity` hosts them. */
+    fun setAppContent() = setContent { com.smugview.app.SmugViewNavigation(viewModel) }
 
     /**
      * Polls until [condition] holds, then settles. The rig's state arrives on OkHttp and IO threads and is handed

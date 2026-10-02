@@ -78,9 +78,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun SmugViewNavigation() {
+fun SmugViewNavigation(viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel()) {
     val navController = rememberNavController()
-    val viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel()
     val coroutineScope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize()) {

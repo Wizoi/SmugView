@@ -735,7 +735,7 @@ class FakeSmugMugServer {
         val keys = (start..minOf(start + count - 1, total)).map { "s" + it.toString().padStart(5, '0') }
         val images = keys.joinToString(",") { ik ->
             """{"Uri":"/api/v2/image/$ik-0","ImageKey":"$ik","Title":"","Caption":"","FileName":"$ik.jpg","Format":"JPG",""" +
-                """"ThumbnailUrl":"https://photos.smugmug.com/photos/$ik/0/Th/$ik-Th.jpg","Date":"${daysAgo(10)}",""" +
+                """"ThumbnailUrl":"https://photos.smugmug.com/Kentridge/Public/i-$ik/0/Th/$ik-Th.jpg","Date":"${daysAgo(10)}",""" +
                 """"KeywordArray":["kentridge"],"Keywords":"kentridge","Uris":{${urisJson(req, mapOf("ImageSizeDetails" to "/api/v2/image/$ik-0!sizedetails"))}}}"""
         }
         val next = if (start - 1 + keys.size < total) ""","NextPage":"${nextPage(req, "image!search", start + keys.size)}"""" else ""
@@ -808,7 +808,7 @@ class FakeSmugMugServer {
         ) else json(
             req, 200,
             """{"Response":{"Image":{"Uri":"/api/v2/image/$key-0","ImageKey":"$key","Title":"","FileName":"$key.jpg","Format":"JPG",""" +
-                """"ThumbnailUrl":"https://photos.smugmug.com/photos/$key/0/Th/$key-Th.jpg","OriginalWidth":4000,"OriginalHeight":3000,""" +
+                """"ThumbnailUrl":"https://photos.smugmug.com/${if (Regex("^s[0-9]{5}$").matches(key)) "Kentridge/Public/i-$key" else "photos/$key"}/0/Th/$key-Th.jpg","OriginalWidth":4000,"OriginalHeight":3000,""" +
                 """"IsVideo":${isVideoKey(key)}${archivedJson(req, key, isVideoKey(key))},""" +
                 """"Uris":{${urisJson(req, mapOf("ImageSizeDetails" to "/api/v2/image/$key-0!sizedetails"))}}}},"Code":200}"""
         )
