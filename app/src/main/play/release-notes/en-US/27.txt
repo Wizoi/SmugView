@@ -1,0 +1,9 @@
+New:
+- Save photos to your phone. Keep whole galleries offline; choose Wi-Fi only or any network in Collections settings.
+- Download a photo to Pictures/SmugView, or share a picture (camera location removed) or a link to its page.
+- Pinch-zoom now reaches the photo's full resolution.
+
+Fixed:
+- Clear messages when you are offline, a gallery is locked or a gallery was removed.
+- Saved gallery passwords are now stored securely.
+- Breadcrumbs, search and screen-casting fixes.
