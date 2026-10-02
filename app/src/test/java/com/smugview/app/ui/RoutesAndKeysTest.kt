@@ -38,4 +38,13 @@ class RoutesAndKeysTest {
         assertTrue("keys collide: $keys", keys.toSet().size == keys.size)
         assertNotEquals(CollectionRowKeys.album(id), CollectionRowKeys.photoGroup(id))
     }
+
+    // R-44 (step 6-16): a blank album key made "photo_detail//{imageKey}", which matches no route and crashed the nav graph.
+    @Test
+    fun photoDetailRoute_withABlankKey_isNoRoute_andWithBothKeysIsThreeSegments() {
+        assertEquals(null, Routes.photoDetail("", "i-AbC"))
+        assertEquals(null, Routes.photoDetail("FfHCms", " "))
+        val route = Routes.photoDetail("FfHCms", "AbC123")!!
+        assertEquals(listOf("photo_detail", "FfHCms", "AbC123"), Uri.parse("app://host/$route").pathSegments)
+    }
 }

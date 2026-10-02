@@ -176,6 +176,39 @@ fun CollectionsTabView(
         }
     }
 
+    // Q10 (6-16): an unsave, a row "Remove" or turning off Keep offline asks first when a saved copy nothing else uses would go.
+    var pendingRemove by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    pendingRemove?.let { (text, action) ->
+        RemoveConfirmDialog(
+            text = text,
+            onConfirm = { pendingRemove = null; action() },
+            onDismiss = { pendingRemove = null }
+        )
+    }
+    val askThenRemove: (suspend () -> com.smugview.app.data.offline.OfflineReader.DeleteConfirm?, () -> Unit) -> Unit = { ask, remove ->
+        scope.launch {
+            val confirm = ask()
+            if (confirm == null) remove() else pendingRemove = confirm.text to remove
+        }
+    }
+
+    // R-44 (6-16): a saved photo with no album key finds its gallery from its picture's address, else says it is gone
+    // from SmugMug; it never opens "photo_detail//key".
+    val openImage: (String, String, String?) -> Unit = { albumKey, imageKey, thumbnailUrl ->
+        if (albumKey.isNotBlank()) {
+            onImageClick(albumKey, imageKey)
+        } else {
+            scope.launch {
+                val key = viewModel.getAlbumKeyFromWebUri(thumbnailUrl)
+                if (key.isNullOrBlank()) {
+                    Toast.makeText(context, com.smugview.app.ui.text.UserMessages.line(com.smugview.app.ui.text.Problem.Gone(com.smugview.app.ui.text.Subject.Photo)), Toast.LENGTH_SHORT).show()
+                } else {
+                    onImageClick(key, imageKey)
+                }
+            }
+        }
+    }
+
     if (selectedCollectionForShortcuts != null) {
         val col = selectedCollectionForShortcuts!!
         // Reactively lookup active name in case it changed
@@ -414,7 +447,7 @@ fun CollectionsTabView(
                                 kept = offlineState.galleries[galleryKey],
                                 onKeepChange = { keep ->
                                     if (keep) viewModel.keepGalleryOffline(col.id, galleryKey, a.title)
-                                    else viewModel.stopKeepingGalleryOffline(col.id, galleryKey)
+                                    else askThenRemove({ viewModel.stopKeepingConfirm(col.id, galleryKey, a.title) }) { viewModel.stopKeepingGalleryOffline(col.id, galleryKey) }
                                 },
                                 onMobileDataTooChange = { too -> viewModel.setGalleryWifiOnly(col.id, galleryKey, !too) },
                                 onUseMobileData = { viewModel.setGalleryWifiOnly(col.id, galleryKey, false) }
@@ -439,7 +472,7 @@ fun CollectionsTabView(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
-                                    .clickable { onImageClick(p.albumKey, p.imageKey) }
+                                    .clickable { openImage(p.albumKey, p.imageKey, p.thumbnailUrl) }
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -469,12 +502,12 @@ fun CollectionsTabView(
                                         OfflineRowLine(
                                             state = offlineState.rows[p.imageKey],
                                             onTryAgain = { viewModel.tryAgain(p.imageKey) },
-                                            onRemove = { viewModel.removeSavedRow(p.imageKey, col.id) }
+                                            onRemove = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), p.imageKey, p.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${p.imageKey}", dropsPhotoRow = true, dropsBookmark = true) }) { viewModel.removeSavedRow(p.imageKey, col.id) } }
                                         )
                                     }
                                 }
                                 IconButton(
-                                    onClick = { viewModel.removePhotoFromCollection(p.imageKey, col.id) },
+                                    onClick = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), p.imageKey, p.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${p.imageKey}", dropsPhotoRow = true, dropsBookmark = false) }) { viewModel.removePhotoFromCollection(p.imageKey, col.id) } },
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
@@ -558,7 +591,7 @@ fun CollectionsTabView(
                                                         .fillMaxWidth()
                                                         .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(6.dp))
                                                         .clickable {
-                                                            onImageClick(albumKey, img.itemKey)
+                                                            openImage(albumKey, img.itemKey, img.thumbnailUrl)
                                                         }
                                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                                     verticalAlignment = Alignment.CenterVertically,
@@ -605,7 +638,7 @@ fun CollectionsTabView(
                                                             OfflineRowLine(
                                                                 state = offlineState.rows[img.itemKey],
                                                                 onTryAgain = { viewModel.tryAgain(img.itemKey) },
-                                                                onRemove = { viewModel.removeSavedRow(img.itemKey, col.id) }
+                                                                onRemove = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), img.itemKey, img.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${img.itemKey}", dropsPhotoRow = true, dropsBookmark = true) }) { viewModel.removeSavedRow(img.itemKey, col.id) } }
                                                             )
                                                         }
                                                     }
@@ -672,7 +705,7 @@ fun CollectionsTabView(
                                                             )
                                                         }
                                                         IconButton(
-                                                            onClick = { viewModel.removeBookmark(col.id, "Image", img.itemKey) },
+                                                            onClick = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), img.itemKey, img.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${img.itemKey}", dropsPhotoRow = false, dropsBookmark = true) }) { viewModel.removeBookmark(col.id, "Image", img.itemKey) } },
                                                             modifier = Modifier.size(24.dp)
                                                         ) {
                                                             Icon(

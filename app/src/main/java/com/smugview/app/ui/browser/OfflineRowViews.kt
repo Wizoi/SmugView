@@ -104,3 +104,14 @@ internal fun DeleteCollectionDialog(text: String, onConfirm: () -> Unit, onDismi
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
+
+/** Q10 (6-16): asks before an unsave, a row "Remove" or turning off Keep offline deletes a saved copy nothing else uses. */
+@Composable
+internal fun RemoveConfirmDialog(text: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        text = { Text(text) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Remove") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}

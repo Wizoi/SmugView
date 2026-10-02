@@ -57,6 +57,14 @@ object OfflineMessages {
     fun removeGalleryConfirm(name: String, photos: Int, sizeBytes: Long) =
         "Delete “$name”? $photos photos saved on this phone (${size(sizeBytes)}) will be removed."
 
+    /** Q10 (6-16): unsaving one photo whose only saved copy is this one. */
+    fun removeImageConfirm(title: String, collection: String, sizeBytes: Long) =
+        "Remove “$title” from $collection? The copy saved on this phone (${size(sizeBytes)}) will be deleted. It stays on SmugMug."
+
+    /** Q10 (6-16): turning off Keep offline for a gallery whose saved photos nothing else uses. */
+    fun stopKeepingConfirm(title: String, photos: Int, sizeBytes: Long) =
+        "Stop keeping “$title” offline? ${if (photos == 1) "1 photo" else "$photos photos"} saved on this phone (${size(sizeBytes)}) will be deleted. ${if (photos == 1) "It stays" else "They stay"} on SmugMug."
+
     fun offlineGallery(photos: Int) =
         "You're offline. Showing the ${if (photos == 1) "1 photo" else "$photos photos"} saved on this phone."
 

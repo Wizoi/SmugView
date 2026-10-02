@@ -389,6 +389,33 @@ interface OfflineDao {
             "AND NOT EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey AND g.albumKey != :albumKey)"
     )
     suspend fun savedOnlyByGallery(albumKey: String): SavedStats
+
+
+    /**
+     * Q10 (6-16): what unsaving the photo [imageKey] from [collectionIds] would delete: its saved (DONE) file, when nothing else
+     * wants it (a photo, Image bookmark or kept gallery of another collection, or any kept gallery). [dropsPhotoRow] and [dropsBookmark] say which of the two go (1) or stay (0): the
+     * row "Remove" drops both, an "Unsave" of an image bookmark only the bookmark, of a saved photo only the photo row.
+     */
+    @Query(
+        "SELECT COUNT(*) AS photos, COALESCE(SUM(f.bytes), 0) AS bytes FROM offline_files f WHERE f.state = 'DONE' AND f.imageKey = :imageKey " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_photos p WHERE p.imageKey = f.imageKey AND (:dropsPhotoRow = 0 OR p.collectionId NOT IN (:collectionIds))) " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_bookmarks b WHERE b.type = 'Image' AND b.itemKey = f.imageKey AND (:dropsBookmark = 0 OR b.collectionId NOT IN (:collectionIds))) " +
+            "AND NOT EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey)"
+    )
+    suspend fun savedOnlyByImageIn(collectionIds: List<Long>, imageKey: String, dropsPhotoRow: Int, dropsBookmark: Int): SavedStats
+
+    /**
+     * Q10 (6-16): what turning off Keep offline for [albumKey] in [collectionId] would delete: saved files its listing refers to
+     * and nothing else does (any collection's photo or Image bookmark, or another kept gallery's listing).
+     */
+    @Query(
+        "SELECT COUNT(*) AS photos, COALESCE(SUM(f.bytes), 0) AS bytes FROM offline_files f WHERE f.state = 'DONE' " +
+            "AND EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey AND g.collectionId = :collectionId AND g.albumKey = :albumKey) " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_photos p WHERE p.imageKey = f.imageKey) " +
+            "AND NOT EXISTS(SELECT 1 FROM collection_bookmarks b WHERE b.type = 'Image' AND b.itemKey = f.imageKey) " +
+            "AND NOT EXISTS(SELECT 1 FROM offline_gallery_items g WHERE g.imageKey = f.imageKey AND NOT (g.collectionId = :collectionId AND g.albumKey = :albumKey))"
+    )
+    suspend fun savedOnlyByKeptGallery(collectionId: Long, albumKey: String): SavedStats
 }
 
 /** A saved file: the photo and where it is, relative to `filesDir`. */

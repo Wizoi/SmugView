@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -434,5 +435,87 @@ class OfflineReaderTest {
         saved(keys[1]); photoRow(keys[1], 1); photoRow(keys[1], 2)
 
         assertNull(rig.reader.deleteConfirm(1, "Favorites"))
+    }
+
+    // ---- Q10 (6-16): asking before the last reference to a saved copy goes ----
+
+    private fun imageBookmark(key: String, collection: Int) = sql.execSQL(
+        "INSERT INTO collection_bookmarks (collectionId, type, itemKey, title, albumKey, albumTitle, thumbnailUrl, extraData) " +
+            "VALUES ($collection, 'Image', '$key', 'IMG_$key', '$gallery', 'Class photos', NULL, NULL)"
+    )
+
+    @Test fun `unsaving the only reference to a saved copy asks, naming its size`() = runBlocking {
+        saved(keys[0], bytes = 2_048); imageBookmark(keys[0], 1)
+
+        val confirm = rig.reader.removeImageConfirm(listOf(1), keys[0], "Sunset", "Favorites", dropsPhotoRow = false, dropsBookmark = true)!!
+
+        assertEquals(1, confirm.photos)
+        assertEquals(2_048L, confirm.bytes)
+        assertEquals(OfflineMessages.removeImageConfirm("Sunset", "Favorites", 2_048), confirm.text)
+    }
+
+    @Test fun `a bookmark in another collection keeps the copy, so nothing is asked`() = runBlocking {
+        saved(keys[0]); imageBookmark(keys[0], 1); imageBookmark(keys[0], 2)
+
+        assertNull(rig.reader.removeImageConfirm(listOf(1), keys[0], "Sunset", "Favorites", dropsPhotoRow = false, dropsBookmark = true))
+    }
+
+    @Test fun `unsaving from every collection that holds the photo asks, though each alone would not`() = runBlocking {
+        saved(keys[0]); imageBookmark(keys[0], 1); imageBookmark(keys[0], 2)
+
+        assertNotNull(rig.reader.removeImageConfirm(listOf(1, 2), keys[0], "Sunset", "Favorites and Trip", dropsPhotoRow = false, dropsBookmark = true))
+    }
+
+    @Test fun `a saved photo row of the same collection keeps the copy when only the bookmark goes`() = runBlocking {
+        saved(keys[0]); imageBookmark(keys[0], 1); photoRow(keys[0], 1)
+
+        assertNull(rig.reader.removeImageConfirm(listOf(1), keys[0], "Sunset", "Favorites", dropsPhotoRow = false, dropsBookmark = true))
+        assertNotNull(rig.reader.removeImageConfirm(listOf(1), keys[0], "Sunset", "Favorites", dropsPhotoRow = true, dropsBookmark = true))
+    }
+
+    @Test fun `a kept gallery that lists the photo keeps the copy`() = runBlocking {
+        saved(keys[0]); imageBookmark(keys[0], 1); keepGallery(2, listOf(keys[0]))
+
+        assertNull(rig.reader.removeImageConfirm(listOf(1), keys[0], "Sunset", "Favorites", dropsPhotoRow = true, dropsBookmark = true))
+    }
+
+    @Test fun `a photo not saved to this phone needs no confirmation`() = runBlocking {
+        row(keys[0], OfflineStore.PENDING); imageBookmark(keys[0], 1)
+
+        assertNull(rig.reader.removeImageConfirm(listOf(1), keys[0], "Sunset", "Favorites", dropsPhotoRow = true, dropsBookmark = true))
+    }
+
+    @Test fun `turning off Keep offline counts only the copies nothing else uses`() = runBlocking {
+        saved(keys[0], bytes = 1_000)                                  // only this gallery
+        saved(keys[1], bytes = 3_000); photoRow(keys[1], 2)           // also a saved photo of Trip
+        saved(keys[2], bytes = 500); keepGallery(2, listOf(keys[2]))  // also kept by Trip
+        keepGallery(1, listOf(keys[0], keys[1], keys[2]))
+
+        val confirm = rig.reader.stopKeepingConfirm(1, gallery, "Class photos")!!
+
+        assertEquals(1, confirm.photos)
+        assertEquals(1_000L, confirm.bytes)
+        assertEquals(OfflineMessages.stopKeepingConfirm("Class photos", 1, 1_000), confirm.text)
+    }
+
+    @Test fun `turning off Keep offline for a gallery with nothing saved needs no confirmation`() = runBlocking {
+        row(keys[0], OfflineStore.PENDING); keepGallery(1, listOf(keys[0]))
+
+        assertNull(rig.reader.stopKeepingConfirm(1, gallery, "Class photos"))
+    }
+
+    @Test fun `the confirm texts name the cause and the way out`() {
+        assertEquals(
+            "Remove “Sunset” from Favorites? The copy saved on this phone (2 KB) will be deleted. It stays on SmugMug.",
+            OfflineMessages.removeImageConfirm("Sunset", "Favorites", 2_048)
+        )
+        assertEquals(
+            "Stop keeping “Class photos” offline? 1 photo saved on this phone (1 KB) will be deleted. It stays on SmugMug.",
+            OfflineMessages.stopKeepingConfirm("Class photos", 1, 1_000)
+        )
+        assertEquals(
+            "Stop keeping “Class photos” offline? 3 photos saved on this phone (1 KB) will be deleted. They stay on SmugMug.",
+            OfflineMessages.stopKeepingConfirm("Class photos", 3, 1_000)
+        )
     }
 }

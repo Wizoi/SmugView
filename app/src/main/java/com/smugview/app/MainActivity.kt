@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import com.smugview.app.ui.navigation.Routes
 import com.smugview.app.ui.browser.BrowserScreen
 import com.smugview.app.ui.detail.PhotoDetailScreen
 import com.smugview.app.ui.detail.SearchPhotoDetailScreen
@@ -96,7 +97,7 @@ fun SmugViewNavigation() {
                         navController.navigate("search_photo_detail/$imageKey?index=$index")
                     },
                     onNavigateToPhotoDetail = { albumKey, imageKey ->
-                        navController.navigate("photo_detail/$albumKey/$imageKey")
+                        Routes.photoDetail(albumKey, imageKey)?.let { navController.navigate(it) }
                     },
                     onNavigateToKeywordImages = {
                         navController.navigate("keyword_images")
@@ -175,7 +176,7 @@ fun SmugViewNavigation() {
                     albumTitle = albumTitle,
                     viewModel = viewModel,
                     onNavigateToPhotoDetail = { imageKey ->
-                        navController.navigate("photo_detail/$albumKey/$imageKey")
+                        Routes.photoDetail(albumKey, imageKey)?.let { navController.navigate(it) }
                     },
                     onBackClick = {
                         navController.navigateUp()
@@ -249,7 +250,7 @@ fun SmugViewNavigation() {
                         navController.navigateUp()
                     },
                     onNavigateToPhotoDetail = { albumKey, targetImageKey ->
-                        navController.navigate("photo_detail/$albumKey/$targetImageKey")
+                        Routes.photoDetail(albumKey, targetImageKey)?.let { navController.navigate(it) }
                     },
                     onNavigateToGallery = { albumKey, targetKey ->
                         viewModel.cancelSearchJob()

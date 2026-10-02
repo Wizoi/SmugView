@@ -96,4 +96,18 @@ class OfflineReader(
         if (stats.photos == 0) return null
         return DeleteConfirm(stats.photos, stats.bytes, OfflineMessages.removeGalleryConfirm(name, stats.photos, stats.bytes))
     }
+
+    /** Q10 (6-16): null when unsaving [imageKey] from [collectionIds] would delete no saved copy; [dropsPhotoRow] and [dropsBookmark] say which rows go. */
+    suspend fun removeImageConfirm(collectionIds: List<Long>, imageKey: String, title: String, collectionNames: String, dropsPhotoRow: Boolean, dropsBookmark: Boolean): DeleteConfirm? {
+        val stats = dao.savedOnlyByImageIn(collectionIds, imageKey, if (dropsPhotoRow) 1 else 0, if (dropsBookmark) 1 else 0)
+        if (stats.photos == 0) return null
+        return DeleteConfirm(stats.photos, stats.bytes, OfflineMessages.removeImageConfirm(title, collectionNames, stats.bytes))
+    }
+
+    /** Q10 (6-16): null when turning off Keep offline for [albumKey] would delete no saved photo. */
+    suspend fun stopKeepingConfirm(collectionId: Long, albumKey: String, title: String): DeleteConfirm? {
+        val stats = dao.savedOnlyByKeptGallery(collectionId, albumKey)
+        if (stats.photos == 0) return null
+        return DeleteConfirm(stats.photos, stats.bytes, OfflineMessages.stopKeepingConfirm(title, stats.photos, stats.bytes))
+    }
 }

@@ -2197,6 +2197,14 @@ class SmugViewModel @Inject constructor(
     suspend fun removeGalleryConfirm(albumKey: String, name: String): com.smugview.app.data.offline.OfflineReader.DeleteConfirm? =
         offlineReader.removeGalleryConfirm(albumKey, name)
 
+    /** Q10: what unsaving [imageKey] from [collections] would delete from this phone, or null when nothing (no question needed). */
+    suspend fun removeImageConfirm(collections: List<OfflineCollection>, imageKey: String, title: String, dropsPhotoRow: Boolean, dropsBookmark: Boolean): com.smugview.app.data.offline.OfflineReader.DeleteConfirm? =
+        offlineReader.removeImageConfirm(collections.map { it.id }, imageKey, title, collections.joinToString(", ") { it.name }, dropsPhotoRow, dropsBookmark)
+
+    /** Q10: what turning off Keep offline for [albumKey] in [collectionId] would delete, or null when nothing. */
+    suspend fun stopKeepingConfirm(collectionId: Long, albumKey: String, title: String): com.smugview.app.data.offline.OfflineReader.DeleteConfirm? =
+        offlineReader.stopKeepingConfirm(collectionId, albumKey, title)
+
     fun addPhotoToCollection(photo: AlbumImageData, collectionId: Long) =
         collections.addPhotoToCollection(photo, collectionId)
 
@@ -2310,6 +2318,14 @@ class SmugViewModel @Inject constructor(
     }
 
     /**
+     * The key of the gallery [photo] is in (R-44): its own album link, else the gallery path in its thumbnail URL looked up
+     * in the gallery index. A search result has no album link, so saving it used to store a blank key.
+     */
+    suspend fun albumKeyFor(photo: AlbumImageData): String? =
+        com.smugview.app.share.ShareContent.albumKeyOf(photo.uris?.album ?: photo.uris?.imageAlbum)
+            ?: getAlbumKeyFromWebUri(photo.thumbnailUrl)
+
+    /**
      * The web page to share for [photo] (6-14, design 3.10): its own `WebUri`, else the gallery's page from the index plus
      * `/i-{key}` (found by the photo's album link, else by the gallery path in its thumbnail URL, else by the nearest cached
      * gallery node), else null. Never an `ArchivedUri` or a CDN address.
@@ -2317,9 +2333,7 @@ class SmugViewModel @Inject constructor(
     suspend fun shareLinkFor(photo: AlbumImageData): String? {
         if (com.smugview.app.share.ShareContent.isShareable(photo.webUri)) return photo.webUri?.trim()
         val gallery = try {
-            val key = com.smugview.app.share.ShareContent.albumKeyOf(photo.uris?.album ?: photo.uris?.imageAlbum)
-                ?: getAlbumKeyFromWebUri(photo.thumbnailUrl)
-            key?.let { repository.cachedGalleryWebUri(it) }
+            albumKeyFor(photo)?.let { repository.cachedGalleryWebUri(it) }
                 ?: getNearestCachedAncestorNode(photo.thumbnailUrl)?.takeIf { it.type == "Album" }?.webUri
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e

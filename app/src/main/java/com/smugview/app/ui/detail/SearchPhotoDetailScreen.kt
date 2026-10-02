@@ -244,11 +244,10 @@ fun SearchPhotoDetailScreen(
         }
 
         if (showAddToCollectionDialog && currentPhoto != null) {
-            val photoAlbumKey = currentPhoto.uris?.album?.substringAfterLast("/") ?: ""
             AddToCollectionsDialog(
                 type = "Image", itemKey = currentPhoto.imageKey,
                 title = currentPhoto.title ?: currentPhoto.caption ?: "Untitled Photo",
-                albumKey = photoAlbumKey, albumTitle = "Gallery",
+                albumKeyResolver = { viewModel.albumKeyFor(currentPhoto) }, albumTitle = "Gallery",
                 thumbnailUrl = currentPhoto.thumbnailUrl, imageUrl = currentPhoto.archivedUri ?: currentPhoto.thumbnailUrl,
                 onDismissRequest = { showAddToCollectionDialog = false }, viewModel = viewModel
             )
