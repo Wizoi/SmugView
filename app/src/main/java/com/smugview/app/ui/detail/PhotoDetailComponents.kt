@@ -112,6 +112,26 @@ fun rememberDominantBackgroundColor(
     return animated
 }
 
+/** Zoom limit used until the photo's real pixel size is known. */
+internal const val UNKNOWN_SIZE_MAX_ZOOM = 10f
+
+/** Longest side we ask the decoder for: past this a bitmap may not upload to the GPU (texture limit), so deeper zoom upscales. */
+internal const val MAX_DECODE_PX = 8192
+
+/** The size ContentScale.Fit gives an image of [aspect] (width / height) inside the box, in px. */
+internal fun fittedSizePx(aspect: Float, boxWidth: Int, boxHeight: Int): Pair<Float, Float> =
+    if (aspect > boxWidth.toFloat() / boxHeight) boxWidth.toFloat() to boxWidth / aspect
+    else boxHeight * aspect to boxHeight.toFloat()
+
+/** The pinch limit: one image pixel per screen pixel, and no sooner. */
+internal fun maxZoomScale(originalWidth: Int?, originalHeight: Int?, boxWidth: Int, boxHeight: Int): Float {
+    if (originalWidth == null || originalHeight == null || originalHeight <= 0 || boxWidth <= 0 || boxHeight <= 0) {
+        return UNKNOWN_SIZE_MAX_ZOOM
+    }
+    val fittedWidth = fittedSizePx(originalWidth.toFloat() / originalHeight, boxWidth, boxHeight).first
+    return (originalWidth / fittedWidth).coerceAtLeast(1f)
+}
+
 /**
  * Max pan distance (in px, from center) that keeps a ContentScale.Fit-fitted image's edges from
  * being dragged past the viewport, given the image's real aspect ratio and current zoom scale.
@@ -221,23 +241,26 @@ fun ImmersivePhotoPage(
             val halfwayUrl = halfwayEntry?.url ?: fallbackHalfwayUrl
             val loadHalfway = isZoomed && isActive && halfwayUrl != null
 
-            // Max zoom is derived from the real original resolution once known, so the user can zoom
-            // to native pixel resolution and no further. Falls back to a flat cap until that resolves.
-            val maxScale = remember(sizeDetails, boxSizePx) {
-                val originalWidth = sizeDetails?.original?.width
-                if (originalWidth != null && boxSizePx.width > 0) {
-                    (originalWidth.toFloat() / boxSizePx.width).coerceIn(1f, 10f)
-                } else {
-                    5f
-                }
+            // Max zoom is one image pixel per screen pixel, from the real original size: the size lookup's, else the
+            // photo's own (it rides along with the listing, so a first pinch is not held back waiting for the lookup).
+            val originalWidthPx = sizeDetails?.original?.width ?: photo.originalWidth
+            val originalHeightPx = sizeDetails?.original?.height ?: photo.originalHeight
+            val maxScale = remember(originalWidthPx, originalHeightPx, boxSizePx) {
+                maxZoomScale(originalWidthPx, originalHeightPx, boxSizePx.width, boxSizePx.height)
             }
 
             // Tier 2 ("largest"): swap to the true original once zoom exceeds what tier 1 can show.
             val originalEntry = sizeDetails?.original
-            val neededPx = boxSizePx.width * scale
+            val fittedPx = fittedSizePx(
+                contentAspectRatio ?: (boxSizePx.width.toFloat() / boxSizePx.height.coerceAtLeast(1)),
+                boxSizePx.width.coerceAtLeast(1), boxSizePx.height.coerceAtLeast(1)
+            )
+            val neededPx = fittedPx.first * scale
             val loadOriginal = loadHalfway && halfwayEntry != null && neededPx > halfwayEntry.width.toFloat()
             val originalRequestUrl = originalEntry?.url ?: photo.archivedUri
-            val targetOriginalPx = originalEntry?.width?.let { ow -> neededPx.toInt().coerceAtMost(ow) } ?: neededPx.toInt()
+            val neededLongestPx = (maxOf(fittedPx.first, fittedPx.second) * scale).toInt()
+            val targetOriginalPx = (originalEntry?.let { neededLongestPx.coerceAtMost(maxOf(it.width, it.height)) }
+                ?: neededLongestPx).coerceAtMost(MAX_DECODE_PX)
             LaunchedEffect(targetOriginalPx, loadOriginal) {
                 if (loadOriginal && (committedOriginalPx == 0 || targetOriginalPx > committedOriginalPx * 1.2f)) {
                     committedOriginalPx = targetOriginalPx
