@@ -213,11 +213,11 @@ class ScreenRig(
 
     /** Idles the main looper and lets Compose recompose and lay out until nothing is pending. */
     fun settle() {
+        // No compose.waitForIdle() here: it cost ~300 ms a call (162 of 184 s in GoneBookmarkScenarioTest) and the loop below already idles and steps the clock.
         repeat(3) {
             shadowOf(android.os.Looper.getMainLooper()).idle()
             healUiDispatcher()
             compose.mainClock.advanceTimeByFrame()
-            compose.waitForIdle()
         }
     }
 
