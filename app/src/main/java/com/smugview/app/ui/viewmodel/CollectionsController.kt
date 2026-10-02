@@ -108,6 +108,8 @@ class CollectionsController(
 
     val offlineNetworkRule: kotlinx.coroutines.flow.StateFlow<com.smugview.app.data.offline.OfflineNetworkRule> = offline.networkRule
 
+    suspend fun galleryWaiting() = offline.galleryWaiting()
+
     fun setOfflineNetworkRule(rule: com.smugview.app.data.offline.OfflineNetworkRule) {
         scope.launch {
             offline.setGalleryNetwork(rule)

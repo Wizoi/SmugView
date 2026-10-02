@@ -222,6 +222,33 @@ class OfflineGalleryTest {
         assertAllDone(keys)
     }
 
+    @Test fun theSizeWaitingForTheDialogIsUnknownUntilTheGalleryIsListed_thenTheSumOfItsFiles() {
+        bookmarkGallery()
+        keep()
+
+        val before = runBlocking { collections.galleryWaiting() }
+        assertTrue("a gallery with no listing yet", before.unlisted)
+        assertEquals(0L, before.bytes)
+
+        passWifi()
+
+        val listed = runBlocking { collections.galleryWaiting() }
+        assertFalse(listed.unlisted)
+        assertEquals("nothing left to save once every file is DONE", 0L, listed.bytes)
+    }
+
+    @Test fun theSizeWaitingCountsOnlyWhatKeptGalleriesStillHave() {
+        bookmarkGallery()
+        keep()
+        runBlocking { collections.setGalleryNetwork(OfflineNetworkRule.WIFI_AND_MOBILE) }
+        cdn.respondWith("/photos/", 503)
+        passAny()
+
+        val waiting = runBlocking { collections.galleryWaiting() }
+
+        assertTrue("files that could not be fetched are still waiting", waiting.bytes > 0)
+    }
+
     @Test fun takingTheMobileDataChoiceBackMakesTheUnfinishedFilesWaitForWifiAgain() {
         bookmarkGallery()
         keep()

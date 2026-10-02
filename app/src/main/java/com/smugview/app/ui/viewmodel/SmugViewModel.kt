@@ -2153,6 +2153,8 @@ class SmugViewModel @Inject constructor(
 
     val offlineNetworkRule get() = collections.offlineNetworkRule
 
+    suspend fun galleryWaiting() = collections.galleryWaiting()
+
     fun setOfflineNetworkRule(rule: com.smugview.app.data.offline.OfflineNetworkRule) = collections.setOfflineNetworkRule(rule)
 
     // --- What is saved on this phone (5-9): reads come from OfflineReader, writes from OfflineCollections ---

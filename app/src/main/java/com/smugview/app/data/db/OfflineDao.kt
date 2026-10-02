@@ -170,6 +170,13 @@ interface OfflineDao {
     )
     suspend fun countWantedGalleryOnly(): Int
 
+    /** What kept galleries still have to save that no saved photo wants: [unknown] stands in for a file whose size the listing did not say. */
+    @Query(
+        "SELECT COALESCE(SUM(COALESCE(expectedBytes, :unknown)), 0) FROM offline_files WHERE " + ONLY_GALLERIES + " " +
+            "AND (state IN ('PENDING', 'DOWNLOADING') OR (state = 'FAILED' AND retryable = 1))"
+    )
+    suspend fun galleryOnlyWaitingBytes(unknown: Long): Long
+
     /**
      * The earliest time a retryable failure is due, or null when there is none. A pass on mobile data
      * ([takeGalleryOnly] false) does not count the gallery-only rows it can never take, or it would reschedule itself forever.

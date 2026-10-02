@@ -86,7 +86,7 @@ class RemoveConfirmScreenTest {
 
     private fun openFavorites() {
         screens.setContent {
-            if (onScreen) CollectionsTabView(viewModel = vm, onNavigateToAlbum = { _, _ -> }, onImageClick = { _, _ -> }, onNavigateToCastController = {})
+            if (onScreen) CollectionsTabView(viewModel = vm, onNavigateToAlbum = { _, _ -> }, onImageClick = { _, _ -> }, onNavigateToCastController = {}, onChangeNetworkSetting = {})
         }
         awaitText("Favorites")
         compose.onNodeWithText("Favorites").performClick()

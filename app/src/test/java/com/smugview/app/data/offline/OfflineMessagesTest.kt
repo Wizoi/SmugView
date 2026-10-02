@@ -43,6 +43,25 @@ class OfflineMessagesTest {
     @Test fun `the network setting texts`() {
         assertEquals("Waiting for Wi-Fi", OfflineMessages.WAITING_FOR_WIFI)
         assertEquals("Change network setting", OfflineMessages.CHANGE_NETWORK_SETTING)
+        assertEquals("Saving for offline settings", OfflineMessages.SETTINGS_ICON)
+        assertEquals("Saving galleries for offline", OfflineMessages.NETWORK_TITLE)
+        assertEquals("On Wi-Fi only", OfflineMessages.NETWORK_WIFI_ONLY)
+        assertEquals("On Wi-Fi or mobile data", OfflineMessages.NETWORK_ANY)
+        assertEquals("Close", OfflineMessages.CLOSE)
+        assertTrue(OfflineMessages.NETWORK_WIFI_ONLY_HINT.contains("hotspot"))
+        assertTrue(OfflineMessages.NETWORK_PHOTOS_NOTE.contains("one at a time"))
+    }
+
+    @Test fun `the mobile data line names the size that waits, or why it is not known`() {
+        assertEquals(
+            "Kept galleries also save on mobile data. A gallery is often 100 MB or more; 120 MB is waiting now.",
+            OfflineMessages.networkAnyHint(120L shl 20, unlisted = false)
+        )
+        assertEquals(
+            "Kept galleries also save on mobile data. A gallery is often 100 MB or more; its size is known once it is listed.",
+            OfflineMessages.networkAnyHint(0, unlisted = true)
+        )
+        assertEquals("Kept galleries also save on mobile data. A gallery is often 100 MB or more.", OfflineMessages.networkAnyHint(0, unlisted = false))
     }
 
     @Test fun `the lock text is the 4-8 one, unchanged`() {

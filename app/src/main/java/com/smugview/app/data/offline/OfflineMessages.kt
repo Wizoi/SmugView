@@ -33,6 +33,26 @@ object OfflineMessages {
     const val CHANGE_NETWORK_SETTING = "Change network setting"
     const val WAITING_FOR_WIFI = "Waiting for Wi-Fi"
 
+    // The one network setting for kept galleries (addendum 5).
+    const val SETTINGS_ICON = "Saving for offline settings"
+    const val NETWORK_TITLE = "Saving galleries for offline"
+    const val NETWORK_WIFI_ONLY = "On Wi-Fi only"
+    const val NETWORK_WIFI_ONLY_HINT =
+        "Kept galleries wait for Wi-Fi. A Wi-Fi network marked as metered, like a phone hotspot, counts as mobile data."
+    const val NETWORK_ANY = "On Wi-Fi or mobile data"
+    const val NETWORK_PHOTOS_NOTE = "Photos you save one at a time always download right away, on any connection (a few MB each)."
+    const val CLOSE = "Close"
+
+    /** [waitingBytes] is what kept galleries have left to save; [unlisted] says a gallery has no listing yet, so its size is not known. */
+    fun networkAnyHint(waitingBytes: Long, unlisted: Boolean): String {
+        val base = "Kept galleries also save on mobile data. A gallery is often 100 MB or more"
+        return when {
+            waitingBytes > 0 -> "$base; ${size(waitingBytes)} is waiting now."
+            unlisted -> "$base; its size is known once it is listed."
+            else -> "$base."
+        }
+    }
+
     /** 5-11: a kept gallery that cannot move because the phone has no network at all (not "Waiting for Wi-Fi"). */
     const val NO_CONNECTION = "No connection. Saving continues when you're back online."
     fun noConnectionProgress(done: Int, total: Int) = "$done of $total saved so far."

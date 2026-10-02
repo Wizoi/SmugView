@@ -92,6 +92,8 @@ class OfflineCollections(
     /** What the screens show and the dialog edits. */
     val networkRule: kotlinx.coroutines.flow.StateFlow<OfflineNetworkRule> get() = settings.rule
 
+    suspend fun galleryWaiting(): OfflineStore.GalleryWaiting = store.galleryWaiting()
+
     /** The one global rule for kept galleries (addendum 2.1). Always kicks: both directions need their chain at once. */
     suspend fun setGalleryNetwork(rule: OfflineNetworkRule) {
         settings.set(rule)

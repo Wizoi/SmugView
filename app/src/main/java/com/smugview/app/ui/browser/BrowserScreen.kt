@@ -133,6 +133,8 @@ fun BrowserScreen(
     val currentFolderId = viewModel.currentFolderId
     val activeTab by viewModel.activeTab.collectAsState()
     var selectedImageForDetail by remember { mutableStateOf<AlbumImageData?>(null) }
+    var showNetworkSetting by remember { mutableStateOf(false) }
+    if (showNetworkSetting) NetworkSettingHost(viewModel, onClose = { showNetworkSetting = false })
 
     // System back (R-14, owner Q2): on the Folders tab it pops the folder stack or returns to Search;
     // on every other tab the Android default applies. An open collection is closed by
@@ -163,6 +165,7 @@ fun BrowserScreen(
                         }
                     },
                     actions = {
+                        if (activeTab == BrowserTab.Collections) NetworkSettingsAction { showNetworkSetting = true }
                         val nickname by viewModel.activeNickname.collectAsState()
                         if (activeTab == BrowserTab.Hub && !nickname.isNullOrEmpty()) {
                             TextButton(
@@ -347,7 +350,8 @@ fun BrowserScreen(
                             onImageClick = { albumKey, imageKey ->
                                 onNavigateToPhotoDetail(albumKey, imageKey)
                             },
-                            onNavigateToCastController = onNavigateToCastController
+                            onNavigateToCastController = onNavigateToCastController,
+                            onChangeNetworkSetting = { showNetworkSetting = true }
                         )
                     }
                     BrowserTab.Search -> {

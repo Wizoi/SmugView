@@ -121,7 +121,8 @@ fun CollectionsTabView(
     viewModel: SmugViewModel,
     onNavigateToAlbum: (albumKey: String, albumTitle: String) -> Unit,
     onImageClick: (albumKey: String, imageKey: String) -> Unit,
-    onNavigateToCastController: (title: String) -> Unit
+    onNavigateToCastController: (title: String) -> Unit,
+    onChangeNetworkSetting: () -> Unit
 ) {
     val collections by viewModel.localCollections.collectAsState()
     val scope = rememberCoroutineScope()
@@ -449,7 +450,7 @@ fun CollectionsTabView(
                                     if (keep) viewModel.keepGalleryOffline(col.id, galleryKey, a.title)
                                     else askThenRemove({ viewModel.stopKeepingConfirm(col.id, galleryKey, a.title) }) { viewModel.stopKeepingGalleryOffline(col.id, galleryKey) }
                                 },
-                                onChangeNetworkSetting = { }
+                                onChangeNetworkSetting = onChangeNetworkSetting
                             )
                             }
                         }

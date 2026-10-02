@@ -186,6 +186,11 @@ class OfflineStore(
     // The scheduler's questions (5-5).
     suspend fun countWanted(): Int = dao.countWanted() + dao.countGalleriesWanted()
     suspend fun countWantedGalleryOnly(): Int = dao.countWantedGalleryOnly() + dao.countGalleriesWanted()
+
+    /** The size the kept galleries have left to save, and whether a gallery is still to be listed (its size is not known yet). */
+    class GalleryWaiting(val bytes: Long, val unlisted: Boolean)
+    suspend fun galleryWaiting(): GalleryWaiting =
+        GalleryWaiting(dao.galleryOnlyWaitingBytes(UNKNOWN_SIZE_BYTES), dao.countGalleriesWanted() > 0)
     suspend fun earliestRetryAt(takeGalleryOnly: Boolean): Long? =
         listOfNotNull(dao.earliestRetryAt(takeGalleryOnly), dao.earliestGalleryRetryAt(GALLERY_RETRY_GAP_MS, takeGalleryOnly)).minOrNull()
     suspend fun countDue(now: Long, takeGalleryOnly: Boolean): Int = dao.countDue(now, takeGalleryOnly)
