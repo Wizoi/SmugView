@@ -300,12 +300,12 @@ When a photo is viewed in detail/full-screen mode, the application must offer th
     > Any new full-screen photo surface must reuse `PhotoDetailComponents.kt` rather than re-implementing zoom/pager interaction — a prior refactor (`1ecad32`) already consolidated this logic out of three near-duplicate screens specifically to avoid this drifting out of sync again.
 
 ### 2. Save to Device
-*   Downloads the original high-resolution image (using the `ArchivedUri` or highest available size link) to the user's local device storage.
-*   Must handle modern Android scoped storage permissions and display a custom Snackbar notification upon success or failure.
+*   Downloads the original high-resolution image (using the `ArchivedUri` or highest available size link) to **Pictures/SmugView** through MediaStore. Android 10 and later need no permission; Android 8 and 9 ask for the storage permission first, and a refusal says what it is for and how to change it.
+*   The result is one line in the app's words (`DOWNLOAD_SAVED`, `DOWNLOAD_OFFLINE`, `DOWNLOAD_PERMISSION`, `DOWNLOAD_NO_SPACE`, or the failure cause), never a raw exception text. Offline means `SmugMugErrorMapper.isOffline`; a 429 or 5xx is not "you're offline".
 *   **Filename Decoding & Sanitization**: Prior to saving, the image resource name must be decoded using `java.net.URLDecoder.decode(segment, "UTF-8")` to handle special URI characters properly, followed by stripping extension suffixes and replacing OS-illegal file characters (e.g. `\ / : * ? " < > |`) with underscores to ensure compatibility with local storage providers.
 
 ### 3. Share Photo Link
-*   Extracts the public SmugMug URL and triggers a native Android Share Intent (`Intent.ACTION_SEND`).
+*   The Share button opens one dialog (`QrShareDialog`): a QR code of the photo's SmugMug web page with the caption "Opens the SmugMug page. Password galleries ask for their password there." (`SHARE_CAPTION`), and two buttons. **Share link** sends that page (`WebUri`, else the gallery's `WebUri` + `/i-{ImageKey}`; see SMUGMUG.md L6). **Share picture** sends the large rendition as a file, with camera details and location removed (`JpegStrip`; SMUGMUG.md L7 says why), under the small print `SHARE_STRIPPED`, with a "Preparing the picture…" toast and a cause-named toast if it fails (`shareFailed`). With no link the dialog says `SHARE_NO_LINK` and shows no QR. Both buttons go through `Intent.ACTION_SEND`. The QR never encodes a file path.
 
 ### 4. Detailed Metadata Viewer
 *   Shows a bottom sheet displaying complete EXIF metadata fetched from `/api/v2/image/{image_key}!metadata` (Camera, exposure settings, shutter speed, aperture, ISO, and keywords).
@@ -321,6 +321,20 @@ When a photo is viewed in detail/full-screen mode, the application must offer th
 *   **What the user sees**: each Image row says Saved on this phone, Saving to this phone, or the cause of a failure with a way out (Try again, Remove). A kept gallery shows its progress, "Waiting for Wi-Fi", or its failure. A saved photo opens from its file with no network; a kept gallery opened offline lists its saved photos under "You're offline. Showing the N photos saved on this phone." Deleting a collection that holds saved photos asks first. There is **no** thumbnail badge or "Offline Ready" icon and **no** storage notification. The words are in `OfflineMessages`.
 *   **Diagnostics**: `report.txt` has an "offline files (counts only)" section: files by state, files nothing wants, and the bytes of saved files. Never a key, title, URL or file name.
 *   Full design and the decisions behind it: `docs/design/phase-5-offline-files.md`.
+
+---
+
+## 🚦 Screen States & Messages (Phase 6)
+
+Every screen that loads something decides what to show from the *kind* of failure, not from an exception's text. The full design is `docs/design/phase-6-ui-states-and-polish.md`; the rules that outlive it:
+
+*   **One kind, one text.** `ui/text/UserMessages.kt` holds `Problem` (`OfflineNothingSaved`, `Slow`, `RateLimited`, `SmugMugTrouble`, `Gone`, `Locked`, `LockedPending`, `Unexpected`) and every sentence the app shows for it: a neutral heading, a body that names the cause and the way out, and a button (Try again, Go back, Enter password). No red "Failed to load" heading, no `localizedMessage`.
+*   **"Offline" means `SmugMugErrorMapper.isOffline`** (no network, or the synthetic `only-if-cached` 504). A 429 or a 5xx is SmugMug answering and is never called "offline" or replaced by saved photos.
+*   **The gallery grid's state is one pure function** (`GridView.of`): Loading, Failed, EmptyGallery, FilterEmpty, Blank, Photos (with an offline or partial banner). The viewer asks the same function when it has no photo.
+*   **A 404 is ambiguous** (SMUGMUG.md L2/L3): locked only when the thing sits under a locked root, otherwise gone. No load path deletes a bookmark or a saved file because of a 404; the user chooses "Remove from collections".
+*   **A failed background request never closes the app and never raises a global toast.** Search failures are state on the search result; the site session has an exception handler that counts what it caught.
+*   **Kept galleries follow one global network rule** (`OfflineSettings`: Wi-Fi only, the default, or Wi-Fi or mobile data), changed from the Collections top bar or from a waiting gallery; a single photo saved by hand ignores it. A kept gallery on a metered Wi-Fi says so.
+*   **Touch targets are 48 dp**, status-bar icons follow the theme, and a new user-visible string is flagged to the owner before it ships.
 
 ---
 

@@ -84,6 +84,13 @@ before starting on a bug.
 - **"Offline" for a screen means `SmugMugErrorMapper.isOffline`** (IOException or the synthetic
   504). A 429 or 5xx is SmugMug answering and must not be shown as "you're offline" or
   replaced by saved photos.
+- **A locked folder's `!children` answers 404 anonymously (not 401), and a missing gallery is also
+  404** (L2, L3). A 404 alone never means "gone": it is locked when the thing sits under a locked
+  root. Never delete a bookmark or a saved file because of one.
+- **SmugMug renditions (X3, L) keep the camera EXIF** (serial numbers, owner name; L7). Strip before
+  sharing (`JpegStrip`); a shared *link* is the SmugMug web page (`WebUri`, L6).
+- **Kept galleries follow one global network rule (`OfflineSettings`)**; `offline_files.wifiOnly` and
+  `offline_galleries.wifiOnly` are dead columns.
 
 ## Before committing or shipping
 

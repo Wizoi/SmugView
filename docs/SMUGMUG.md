@@ -85,12 +85,14 @@ To maintain a resilient and high-performing integration, any future changes or o
 ### 2. HTTP 404 Not Found on Password Folder Queries
 * **Behavior**: Unlike albums, calling `GET node/{node_id}!children` on a locked folder without a session throws an `HTTP 404 Not Found` exception.
 * **Handling**: Catch the HTTP exception to invalidate incorrect password credentials and trigger user password entry prompts.
+* **Measured (Phase 6, L2/L3)**: the anonymous answer for a locked folder's `!children` is **404, never 401**, and a gallery that does not exist is also 404, so a 404 alone does not say "locked" or "gone". The caller decides from what it knows: a row or an ancestor whose access says Password is locked, otherwise the thing is gone. The folder-tree walk skips a 404 and goes on (6-1).
 
 ### 3. Nested Sub-resource Lock Propagation
 * **Problem**: Querying EXIF metadata (`image/{image_key}!metadata`) for photos inside a password-protected album fails with 401/404 errors, even if the photo's direct CDN image URL is accessible.
 * **Solution**: None needed in the request. The metadata call carries no password; access comes only from the session cookie from `!unlock` (R-23), and the app reads photo details and EXIF from the canonical `-0` image key so they also work offline (Phase 4, 4-9). Password-gallery CDN image URLs need no session at all (R-53).
 
 ### 4. Profile Avatar Fallback Flow
+* **Superseded (Phase 6, L1, 6-2)**: the chain below is dead. On 5 of 5 live sites `secure.smugmug.com/users/{nick}-avatar.jpg` and `{nick}.smugmug.com/bioimage` both answer 404, and a URL built from the BioImage `ImageKey` alone has no path. What works is the `ThumbnailUrl` inside `user/{nick}?_expand=BioImage` (3 of 5 sites have one; the others have no bio image). The app shows that URL resized (`/Th/` to `/S/`, `-Th.` to `-S.`, both answer 206 `image/jpeg`), else the first letter of the nickname. The old text follows for history.
 * **Behavior**: SmugMug hosts user bio and avatar media in different endpoints. Implement a multi-tier loading chain:
   1. **User BioImage API Key**: Call `GET user/{nickname}!bioimage` to resolve `Response.BioImage.ImageKey` and load CDN path: `https://photos.smugmug.com/photos/i-{ImageKey}/0/M/i-{ImageKey}-M.jpg`.
   2. **Direct Redirect URL**: `https://{nickname}.smugmug.com/bioimage`
@@ -310,6 +312,9 @@ Read-only, anonymous `curl` against the public `idzifamily` site. These are fact
 *   **The X3 rendition** (the app's `/Th/` to `/X3/` rewrite, with `-Th.` to `-X3.`) returns 200 at about 428 KB against 689 KB for the original, `public, max-age=31536000, must-revalidate`, **no ETag**. It has no checksum, so it cannot be verified the way an original can.
 *   **A video's "original" is a JPEG still.** For a video, `ArchivedUri` is a `…-D.jpg` (`image/jpeg`, 164,821 B, equal to `OriginalSize`). The video itself is `LargestVideo` (for example a 4-minute clip: 1920 mp4, 218,077,085 B; `VideoSize1280` 140 MB), answers Range with 206, has the MD5 as ETag and `public, max-age=31536000`. Saving "the original" of a video therefore saves the still; the app says so ("Videos play online only. The saved copy is a still picture.").
 *   **Password-gallery photos:** their CDN image URLs work with no session cookie at all (R-53); the session is needed only to *list* the gallery (`!unlock`).
+*   **Hidden password-folder photos are public on the CDN (L4).** The photos of a gallery inside a password folder are served anonymously by their CDN URLs, and `image/{key}-0` answers the original's address with no session. Anyone who learns an image key can fetch the photo; the app cannot close this, and the owner has been told. Do not treat "hidden" as "private" when reasoning about what a request can reach.
+*   **Shared links are SmugMug web pages (L6).** An image's `WebUri` is the gallery's `WebUri` plus `/i-{ImageKey}`; `image/{key}-0` has no `WebUri` at all. So the app shares the photo's own `WebUri` when it has one, else builds the gallery `WebUri` + `/i-{ImageKey}`, and shares no link when it has neither (`SHARE_NO_LINK`).
+*   **Renditions keep the camera's EXIF (L7).** The original and the X3 and L renditions carry `SerialNumber`, `LensSerialNumber`, `Artist` (the owner's name) and `Make`/`Model`. GPS was not present in the photos sampled (0 of 100 by the API, 1 file by `exiftool`; phone photos unchecked). So the app strips camera details and location (`JpegStrip`) from the picture it shares, rather than trusting SmugMug to.
 *   Not forceable from here, so handled by classification rather than by fact: the CDN's 408/429/5xx shape and any `Retry-After`, and whether it ever sends 401/403/410 (`DownloadFailure.classify` covers each).
 
 ---
