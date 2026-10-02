@@ -59,6 +59,7 @@ object OfflineMessages {
 
     fun saving(done: Int, total: Int) = "Saving to this phone… $done of $total"
     fun waitingWifi(done: Int, total: Int) = "Will save on Wi-Fi. $done of $total saved so far."
+    fun waitingMeteredWifi(done: Int, total: Int) = "This Wi-Fi is marked as metered, so it counts as mobile data. $done of $total saved so far."
 
     fun storage(needBytes: Long, freeBytes: Long) =
         "Not enough space on this phone to save more photos (needs about ${size(needBytes)}, ${size(freeBytes)} free). " +

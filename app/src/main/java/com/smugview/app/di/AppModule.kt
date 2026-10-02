@@ -334,19 +334,24 @@ object AppModule {
         store: com.smugview.app.data.offline.OfflineStore,
         settings: com.smugview.app.data.offline.OfflineSettings
     ): com.smugview.app.data.offline.OfflineReader =
-        com.smugview.app.data.offline.OfflineReader(database, store, settings, networkAvailableFlow(context))
+        com.smugview.app.data.offline.OfflineReader(database, store, settings, networkKindFlow(context))
 
-    /** True while the phone has a default network with internet (any kind). Emits the current state first. */
-    private fun networkAvailableFlow(context: Context): kotlinx.coroutines.flow.Flow<Boolean> =
+    /** The default network's kind (none, unmetered, metered Wi-Fi, other metered). Emits the current state first and again when its capabilities change. */
+    private fun networkKindFlow(context: Context): kotlinx.coroutines.flow.Flow<com.smugview.app.data.offline.NetworkKind> =
         kotlinx.coroutines.flow.callbackFlow {
             val cm = try { context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager } catch (e: Exception) { null }
-            if (cm == null) { trySend(true); awaitClose { }; return@callbackFlow }
-            trySend(isNetworkAvailable(context))
+            if (cm == null) { trySend(com.smugview.app.data.offline.NetworkKind.UNMETERED); awaitClose { }; return@callbackFlow }
+            fun kindOf(caps: android.net.NetworkCapabilities?) = com.smugview.app.data.offline.NetworkKind.of(
+                hasInternet = caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
+                notMetered = caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true,
+                isWifi = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+            )
+            trySend(try { kindOf(cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }) } catch (e: Exception) { com.smugview.app.data.offline.NetworkKind.UNMETERED })
             val callback = object : android.net.ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: android.net.Network) { trySend(true) }
-                override fun onLost(network: android.net.Network) { trySend(false) }
+                override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) { trySend(kindOf(caps)) }
+                override fun onLost(network: android.net.Network) { trySend(com.smugview.app.data.offline.NetworkKind.NONE) }
             }
-            try { cm.registerDefaultNetworkCallback(callback) } catch (e: Exception) { trySend(true) }
+            try { cm.registerDefaultNetworkCallback(callback) } catch (e: Exception) { trySend(com.smugview.app.data.offline.NetworkKind.UNMETERED) }
             awaitClose { try { cm.unregisterNetworkCallback(callback) } catch (_: Exception) {} }
         }
 

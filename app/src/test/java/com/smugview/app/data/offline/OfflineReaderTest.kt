@@ -283,14 +283,14 @@ class OfflineReaderTest {
 
     // 5-11: "Waiting for Wi-Fi" is only true when some other network exists. With none, say so (owner's rule: name the real cause).
 
-    private fun readerWith(online: kotlinx.coroutines.flow.Flow<Boolean>) = OfflineReader(rig.db, rig.offlineStore, rig.settings, online)
+    private fun readerWith(network: kotlinx.coroutines.flow.Flow<NetworkKind>) = OfflineReader(rig.db, rig.offlineStore, rig.settings, network)
 
     @Test fun `with no network at all a waiting gallery says no connection, not Waiting for Wi-Fi`() = runBlocking {
         saved(keys[0]); saved(keys[1])
         row(keys[2], OfflineStore.PENDING, expected = 4_000_000)
         keepGallery(2, keys.take(3))
 
-        val summary = readerWith(kotlinx.coroutines.flow.flowOf(false)).collection(2).first().galleries.getValue(gallery)
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(NetworkKind.NONE)).collection(2).first().galleries.getValue(gallery)
 
         assertEquals(GallerySummary.Kind.OFFLINE, summary.kind)
         assertEquals(OfflineMessages.NO_CONNECTION, summary.text)
@@ -302,7 +302,7 @@ class OfflineReaderTest {
     @Test fun `a gallery not listed yet, with no network, says no connection and offers no setting`() = runBlocking {
         keepGallery(2, emptyList(), state = OfflineStore.LIST_PENDING)
 
-        val summary = readerWith(kotlinx.coroutines.flow.flowOf(false)).collection(2).first().galleries.getValue(gallery)
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(NetworkKind.NONE)).collection(2).first().galleries.getValue(gallery)
 
         assertEquals(OfflineMessages.NO_CONNECTION, summary.text)
         assertNull(summary.detail)
@@ -313,7 +313,7 @@ class OfflineReaderTest {
         saved(keys[0]); row(keys[1], OfflineStore.PENDING)
         keepGallery(2, keys.take(2)); rig.settings.set(OfflineNetworkRule.WIFI_AND_MOBILE)
 
-        val summary = readerWith(kotlinx.coroutines.flow.flowOf(false)).collection(2).first().galleries.getValue(gallery)
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(NetworkKind.NONE)).collection(2).first().galleries.getValue(gallery)
 
         assertEquals(OfflineMessages.NO_CONNECTION, summary.text)
     }
@@ -326,7 +326,7 @@ class OfflineReaderTest {
         row(keys[2], OfflineStore.PENDING, expected = 4_000_000)
         keepGallery(2, keys.take(3))
 
-        val summary = readerWith(kotlinx.coroutines.flow.flowOf(true)).collection(2).first().galleries.getValue(gallery)
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(NetworkKind.METERED_OTHER)).collection(2).first().galleries.getValue(gallery)
 
         assertEquals(GallerySummary.Kind.FAILED, summary.kind)
         assertEquals(
@@ -343,20 +343,31 @@ class OfflineReaderTest {
         saved(keys[0]); row(keys[1], OfflineStore.PENDING, expected = 4_000_000)
         keepGallery(2, keys.take(2))
 
-        val summary = readerWith(kotlinx.coroutines.flow.flowOf(true)).collection(2).first().galleries.getValue(gallery)
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(NetworkKind.METERED_OTHER)).collection(2).first().galleries.getValue(gallery)
 
         assertEquals(OfflineMessages.WAITING_FOR_WIFI, summary.text)
+        assertEquals(OfflineMessages.CHANGE_NETWORK_SETTING, summary.action)
+    }
+
+    @Test fun `on a metered Wi-Fi the gallery says why it is waiting and still offers the network setting`() = runBlocking {
+        saved(keys[0]); row(keys[1], OfflineStore.PENDING, expected = 4_000_000)
+        keepGallery(2, keys.take(2))
+
+        val summary = readerWith(kotlinx.coroutines.flow.flowOf(NetworkKind.METERED_WIFI)).collection(2).first().galleries.getValue(gallery)
+
+        assertEquals(OfflineMessages.WAITING_FOR_WIFI, summary.text)
+        assertEquals(OfflineMessages.waitingMeteredWifi(1, 2), summary.detail)
         assertEquals(OfflineMessages.CHANGE_NETWORK_SETTING, summary.action)
     }
 
     @Test fun `the gallery line follows the network coming and going`() = runBlocking {
         saved(keys[0]); row(keys[1], OfflineStore.PENDING)
         keepGallery(2, keys.take(2))
-        val net = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val net = kotlinx.coroutines.flow.MutableStateFlow(NetworkKind.NONE)
         val flow = readerWith(net).collection(2)
 
         assertEquals(OfflineMessages.NO_CONNECTION, flow.first().galleries.getValue(gallery).text)
-        net.value = true
+        net.value = NetworkKind.METERED_OTHER
         assertEquals(OfflineMessages.WAITING_FOR_WIFI, flow.first().galleries.getValue(gallery).text)
     }
 

@@ -72,15 +72,15 @@ object OfflineRowState {
 
     /**
      * The summary of one kept gallery under the global [rule]. [rows] are its photos' file rows (empty until the first listing).
-     * [needBytes] and [freeBytes] fill a storage failure's text. [connected] is false when the phone has no network
-     * at all: a gallery that cannot move then says so instead of "Waiting for Wi-Fi".
+     * [needBytes] and [freeBytes] fill a storage failure's text. [network] is [NetworkKind.NONE] when the phone has no network
+     * at all: a gallery that cannot move then says so instead of "Waiting for Wi-Fi". On a metered Wi-Fi it says why.
      */
     fun summary(
         gallery: OfflineGallery,
         rows: List<GalleryFileRow>,
         needBytes: Long = 0,
         freeBytes: Long = 0,
-        connected: Boolean = true,
+        network: NetworkKind = NetworkKind.UNMETERED,
         rule: OfflineNetworkRule
     ): GallerySummary {
         val done = rows.count { it.state == OfflineStore.DONE }
@@ -111,7 +111,7 @@ object OfflineRowState {
                 return summary(GallerySummary.Kind.FAILED, failureLine(failed.filter { reasonOf(it.failure) == FailureReason.STORAGE_FULL }, needBytes, freeBytes))
             }
             // 5-11: with no network at all it is not "waiting for Wi-Fi", and there is no mobile network to offer.
-            if (!connected && !downloading) {
+            if (network == NetworkKind.NONE && !downloading) {
                 return summary(
                     GallerySummary.Kind.OFFLINE,
                     OfflineMessages.NO_CONNECTION,
@@ -123,7 +123,7 @@ object OfflineRowState {
                 return summary(
                     GallerySummary.Kind.WAITING_WIFI,
                     OfflineMessages.WAITING_FOR_WIFI,
-                    detail ?: if (notListed) null else OfflineMessages.waitingWifi(done, total),
+                    detail ?: if (notListed) null else if (network == NetworkKind.METERED_WIFI) OfflineMessages.waitingMeteredWifi(done, total) else OfflineMessages.waitingWifi(done, total),
                     OfflineMessages.CHANGE_NETWORK_SETTING
                 )
             }

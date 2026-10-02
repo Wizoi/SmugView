@@ -24,8 +24,8 @@ class OfflineReader(
     private val db: AppDatabase,
     private val store: OfflineStore,
     private val settings: OfflineSettings,
-    /** Whether the phone has a network now (any kind). Folded into the kept-gallery text so it names the real cause. */
-    private val online: Flow<Boolean> = flowOf(true)
+    /** The phone's default network now. Folded into the kept-gallery text so it names the real cause. */
+    private val network: Flow<NetworkKind> = flowOf(NetworkKind.UNMETERED)
 ) {
     private val dao get() = db.offlineDao()
 
@@ -64,16 +64,16 @@ class OfflineReader(
             dao.filesOfCollection(collectionId),
             dao.galleriesOfCollection(collectionId),
             dao.galleryFilesOfCollection(collectionId),
-            online.distinctUntilChanged(),
+            network.distinctUntilChanged(),
             settings.rule
-        ) { files, galleries, galleryRows, connected, rule ->
+        ) { files, galleries, galleryRows, kind, rule ->
             val free = store.freeBytesNow()
             val rows = files.associate { it.imageKey to OfflineRowState.of(it, store.needBytes(it.expectedBytes), free) }
             val byGallery = galleryRows.groupBy { it.albumKey }
             val summaries = galleries.associate { g ->
                 val own = byGallery[g.albumKey].orEmpty()
                 val need = own.filter { it.state != OfflineStore.DONE }.sumOf { it.expectedBytes ?: store.needBytes(null) }
-                g.albumKey to OfflineRowState.summary(g, own, need, free, connected, rule)
+                g.albumKey to OfflineRowState.summary(g, own, need, free, kind, rule)
             }
             CollectionOffline(rows, summaries)
         }
