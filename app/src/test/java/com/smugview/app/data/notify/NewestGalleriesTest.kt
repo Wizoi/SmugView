@@ -22,6 +22,7 @@ class NewestGalleriesTest {
         val server = FakeSmugMugServer()
         val first = runBlocking { NewestGalleries(server.api(), "key")("idzifamily") }.first()
         assertEquals("LCdk7F", first.nodeId)
+        assertEquals("FfHCms", first.albumKey)
         assertFalse("AlbumKey FfHCms is not the id", first.nodeId == "FfHCms")
         assertEquals("/Family/School/2026-09-01--New-School-Year", first.urlPath)
         assertEquals("https://gallery.idzifamily.com/Family/School/2026-09-01--New-School-Year", first.webUri)

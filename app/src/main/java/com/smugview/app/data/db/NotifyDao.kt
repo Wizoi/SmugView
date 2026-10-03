@@ -5,12 +5,16 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
 
 /** State of "have I told the owner about this gallery?". It is deliberately not `cached_albums` or the dot's tables. */
 @Dao
 interface NotifyDao {
     @Query("SELECT * FROM notify_sites WHERE nickname = :nickname")
     suspend fun site(nickname: String): NotifySite?
+
+    @Query("SELECT COUNT(*) FROM notify_sites WHERE nickname = :nickname AND enabled = 1")
+    fun followingCount(nickname: String): Flow<Int>
 
     @Query("SELECT * FROM notify_sites WHERE enabled = 1")
     suspend fun enabledSites(): List<NotifySite>

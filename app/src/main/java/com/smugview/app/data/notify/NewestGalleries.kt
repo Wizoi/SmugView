@@ -6,6 +6,6 @@ import com.smugview.app.data.api.SmugMugApi
 class NewestGalleries(private val api: SmugMugApi, private val apiKey: String) {
     suspend operator fun invoke(nickname: String): List<ListedGallery> =
         api.getNewestAlbums(nickname, apiKey).response.albums.orEmpty().mapNotNull { a ->
-            a.nodeId?.takeIf { it.isNotEmpty() }?.let { ListedGallery(it, a.name, a.webUri, a.urlPath) }
+            a.nodeId?.takeIf { it.isNotEmpty() }?.let { ListedGallery(it, a.name, a.webUri, a.urlPath, a.albumKey) }
         }
 }

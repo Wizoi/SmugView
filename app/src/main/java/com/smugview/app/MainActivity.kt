@@ -48,11 +48,35 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 
+/** What a new-gallery notification tap asks for: the site, and the gallery when the notification was about exactly one. */
+data class PendingOpen(val nickname: String, val albumKey: String?, val albumTitle: String?)
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var appDatabase: com.smugview.app.data.db.AppDatabase
+
+    @Inject
+    lateinit var newGalleryFollow: com.smugview.app.data.notify.NewGalleryFollow
+
+    // A tap on a new-gallery notification: which site, and the gallery when there was exactly one. Cleared once handled.
+    private var pendingOpen by mutableStateOf<PendingOpen?>(null)
+
+    private fun readPendingOpen(intent: android.content.Intent?): PendingOpen? {
+        val nickname = intent?.getStringExtra(com.smugview.app.data.notify.NewGalleryNotifier.EXTRA_NICKNAME) ?: return null
+        return PendingOpen(
+            nickname,
+            intent.getStringExtra(com.smugview.app.data.notify.NewGalleryNotifier.EXTRA_ALBUM_KEY),
+            intent.getStringExtra(com.smugview.app.data.notify.NewGalleryNotifier.EXTRA_ALBUM_TITLE)
+        )
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingOpen = readPendingOpen(intent)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +87,7 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) { 1 }
 
         prefs.edit().putInt("last_app_version", currentVersion).apply()
+        pendingOpen = readPendingOpen(intent)
 
         setContent {
             SmugViewTheme {
@@ -70,7 +95,14 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    SmugViewNavigation()
+                    SmugViewNavigation(
+                        newGalleryFollow = newGalleryFollow,
+                        pendingOpen = pendingOpen,
+                        onOpenHandled = {
+                            pendingOpen = null
+                            intent.removeExtra(com.smugview.app.data.notify.NewGalleryNotifier.EXTRA_NICKNAME)
+                        }
+                    )
                 }
             }
         }
@@ -78,15 +110,30 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun SmugViewNavigation(viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel()) {
+fun SmugViewNavigation(
+    viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel(),
+    newGalleryFollow: com.smugview.app.data.notify.NewGalleryFollow? = null,
+    pendingOpen: PendingOpen? = null,
+    onOpenHandled: () -> Unit = {}
+) {
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(pendingOpen) {
+        val open = pendingOpen ?: return@LaunchedEffect
+        if (viewModel.activeNickname.value != open.nickname) viewModel.selectSite(open.nickname)
+        if (open.albumKey != null) {
+            navController.navigate("photo_grid/${open.albumKey}/${Uri.encode(open.albumTitle.orEmpty())}") { launchSingleTop = true }
+        }
+        onOpenHandled()
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = "browser") {
             composable("browser") {
                 BrowserScreen(
                     viewModel = viewModel,
+                    newGalleryFollow = newGalleryFollow,
                     onNavigateToAlbum = { albumKey, albumTitle ->
                         viewModel.cancelSearchJob()
                         navController.navigate("photo_grid/$albumKey/${Uri.encode(albumTitle)}") { launchSingleTop = true }

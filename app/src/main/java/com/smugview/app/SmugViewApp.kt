@@ -45,6 +45,9 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
     lateinit var offlineStore: OfflineStore
 
     @Inject
+    lateinit var newGalleryScheduler: com.smugview.app.data.notify.NewGalleryScheduler
+
+    @Inject
     lateinit var repository: SmugMugRepository
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -55,6 +58,7 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
         // Settle what the pre-17 offline code left (once), THEN queue a pass for the files still wanted (from before
         // the process died, or a failed retry). The order is the point: see OfflineStartup. Never blocks start-up.
         appScope.launch { offlineStartup.run() }
+        appScope.launch { runCatching { newGalleryScheduler.reschedule() } }
         // A password root came into session: a kept gallery that was permanently locked is worth listing again.
         appScope.launch {
             repository.unlocks.sessionEpoch.drop(1).collect {

@@ -126,7 +126,8 @@ fun BrowserScreen(
     onNavigateToPhotoDetail: (albumKey: String, imageKey: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
     onNavigateToCastController: (title: String) -> Unit,
-    viewModel: SmugViewModel = hiltViewModel()
+    viewModel: SmugViewModel = hiltViewModel(),
+    newGalleryFollow: com.smugview.app.data.notify.NewGalleryFollow? = null
 ) {
     val uiState by viewModel.browserState.collectAsState()
     val navStack = viewModel.folderNavigationStack
@@ -168,6 +169,7 @@ fun BrowserScreen(
                         if (activeTab == BrowserTab.Collections) NetworkSettingsAction { showNetworkSetting = true }
                         val nickname by viewModel.activeNickname.collectAsState()
                         if (activeTab == BrowserTab.Hub && !nickname.isNullOrEmpty()) {
+                            newGalleryFollow?.let { FollowSiteAction(it, nickname!!) }
                             TextButton(
                                 onClick = {
                                     viewModel.disconnectSite()

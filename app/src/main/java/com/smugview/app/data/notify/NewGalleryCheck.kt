@@ -4,8 +4,8 @@ import com.smugview.app.data.db.NotifyDao
 import com.smugview.app.data.db.NotifyKnownAlbum
 import kotlin.coroutines.cancellation.CancellationException
 
-/** One gallery of the newest-first listing. [nodeId] is the NodeID, never the AlbumKey. */
-data class ListedGallery(val nodeId: String, val name: String, val webUri: String?, val urlPath: String?)
+/** One gallery of the newest-first listing. [nodeId] is the NodeID and the only identity; [albumKey] is kept only to open the gallery. */
+data class ListedGallery(val nodeId: String, val name: String, val webUri: String?, val urlPath: String?, val albumKey: String? = null)
 
 sealed interface CheckResult {
     /** The first listing of a followed site: recorded, nothing announced. */

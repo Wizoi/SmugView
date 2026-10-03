@@ -299,6 +299,60 @@ object AppModule {
     ): com.smugview.app.data.offline.OfflineScheduler =
         com.smugview.app.data.offline.OfflineScheduler(workManager = { WorkManager.getInstance(context) }, store = store, settings = settings)
 
+    @Provides
+    @Singleton
+    fun provideNotifyDao(database: AppDatabase): com.smugview.app.data.db.NotifyDao = database.notifyDao()
+
+    @Provides
+    @Singleton
+    fun provideNewGalleryNotifier(@ApplicationContext context: Context): com.smugview.app.data.notify.NewGalleryNotifier =
+        com.smugview.app.data.notify.NewGalleryNotifier(context)
+
+    @Provides
+    @Singleton
+    fun provideNewGalleryCheck(
+        dao: com.smugview.app.data.db.NotifyDao,
+        api: SmugMugApi
+    ): com.smugview.app.data.notify.NewGalleryCheck {
+        val newest = com.smugview.app.data.notify.NewestGalleries(api, com.smugview.app.BuildConfig.SMUGMUG_API_KEY)
+        return com.smugview.app.data.notify.NewGalleryCheck(dao) { newest(it) }
+    }
+
+    @Provides
+    @Singleton
+    fun provideNewGalleryRunner(
+        dao: com.smugview.app.data.db.NotifyDao,
+        check: com.smugview.app.data.notify.NewGalleryCheck,
+        repository: com.smugview.app.data.repository.SmugMugRepository,
+        notifier: com.smugview.app.data.notify.NewGalleryNotifier
+    ): com.smugview.app.data.notify.NewGalleryRunner = com.smugview.app.data.notify.NewGalleryRunner(
+        dao, check,
+        unlock = { repository.unlockSavedRoots(it, com.smugview.app.BuildConfig.SMUGMUG_API_KEY) },
+        announcer = notifier
+    )
+
+    @Provides
+    @Singleton
+    fun provideNewGalleryScheduler(
+        @ApplicationContext context: Context,
+        dao: com.smugview.app.data.db.NotifyDao,
+        settings: com.smugview.app.data.offline.OfflineSettings
+    ): com.smugview.app.data.notify.NewGalleryScheduler =
+        com.smugview.app.data.notify.NewGalleryScheduler({ WorkManager.getInstance(context) }, dao, settings)
+
+    @Provides
+    @Singleton
+    fun provideNewGalleryFollow(
+        dao: com.smugview.app.data.db.NotifyDao,
+        check: com.smugview.app.data.notify.NewGalleryCheck,
+        repository: com.smugview.app.data.repository.SmugMugRepository,
+        scheduler: com.smugview.app.data.notify.NewGalleryScheduler
+    ): com.smugview.app.data.notify.NewGalleryFollow = com.smugview.app.data.notify.NewGalleryFollow(
+        dao, check,
+        unlock = { repository.unlockSavedRoots(it, com.smugview.app.BuildConfig.SMUGMUG_API_KEY) },
+        scheduler = scheduler
+    )
+
     /** The one-time repair of an install that upgraded from the pre-17 offline code (5-8). */
     @Provides
     @Singleton
