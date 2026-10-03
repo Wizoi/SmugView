@@ -195,6 +195,22 @@ interface SmugMugApi {
         @Header("X-Ignore-Errors") ignoreErrors: String?
     ): retrofit2.Response<okhttp3.ResponseBody>
 
+    /**
+     * The newest galleries by date added, newest first: one page is the whole new-gallery poll. `Order` sorts by the NODE's
+     * DateAdded, which the album payload never returns, so it looked unsorted to findings #14 (checked 2026-10-03: 2,633
+     * albums with the Family session, 2,631 comparisons, no violation). No `start`: the first page is all it reads.
+     */
+    @GET("user/{nickname}!albums")
+    suspend fun getNewestAlbums(
+        @Path("nickname") nickname: String,
+        @Query("APIKey") apiKey: String,
+        @Query("Order") order: String = "Date Added (Descending)",
+        @Query("count") count: Int = 100,
+        @Query("_filter") filter: String = "Uri,AlbumKey,NodeID,Name,UrlPath,WebUri",
+        @Query("_verbosity") verbosity: Int = 1,
+        @Header("Cache-Control") cacheControl: String? = "no-cache"
+    ): UserAlbumsResponse
+
     @GET("user/{nickname}!albums")
     suspend fun getUserAlbums(
         @Path("nickname") nickname: String,

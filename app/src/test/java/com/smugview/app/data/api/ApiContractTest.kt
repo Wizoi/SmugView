@@ -60,6 +60,7 @@ class ApiContractTest(private val method: String) {
             "unlockNode" to { unlockNode("2sDN5x", K, "pw", "true") },
             "unlockAlbum" to { unlockAlbum("FfHCms", K, "pw", "true") },
             "getUserAlbums" to { getUserAlbums("idzifamily", K, start = 1, cacheControl = "no-cache") },
+            "getNewestAlbums" to { getNewestAlbums("idzifamily", K) },
             "getUserTopKeywords" to { getUserTopKeywords("idzifamily", K, nodeUri = "/api/v2/node/P4BKB") },
             "getImagesByKeyword" to { getImagesByKeyword(K, scope = "/api/v2/node/4zqWw", text = "kentridge") },
             "updateImageMetadata" to { updateImageMetadata("N74KSKi001-0", K, UpdateImageMetadataRequest(keywords = "a;b")) }

@@ -17,9 +17,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CachedAlbum::class,
         OfflineFile::class,
         OfflineGallery::class,
-        OfflineGalleryItem::class
+        OfflineGalleryItem::class,
+        NotifySite::class,
+        NotifyKnownAlbum::class
     ],
-    version = 17,
+    version = 18,
     // Schemas are exported to app/schemas (see the KSP room.schemaLocation arg in
     // build.gradle.kts) so migrations can be validated with MigrationTestHelper.
     exportSchema = true
@@ -28,6 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun collectionDao(): CollectionDao
     abstract fun doctorDao(): DoctorDao
     abstract fun offlineDao(): OfflineDao
+    abstract fun notifyDao(): NotifyDao
 
     companion object {
         /**
@@ -204,6 +207,14 @@ abstract class AppDatabase : RoomDatabase() {
                         "SELECT b.collectionId, b.itemKey, c.siteNickname, b.title, 'LEGACY', 0, 1 " +
                         "FROM collection_bookmarks b JOIN offline_collections c ON c.id = b.collectionId WHERE b.type = 'Album'"
                 )
+            }
+        }
+
+        /** v17 -> v18: the two tables behind new-gallery notifications. Additive; nothing existing is touched. */
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `notify_sites` (`nickname` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `baselineDone` INTEGER NOT NULL, PRIMARY KEY(`nickname`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `notify_known_albums` (`nickname` TEXT NOT NULL, `nodeId` TEXT NOT NULL, PRIMARY KEY(`nickname`, `nodeId`))")
             }
         }
     }

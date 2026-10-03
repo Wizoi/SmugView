@@ -111,7 +111,7 @@ class MigrationTest {
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
-            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17)
+            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18)
             .allowMainThreadQueries()
             .build()
         try {
@@ -229,7 +229,7 @@ class MigrationTest {
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
             .addMigrations(
                 AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14,
-                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17
+                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18
             )
             .allowMainThreadQueries()
             .build()
@@ -262,7 +262,7 @@ class MigrationTest {
             dumpUserTables().also { close() }
         }
 
-        val db = helper.runMigrationsAndValidate(TEST_DB, 17, true, AppDatabase.MIGRATION_16_17)
+        val db = helper.runMigrationsAndValidate(TEST_DB, 17, true, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18)
 
         assertEquals(before, db.dumpUserTables())
 
@@ -314,7 +314,7 @@ class MigrationTest {
 
         val db = helper.runMigrationsAndValidate(
             TEST_DB, 17, true,
-            AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17
+            AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18
         )
 
         assertV13UserDataSurvived(db)
@@ -335,7 +335,7 @@ class MigrationTest {
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
             .addMigrations(
                 AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14,
-                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17
+                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18
             )
             .allowMainThreadQueries()
             .build()
@@ -420,5 +420,20 @@ class MigrationTest {
 
     private companion object {
         const val TEST_DB = "migration-test"
+    }
+
+    /** Notifications stage 1: 17 -> 18 adds the two notify tables, leaves every existing row alone, and the DAO works on the migrated file. */
+    @Test
+    fun migrate17To18_addsNotifyTables_keepsOfflineRows() {
+        helper.createDatabase(TEST_DB, 17).apply {
+            execSQL("INSERT INTO offline_collections (id, name, siteNickname, createdAt) VALUES (1, 'Favorites', 'idzifamily', 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(TEST_DB, 18, true, AppDatabase.MIGRATION_17_18)
+        fun count(sql: String): Int = db.query(sql).use { it.moveToFirst(); it.getInt(0) }
+        assertEquals(1, count("SELECT COUNT(*) FROM offline_collections"))
+        assertEquals(0, count("SELECT COUNT(*) FROM notify_sites"))
+        assertEquals(0, count("SELECT COUNT(*) FROM notify_known_albums"))
+        db.close()
     }
 }

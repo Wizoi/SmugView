@@ -876,6 +876,7 @@ class MockSmugMugApi(private val delegate: SmugMugApi) : SmugMugApi {
     override suspend fun unlockAlbum(albumKey: String, apiKey: String, password: String, ignoreErrors: String?) = delegate.unlockAlbum(albumKey, apiKey, password, ignoreErrors)
     override suspend fun updateImageMetadata(imageKey: String, apiKey: String, body: UpdateImageMetadataRequest) = delegate.updateImageMetadata(imageKey, apiKey, body)
     override suspend fun getUserAlbums(nickname: String, apiKey: String, count: Int, start: Int?, expand: String, filter: String, filterUri: String, verbosity: Int, cacheControl: String?) = delegate.getUserAlbums(nickname, apiKey, count, start, expand, filter, filterUri, verbosity, cacheControl)
+    override suspend fun getNewestAlbums(nickname: String, apiKey: String, order: String, count: Int, filter: String, verbosity: Int, cacheControl: String?) = delegate.getNewestAlbums(nickname, apiKey, order, count, filter, verbosity, cacheControl)
     override suspend fun getUserTopKeywords(nickname: String, apiKey: String, nodeUri: String?, verbosity: Int) = delegate.getUserTopKeywords(nickname, apiKey, nodeUri, verbosity)
     override suspend fun getImagesByKeyword(apiKey: String, scope: String?, text: String?, count: Int, start: Int, filter: String, filterUri: String, verbosity: Int) = delegate.getImagesByKeyword(apiKey, scope, text, count, start, filter, filterUri, verbosity)
 }
