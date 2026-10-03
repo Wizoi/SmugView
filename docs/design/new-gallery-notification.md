@@ -31,8 +31,8 @@ it never needs the whole listing.
 ## 3. Design
 
 **3.1 What "new" means.** A NodeID in the newest-100-by-date-added list that is not in `known_albums` for that site. A set
-diff, not a date comparison, so there is no clock or timezone question. Known limit: a gallery that existed but was hidden
-and then made visible keeps its old date added, so it can fall outside page 1 and not notify. Accepted.
+diff, not a date comparison, so there is no clock or timezone question. Out of scope (owner, 2026-10-03): a gallery that was created hidden and
+later made visible is not a "new album" for this feature, so it need not notify.
 
 **3.2 One owner.** A new table `notify_known_albums(site, nodeId)` plus `notify_sites(site, enabled, baselineDone)`. It does
 **not** touch `cached_albums`, `cached_nodes` or the dot (CLAUDE.md: a third owner of "new" is a smell, so this is

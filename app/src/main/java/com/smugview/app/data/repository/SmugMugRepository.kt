@@ -1709,436 +1709,279 @@ class SmugMugRepository @Inject constructor(
      * walk-while-Inherited stopped at the first sub-folder. [RootResolution.Unknown] means the lineage
      * could not be read; callers must not unlock or delete anything on Unknown.
      */
-    override suspend fun resolvePasswordRootNodeId(nodeId: String, apiKey: String): RootResolution {
-        return try {
-            val chain = readLineage(nodeId, apiKey)
-            if (chain.isNullOrEmpty()) return RootResolution.Unknown
-            val root = chain.firstOrNull { it.securityType == "Password" }
-            if (root != null) RootResolution.Resolved(root.nodeId) else RootResolution.NotProtected
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            RootResolution.Unknown
+package com.smugview.app.ui.component
+
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.smugview.app.ui.theme.NeonBlue
+import com.smugview.app.ui.theme.SurfaceDark
+import com.smugview.app.ui.viewmodel.SmugViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddToCollectionsDialog(
+    type: String, // "Folder", "Album", or "Image"
+    itemKey: String, // nodeId or imageKey
+    title: String,
+    albumKey: String = "",
+    albumTitle: String = "",
+    thumbnailUrl: String? = null,
+    imageUrl: String? = null,
+    onDismissRequest: () -> Unit,
+    viewModel: SmugViewModel
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val localCollections by viewModel.localCollections.collectAsState()
+
+    // What is ticked now, and what was bookmarked when the dialog opened. Opening writes nothing (6-16, Q9);
+    // "Save" writes the ticked set, "Cancel" writes nothing.
+    val ticked = remember(itemKey) { mutableStateMapOf<Long, Boolean>() }
+    val wasBookmarked = remember(itemKey) { mutableStateMapOf<Long, Boolean>() }
+
+    LaunchedEffect(localCollections, itemKey) {
+        localCollections.forEach { col ->
+            if (wasBookmarked.containsKey(col.id)) return@forEach
+            val bookmarked = viewModel.isBookmarked(col.id, type, itemKey)
+            wasBookmarked[col.id] = bookmarked
+            ticked[col.id] = bookmarked || viewModel.lastSelectedCollectionIds.contains(col.id)
         }
     }
 
-    /**
-     * `node/{id}!parents` for a NodeID or an AlbumKey: self first, then each ancestor, then the site
-     * root. An AlbumKey is mapped to its NodeID via the cached row or the index row; an AlbumKey that
-     * is in neither is asked of `album/{key}` after the first 404. Throws on any other failure.
-     */
-    private suspend fun readLineage(idOrKey: String, apiKey: String): List<ParentNodeData>? {
-        val mappedId = dao.getNodeByIdOrKey(idOrKey)?.nodeId
-            ?: dao.getAlbumNodeIdByKey(idOrKey)
-            ?: idOrKey
-        suspend fun parentsOf(id: String): List<ParentNodeData>? =
-            api.getNodeParents(id, apiKey, ignoreErrors = "true").response.nodes
-        return try {
-            parentsOf(mappedId)
-        } catch (e: retrofit2.HttpException) {
-            if (e.code() != 404) throw e
-            val realId = api.getAlbum(mappedId, apiKey, ignoreErrors = "true").response.album.nodeId
-            if (realId.isNullOrEmpty() || realId == mappedId) null else parentsOf(realId)
-        }
-    }
+    var newCollectionName by remember { mutableStateOf("") }
+    var pendingRemoval by remember { mutableStateOf<String?>(null) }
 
-    /** The node as the API describes it, in memory only: nothing here knows the real parent (R-01), so no row is placed. */
-    override suspend fun fetchNode(nodeId: String, apiKey: String): CachedNode? = try {
-        val apiNode = getNode(nodeId, apiKey, ignoreErrors = "true")
-        CachedNode(
-            nodeId = apiNode.nodeId,
-            parentNodeId = null,
-            type = apiNode.type,
-            title = apiNode.name ?: "Folder",
-            description = apiNode.description,
-            access = apiNode.securityType ?: apiNode.privacy ?: "Public",
-            passwordHint = apiNode.passwordHint,
-            uri = apiNode.uri,
-            childNodesUri = apiNode.uris.childNodes,
-            albumUri = apiNode.uris.album,
-            highlightImageUrl = null,
-            childCount = null,
-            sortIndex = 0,
-            webUri = apiNode.webUri,
-            dateModified = apiNode.dateModified
-        )
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun getAllDescendants(nodeId: String): List<CachedNode> {
-        return dao.getAllDescendants(nodeId)
-    }
-
-    fun searchNodesRemote(
-        nickname: String,
-        scopeUri: String,
-        scopeKey: String,
-        query: String,
-        apiKey: String
-    ): Flow<Result<List<CachedNode>>> = flow {
-        try {
-            SmugLog.d("SmugMugRepository") { "searchNodesRemote starting: scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query" }
-            val response = api.searchNodes(apiKey, scopeUri, query)
-            val apiNodes = response.response.nodes ?: emptyList()
-            val existingIds = HashSet<String>()
-            SmugLog.d("SmugMugRepository") { "searchNodesRemote API returned ${apiNodes.size} nodes" }
-            val dbNodes = apiNodes.mapIndexed { index, node ->
-                val highlightUri = node.uris.highlightImage
-                val highlightUrl = if (highlightUri != null) {
-                    val expansion = response.expansions?.get(highlightUri)
-                    val thumb = expansion?.image?.thumbnailUrl
-                    thumb?.replace("/Th/", "/M/")?.replace("/th/", "/m/")?.replace("-Th.", "-M.")?.replace("-th.", "-m.")
-                } else null
-
-                // A listing owns where a node lives (R-04): a hit keeps the row it already has, and an
-                // unknown one is parked under "search_result" (Uris.ParentNode is its own !parent, R-01).
-                val existing = dao.getNodeById(node.nodeId)
-                if (existing != null) existingIds.add(node.nodeId)
-                val parentId = existing?.parentNodeId ?: "search_result"
-
-                CachedNode(
-                    nodeId = node.nodeId,
-                    parentNodeId = parentId,
-                    type = node.type,
-                    title = node.name ?: "Untitled",
-                    description = node.description,
-                    access = node.securityType,
-                    passwordHint = node.passwordHint,
-                    uri = node.uri,
-                    childNodesUri = node.uris.childNodes,
-                    albumUri = node.uris.album,
-                    highlightImageUrl = highlightUrl,
-                    sortIndex = index,
-                    webUri = node.webUri,
-                    dateModified = node.dateModified
+    fun commit() {
+        scope.launch {
+            val key = albumKey.ifBlank { albumKeyResolver?.invoke().orEmpty() }
+            val added = localCollections.filter { ticked[it.id] == true && wasBookmarked[it.id] != true }
+            val removed = localCollections.filter { ticked[it.id] != true && wasBookmarked[it.id] == true }
+            added.forEach { col ->
+                viewModel.addBookmark(
+                    collectionId = col.id, type = type, itemKey = itemKey, title = title,
+                    albumKey = key, albumTitle = albumTitle, thumbnailUrl = thumbnailUrl, imageUrl = imageUrl
                 )
+                Toast.makeText(context, "Saved to ${col.name}!", Toast.LENGTH_SHORT).show()
             }
-            dao.deleteSearchResultsForQueryAndType(query, scopeKey, "Folder")
-            dao.deleteSearchResultsForQueryAndType(query, scopeKey, "Album")
-            SmugLog.d("SmugMugRepository") { "searchNodesRemote deleted old search results for query=$query, scopeKey=$scopeKey" }
-            if (dbNodes.isNotEmpty()) {
-                // Only rows that don't exist yet: a hit never overwrites a listed row's sortIndex, title or parent.
-                val fresh = dbNodes.filter { it.nodeId !in existingIds }
-                if (fresh.isNotEmpty()) insertNodesScoped(nickname, fresh)
-                SmugLog.d("SmugMugRepository") { "searchNodesRemote inserted ${fresh.size} new nodes into cached_nodes" }
-                val searchResults = dbNodes.mapIndexed { index, node ->
-                    node.toSearchResult(query, scopeKey, index)
-                }
-                dao.insertSearchResults(searchResults)
-                SmugLog.d("SmugMugRepository") { "searchNodesRemote inserted ${searchResults.size} search results into search_results" }
+            removed.forEach { col ->
+                viewModel.removeBookmark(col.id, type, itemKey)
+                Toast.makeText(context, "Removed from ${col.name}", Toast.LENGTH_SHORT).show()
             }
-            emit(Result.success(dbNodes))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            android.util.Log.e("SmugMugRepository", "searchNodesRemote error: ", e)
-            emit(Result.failure(e))
+            viewModel.lastSelectedCollectionIds = localCollections.filter { ticked[it.id] == true }.map { it.id }.toSet()
+            onDismissRequest()
         }
-    }.flowOn(Dispatchers.IO)
-
-    suspend fun insertSearchResults(results: List<SearchResult>) {
-        dao.insertSearchResults(results)
     }
 
-    suspend fun getSearchResultNodes(query: String, scope: String, type: String): List<CachedNode> {
-        val remoteResults = dao.getSearchResults(query, scope, type).map { result ->
-            val cached = dao.getNodeById(result.itemKey)
-            CachedNode(
-                nodeId = result.itemKey,
-                parentNodeId = cached?.parentNodeId ?: "search_result",
-                type = result.itemType,
-                title = result.title,
-                description = result.description,
-                access = result.access,
-                passwordHint = result.passwordHint,
-                uri = result.uri ?: "",
-                childNodesUri = result.childNodesUri,
-                albumUri = result.albumUri,
-                highlightImageUrl = result.thumbnailUrl,
-                sortIndex = result.sortIndex,
-                webUri = result.webUri
+    pendingRemoval?.let { text ->
+        RemoveConfirmDialog(
+            text = text,
+            onConfirm = { pendingRemoval = null; commit() },
+            onDismiss = { pendingRemoval = null }
+        )
+    }
+
+    val onSave: () -> Unit = {
+        scope.launch {
+            val removed = localCollections.filter { ticked[it.id] != true && wasBookmarked[it.id] == true }
+            val confirm = if (type == "Image" && removed.isNotEmpty()) {
+                viewModel.removeImageConfirm(removed, itemKey, title, removesPhotoRow = false)
+            } else null
+            if (confirm == null) commit() else pendingRemoval = confirm.text
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Text(
+                text = "Save $type to Collection",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
             )
-        }
-        
-        // Also fetch local DB matches for nodes matching this scope and query.
-        // isGlobal: scope is blank, the legacy "site" sentinel, or the new "site:<nickname>" pattern.
-        val isGlobal = scope == "site" || scope.isBlank() || scope.startsWith("site:")
-        val nickname = if (scope.startsWith("site:")) scope.removePrefix("site:") else ""
-        val localResults = if (isGlobal) {
-            dao.searchNodesGlobal(query, type, nickname)
-        } else {
-            dao.searchNodesInScope(scope, query, type)
-        }
-        
-        val combined = (remoteResults + localResults).distinctBy { it.nodeId }
-        SmugLog.d("SmugMugRepository") { "getSearchResultNodes combined: query=$query, scope=$scope, type=$type, remoteSize=${remoteResults.size}, localSize=${localResults.size}, combinedSize=${combined.size}" }
-        return combined
-    }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Selected Item: $title",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
 
-    suspend fun getSearchResultPhotos(query: String, scope: String): List<AlbumImageData> {
-        val results = dao.getSearchResults(query, scope, "Photo")
-        SmugLog.d("SmugMugRepository") { "getSearchResultPhotos DB: query=$query, scope=$scope, resultsSize=${results.size}" }
-        return results.map { it.toAlbumImageData() }
-    }
-
-    suspend fun deleteSearchResultsForQueryAndType(query: String, scope: String, type: String) {
-        dao.deleteSearchResultsForQueryAndType(query, scope, type)
-    }
-
-    suspend fun hasSearchResultInDb(query: String, scope: String): Boolean {
-        return dao.getSearchResults(query, scope, "Folder").isNotEmpty() ||
-               dao.getSearchResults(query, scope, "Album").isNotEmpty() ||
-               dao.getSearchResults(query, scope, "Photo").isNotEmpty()
-    }
-
-    suspend fun hasSearchPhotosInDb(query: String, scope: String): Boolean {
-        return dao.getSearchResults(query, scope, "Photo").isNotEmpty()
-    }
-
-    suspend fun getHighestPasswordProtectedParent(nodeId: String): CachedNode? {
-        var current: CachedNode? = dao.getNodeById(nodeId)
-        var highestPasswordNode: CachedNode? = null
-        
-        while (current != null) {
-            if (current.access == "Password") {
-                highestPasswordNode = current
-            }
-            val parentId = current.parentNodeId
-            if (parentId == null || parentId == current.nodeId || parentId == "root" || parentId == "search_result") {
-                break
-            }
-            current = dao.getNodeById(parentId)
-        }
-        return highestPasswordNode
-    }
-
-    /** NodeIDs that carry a dot on [nickname]'s site: one DAO query owns it (design 3.5). */
-    fun getNodesWithActiveUpdates(nickname: String): Flow<List<String>> {
-        return dao.getNodesWithActiveUpdates(nickname)
-    }
-
-    /**
-     * Is the gallery [albumKey] (an AlbumKey, or a NodeID) lit right now? Answered by the SAME query that
-     * draws the dot ([getNodesWithActiveUpdates]), so there is one owner of "is something new here?".
-     * A gallery that is lit opens from the network (step 4-6: the dot says the cached copy is behind).
-     * Any failure reads as "not lit": the cache policy still never reuses a pre-unlock response.
-     */
-    suspend fun isGalleryLit(albumKey: String, nickname: String): Boolean {
-        if (nickname.isEmpty()) return false
-        return try {
-            val nodeId = dao.getAlbumByKey(albumKey)?.nodeId
-            val lit = dao.getNodesWithActiveUpdates(nickname).first()
-            lit.contains(albumKey) || (nodeId != null && lit.contains(nodeId))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    /**
-     * Marks a gallery, or every gallery below a folder, as viewed: the viewed mark becomes the index
-     * `ImagesLastUpdated` (the same date the dot compares), not a node DateModified (design 3.5).
-     */
-    suspend fun markNodeAsViewed(nodeId: String) {
-        dao.markViewedAtOrBelow(nodeId)
-    }
-
-    /**
-     * The viewed mark for a gallery whose first page was just shown (6-12, design 3.8). [details] is the album read of
-     * that same load: fresh truth beats a crawl up to 15 minutes old, so the index's `ImagesLastUpdated` is moved
-     * forward (never back) to the album's own, and the mark then equals it. Nothing here runs for a prompt, a failure,
-     * the saved-photos view or a restore from memory. A gallery the index does not hold has no dot to clear.
-     */
-    suspend fun markGalleryViewed(details: AlbumDetails) {
-        details.imagesLastUpdated?.let { ilu ->
-            try {
-                dao.raiseAlbumImagesLastUpdated(details.albumKey, ilu)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                SmugLog.w("SmugMugRepository", "index ILU raise failed: ${e.javaClass.simpleName}")
-            }
-        }
-        val row = dao.getAlbumByKey(details.albumKey)
-        // What was shown is behind what the dot knows (an answer served from a week-old cache while offline): the user has
-        // not seen the new photos, so the dot stays. Live, the album's date and the index's are the same value.
-        if (details.imagesLastUpdated != null && row?.imagesLastUpdated != null && isBefore(details.imagesLastUpdated, row.imagesLastUpdated)) return
-        val nodeId = details.nodeId ?: row?.nodeId ?: return
-        dao.markViewedAtOrBelow(nodeId)
-    }
-
-    private fun isBefore(a: String, b: String): Boolean = try {
-        java.time.OffsetDateTime.parse(a).toInstant().isBefore(java.time.OffsetDateTime.parse(b).toInstant())
-    } catch (e: java.time.format.DateTimeParseException) {
-        false
-    }
-
-    fun searchPublicSites(query: String, apiKey: String): Flow<Result<List<DiscoveredSite>>> = flow {
-        try {
-            val userSearchResponse = api.searchUsers(apiKey, query)
-            val matchedUsers = userSearchResponse.response.users ?: emptyList()
-            
-            // Limit to top 6 portfolios to avoid excessive parallel queries
-            val topUsers = matchedUsers.take(6)
-            
-            val discovered = coroutineScope {
-                topUsers.map { user ->
-                    async {
-                        val photos = try {
-                            val imagesResponse = api.getUserRecentImages(user.nickName, apiKey, count = 4)
-                            imagesResponse.response.images ?: emptyList()
-                        } catch (e: Exception) {
-                            emptyList()
+                // List of collections
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                ) {
+                    if (localCollections.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No collections created yet.",
+                                color = Color.White.copy(alpha = 0.4f),
+                                fontSize = 14.sp
+                            )
                         }
-                        
-                        DiscoveredSite(
-                            nickname = user.nickName,
-                            webUri = user.webUri ?: "https://${user.nickName}.smugmug.com",
-                            previewPhotos = photos
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            localCollections.forEach { col ->
+                                val isChecked = bookmarkStates[col.id] ?: false
+                                val toggleBookmark = { checked: Boolean ->
+                                    if (checked) {
+                                        viewModel.addBookmark(
+                                            collectionId = col.id,
+                                            type = type,
+                                            itemKey = itemKey,
+                                            title = title,
+                                            albumKey = albumKey,
+                                            albumTitle = albumTitle,
+                                            thumbnailUrl = thumbnailUrl,
+                                            imageUrl = imageUrl
+                                        )
+                                        bookmarkStates[col.id] = true
+                                        viewModel.lastSelectedCollectionIds = viewModel.lastSelectedCollectionIds + col.id
+                                        Toast.makeText(context, "Saved to ${col.name}!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        viewModel.removeBookmark(col.id, type, itemKey)
+                                        bookmarkStates[col.id] = false
+                                        viewModel.lastSelectedCollectionIds = viewModel.lastSelectedCollectionIds - col.id
+                                        Toast.makeText(context, "Removed from ${col.name}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                                        .clickable { toggleBookmark(!isChecked) }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = "Collection",
+                                            tint = NeonBlue.copy(alpha = 0.8f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = col.name,
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { toggleBookmark(it) },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = NeonBlue,
+                                            uncheckedColor = Color.White.copy(alpha = 0.3f),
+                                            checkmarkColor = Color.Black
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Divider(color = Color.White.copy(alpha = 0.1f))
+
+                // Create new collection inline input
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextField(
+                        value = newCollectionName,
+                        onValueChange = { newCollectionName = it },
+                        placeholder = { Text("New Collection Name...", color = Color.White.copy(alpha = 0.3f), fontSize = 13.sp) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = Color.White.copy(alpha = 0.05f),
+                            unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
+                    )
+
+                    IconButton(
+                        onClick = {
+                            if (newCollectionName.trim().isNotEmpty()) {
+                                viewModel.createCollection(newCollectionName.trim())
+                                Toast.makeText(context, "Collection created!", Toast.LENGTH_SHORT).show()
+                                newCollectionName = ""
+                            }
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(NeonBlue, RoundedCornerShape(8.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Create",
+                            tint = Color.Black
                         )
                     }
-                }.awaitAll()
-            }
-            
-            emit(Result.success(discovered))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            emit(Result.failure(e))
-        }
-    }.flowOn(Dispatchers.IO)
-}
-
-fun SearchResult.toCachedNode(): CachedNode {
-    return CachedNode(
-        nodeId = itemKey,
-        parentNodeId = "search_result",
-        type = itemType,
-        title = title,
-        description = description,
-        access = access,
-        passwordHint = passwordHint,
-        uri = uri ?: "",
-        childNodesUri = childNodesUri,
-        albumUri = albumUri,
-        highlightImageUrl = thumbnailUrl,
-        sortIndex = sortIndex,
-        webUri = webUri
-    )
-}
-
-fun CachedNode.toSearchResult(query: String, scope: String, index: Int): SearchResult {
-    return SearchResult(
-        searchQuery = query,
-        searchScope = scope,
-        itemKey = nodeId,
-        itemType = type,
-        title = title,
-        description = description,
-        thumbnailUrl = highlightImageUrl,
-        access = access,
-        passwordHint = passwordHint,
-        uri = uri,
-        childNodesUri = childNodesUri,
-        albumUri = albumUri,
-        webUri = webUri,
-        sortIndex = index
-    )
-}
-
-fun SearchResult.toAlbumImageData(): AlbumImageData {
-    return AlbumImageData(
-        imageKey = itemKey,
-        title = title,
-        caption = description,
-        thumbnailUrl = thumbnailUrl,
-        archivedUri = archivedUri,
-        date = date,
-        dateTime = date,
-        fileName = fileName,
-        keywords = keywords,
-        webUri = webUri,
-        originalWidth = originalWidth,
-        originalHeight = originalHeight,
-        originalSize = originalSize,
-        format = format,
-        uris = albumUri?.let { com.smugview.app.data.api.AlbumImageUris(album = it, imageAlbum = it) },
-        videoUrl = videoUrl
-    )
-}
-
-fun AlbumImageData.toSearchResult(query: String, scope: String, index: Int): SearchResult {
-    return SearchResult(
-        searchQuery = query,
-        searchScope = scope,
-        itemKey = imageKey,
-        itemType = "Photo",
-        title = title ?: "",
-        description = caption,
-        thumbnailUrl = thumbnailUrl,
-        archivedUri = archivedUri,
-        date = date,
-        format = format,
-        originalWidth = originalWidth,
-        originalHeight = originalHeight,
-        fileName = fileName,
-        originalSize = originalSize,
-        keywords = keywordsString,
-        videoUrl = videoUrl,
-        webUri = webUri,
-        albumUri = uris?.imageAlbum ?: uris?.album,
-        sortIndex = index
-    )
-}
-
-data class DiscoveredSite(
-    val nickname: String,
-    val webUri: String?,
-    val previewPhotos: List<com.smugview.app.data.api.AlbumImageData>
-)
-
-fun extractNicknameFromWebUri(webUri: String?): String? {
-    if (webUri == null) return null
-    try {
-        val host = java.net.URI(webUri).host ?: return null
-        if (host.endsWith(".smugmug.com")) {
-            val sub = host.substringBefore(".smugmug.com")
-            if (sub.isNotEmpty() && sub != "www" && sub != "api") {
-                return sub
-            }
-        }
-    } catch (e: Exception) {
-        try {
-            val withoutScheme = webUri.substringAfter("://")
-            val host = withoutScheme.substringBefore("/")
-            if (host.endsWith(".smugmug.com")) {
-                val sub = host.substringBefore(".smugmug.com")
-                if (sub.isNotEmpty() && sub != "www" && sub != "api") {
-                    return sub
                 }
             }
-        } catch (e2: Exception) {
-            // ignore
-        }
-    }
-    return null
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismissRequest,
+                colors = ButtonDefaults.textButtonColors(contentColor = NeonBlue)
+            ) {
+                Text("Done", fontWeight = FontWeight.Bold)
+            }
+        },
+        containerColor = SurfaceDark,
+        shape = RoundedCornerShape(16.dp)
+    )
 }
 
-data class AlbumSecurityInfo(
-    val securityType: String?,
-    val passwordHint: String?
-)
-
-/** What `image/{key}-0` says about where the original is ([SmugMugRepository.resolveImageSource]). */
-data class ImageSource(
-    val imageKey: String,
-    val archivedUri: String?,
-    val archivedSize: Long?,
-    val archivedMd5: String?,
-    val format: String?,
-    val isVideo: Boolean
-)
