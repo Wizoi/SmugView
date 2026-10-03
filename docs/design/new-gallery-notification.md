@@ -53,9 +53,10 @@ AES256-GCM keys, `allowBackup=false`, data-extraction rules). Nothing new is sto
 2. POSTs `node/{id}!unlock` for each (this fills the OkHttp cookie jar, finding #16), then lists albums.
 3. A non-200 unlock (changed password) skips that root and records it; the other roots still run. No notification about
    the failure (a later "locked folder needs a new password" nudge is out of scope).
-4. Needs checking before build: the unlocked listing must still honour `Order=Date Added`. **Not verified**, because it
-   needs your password typed (nobody else types it). Fallback if it does not: sort client-side on the first page of each
-   listing.
+4. **Verified 2026-10-03** (read-only, the owner's `smugmug.verify.familyPassword`, never printed): after `node/2sDN5x!unlock` (HTTP 200) the unlocked
+   `user!albums?Order=Date Added (Descending)` listed 2,633 galleries (2,514 under Family); 2,632 have a node date and
+   there were **0 sort violations in 2,631 comparisons**. Newest first: two Kentridge galleries, then Family/Events and
+   Family/School ones, so a Family gallery that is new does reach page 1. No client-side sort fallback is needed.
 The new-gallery notification text never contains a password or the API key.
 
 **3.6 Notification.** Channel "New galleries" (default importance), group summary, `POST_NOTIFICATIONS` requested the
@@ -90,4 +91,3 @@ Strings are user-visible and go to the owner for approval before shipping.
 2. Poll interval: 6 h proposed (flex 2 h). Shorter costs battery and gains little, since Android batches background work.
 3. Network: follow the existing offline network rule (`OfflineSettings`), or Wi-Fi only for polling regardless?
 4. Tapping a grouped notification: open the site, or a list of the new galleries?
-5. OK to type your Family password on an emulator once to verify 3.5 item 4, or do you prefer to check it on the phone?
