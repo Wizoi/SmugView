@@ -1,0 +1,6 @@
+New:
+- Get a notification when a site gets a new gallery. Tap the bell on the Gallery Hub to follow a site; it checks every few hours, including galleries in password folders you have unlocked.
+
+Also in this version:
+- Clearer messages when a gallery is locked or removed.
+- Fixes to breadcrumbs, search and screen casting.
