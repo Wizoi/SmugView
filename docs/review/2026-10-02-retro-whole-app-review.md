@@ -119,12 +119,17 @@ Everything else runs on the emulator beforehand, scripted, and the run's output 
    (`SsdpScanLoggingTest.kt:30`).
 Full unit suite after these changes: 899 tests, 4 skipped, 0 failures.
 
-## 6. Open items (not fixed)
+## 6. Open items (owner review, 2026-10-13)
 
-- A sharp 1:1 zoom on very wide panoramas needs region decoding; today deep zoom past 8192 px upscales.
-- The Save-to-collection dialog shows a blank "Selected Item:" for an untitled photo and clips the "New Collection
-  Name..." hint.
-- About 10 `BuildConfig.DEBUG`-gated `Log.e` sites remain (finding #7).
-- Not confirmed on a device: the never-opened-gallery offline state, the metered Wi-Fi wording, full-disk resume, a real
-  404-original download and kept-gallery fall-back (#24).
-- v0.8.1 is on internal only. Promotion to production and a Play Console look at the release are yours to call.
+Two remain:
+
+- The Save-to-collection dialog shows a blank "Selected Item:" for an untitled photo and clips the "New Collection Name..." hint.
+- About 10 `BuildConfig.DEBUG`-gated `Log.e` sites remain, so release builds miss those errors (finding #7).
+
+Closed by the owner on 2026-10-13:
+
+- Verified on the phone: the new-gallery notifications and the offline work (never-opened gallery, metered Wi-Fi wording, full disk, 404-original fall-back).
+- Panorama zoom looked fine on the phone, so region decoding for sharp 1:1 beyond 8192 px is not needed.
+- The viewer place-loss report (not reproduced) and the one-off `RemoveConfirmScreenTest` flake were dropped.
+- The emulators boot and work again, and the Windows power-offs were resolved outside this project.
+- Play "Sign in details" declaration updated and sent for review.
