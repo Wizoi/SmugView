@@ -750,9 +750,7 @@ largest.
   the real kotlinx models in step 3 will show those.
 ### 2026-10-29: step 3, the `shared` module on the JVM (VERIFIED, measured on Windows; the iOS targets compile only on macOS)
 
-- **Toolchain: no upgrade was needed for the spike.** Kotlin stays 2.0.20 (KSP 2.0.20-1.0.25, kotlinx.serialization 1.7.3, Ktor 3.0.3, coroutines
-  1.9.0, Room 2.7.1 with `sqlite-bundled` 2.5.1). `:shared` is a Kotlin Multiplatform module that `:app` does not depend on, so nothing on
-  Android changed. The design's Room 2.8 and "Kotlin 2.0.20 to current 2.x" are therefore not prerequisites of Stage 0.
+- **Toolchain: CORRECTED 2026-10-29, an upgrade WAS needed for iOS** (the first version of this bullet said it was not; it was only true for the JVM). `:shared` is a Kotlin Multiplatform module that `:app` does not depend on. See "iOS CI" below for why Kotlin 2.0.x cannot build Room's iOS side.
 - **Models.** The ported kotlinx.serialization models read the real recorded answers (profile, folder listing, user search) with the strict
   reader. Only `UserData.name` and `UserUris.node` became optional (the parity finding).
 - **HTTP.** A Ktor client with the Retrofit parameter names, order, defaults and headers (including the `!children` path), `ApiException(code)`
@@ -771,3 +769,30 @@ largest.
   by hand). The repo had no Unix `gradlew`; one was added (executable, LF).
 - **Still open in Stage 0:** the first macOS run (does the iOS side compile and pass?), the Compose Multiplatform screen (step 4), and the
   measurements (step 5: framework size, release-link time).
+
+### 2026-10-29: the first iOS simulator run (VERIFIED on a macOS runner, GitHub Actions run 40944531185)
+
+- **Result: all 12 shared tests ran and passed on the iOS simulator** (ApiClientTest 4, RealAnswersTest 3, NodeDaoTest 3, MigrationChainTest 2),
+  the same four suites as on the JVM. That includes the REPLACE insert and the recursive-CTE dot query on iOS's bundled SQLite, the 13 -> 18
+  migration chain with the user's rows intact, and the strict JSON models over the real recorded answers. The iOS-specific files written
+  without a Mac (Darwin engine, `nowMillis`, the fixture and schema readers, the temp database path) compiled and worked first time once the
+  toolchain was right.
+- **Measured (simulator arm64, release static framework):** link time 103 s with a warm Gradle and a cold Kotlin/Native link on a GitHub
+  macOS runner; `Shared.framework` 16,188 KB, its binary 15,936 KB. The test step took 198 s (toolchain cached). A cold first run took 6 to 7
+  minutes end to end. Free for this public repo. NOT measured yet: the IPA size (needs the full app), device arm64 (expected similar).
+- **What it took (nine CI rounds, each reading the real error through workflow annotations, since build logs need a login):**
+  1. `KLIB resolver: Could not find ...room-common-iosSimulatorArm64Main-2.7.1.klib`, not a download problem (the file was on disk): **Room
+     2.7.1's iOS libraries are built with Kotlin 2.1.10** (`compiler_version=2.1.10` in the klib manifest) and the 2.0.x Kotlin/Native
+     compiler refuses them, reporting "not found". Wrong guesses first: a missing download, the configuration cache, a Kotlin patch bump.
+  2. On Kotlin 2.1.10 with KSP1: `ClassNotFoundException ...cli.utilities.MainKt`: KSP1 could not start the Kotlin/Native compiler.
+  3. On KSP2 with Kotlin 2.1.21: Room's processor failed with `cannot find required type kotlin.coroutines.Continuation` for the iOS target.
+  4. **Working set: Kotlin 2.2.21 + KSP 2.2.21-2.0.5 + Room 2.8.4, and also Kotlin 2.3.21 + KSP 2.3.12 + Room 2.8.5** (both passed on the Mac).
+- **Versions the spike now uses:** Kotlin 2.3.21, KSP 2.3.12, Room 2.8.5 (shared), sqlite-bundled 2.6.2, Ktor 3.0.3, kotlinx.serialization 1.9.0,
+  Hilt 2.58 (2.59 refuses to run on AGP 8: it needs AGP 9), AGP 8.13.2 and Gradle 8.13 unchanged (AGP 9.5 and Gradle 9.8 exist; moving to
+  them is a separate, larger Android migration). The owner's rule: take the newest set that works together.
+- **What the toolchain bump did to the Android app** (checked locally, full suite): it builds and all 956 tests pass on Kotlin 2.3.21, with
+  three changes: Hilt 2.50 -> 2.58; `kotlinOptions { jvmTarget }` -> the `compilerOptions` DSL (removed in Kotlin 2.3); and the API contract
+  coverage test ignores Kotlin's generated `<name>$default` methods. The app stays on Room 2.7.1: Room 2.8.x makes the driver enforce the
+  database NAME, which broke 24 of the app's migration and legacy-repair tests (they open by path); fixing those belongs to Stage 1e. This is
+  most of Stage 1a, already proven.
+- **Still open in Stage 0:** step 4 (a Compose Multiplatform screen on the simulator) and the IPA size.
