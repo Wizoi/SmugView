@@ -1,4 +1,4 @@
-package com.smugview.shared.ui
+package com.smugview.spikeui
 
 /**
  * iOS spike, step 4: the recorded answer of `node/{root}!children` for the owner's public site (idzifamily), cut down to the fields the

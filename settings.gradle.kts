@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 rootProject.name = "SmugView"
 include(":app")
 include(":shared")
+include(":spikeui")

@@ -122,6 +122,10 @@ kotlin {
 }
 
 dependencies {
+    // Room is left out until Stage 1e: the shared module is on Room 2.8, whose driver wants a database NAME where the app's 24 migration and
+    // legacy-repair tests (and its database builders) pass a path. The app keeps Room 2.7.1 and does not use the shared database yet.
+    implementation(project(":shared")) { exclude(group = "androidx.room") }
+
     // AndroidX & Core
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")

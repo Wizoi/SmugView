@@ -55,7 +55,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts') }}
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts', 'spikeui/build.gradle.kts') }}
           restore-keys: konan-${{ runner.os }}-
       - name: Shared module tests on the iOS simulator
         id: tests
@@ -84,10 +84,10 @@ jobs:
         run: |
           set -o pipefail
           start=$(date +%s)
-          ./gradlew :shared:linkReleaseFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee ios-link.log
+          ./gradlew :spikeui:linkReleaseFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee ios-link.log
           end=$(date +%s)
-          kb=$(du -sk shared/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework | cut -f1)
-          bin=$(find shared/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework -type f -name Shared -exec du -k {} + | cut -f1 | head -1)
+          kb=$(du -sk spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework | cut -f1)
+          bin=$(find spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework -type f -name Shared -exec du -k {} + | cut -f1 | head -1)
           echo "::notice title=iOS release link (simulator arm64)::link took $((end - start)) s (warm Gradle, cold K/N link), Shared.framework is ${kb} KB, the binary ${bin} KB"
       - name: Diagnose the Gradle cache
         if: always()
@@ -130,14 +130,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts') }}
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts', 'spikeui/build.gradle.kts') }}
           restore-keys: konan-${{ runner.os }}-
       - name: Build the Shared framework for the simulator
         id: framework
         continue-on-error: true
         run: |
           set -o pipefail
-          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee screen-framework.log
+          ./gradlew :spikeui:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee screen-framework.log
       - name: Generate and build the Xcode project
         id: xcode
         if: steps.framework.outcome == 'success'
@@ -201,7 +201,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts') }}
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts', 'spikeui/build.gradle.kts') }}
           restore-keys: konan-${{ runner.os }}-
       - name: Build the unsigned release IPA for a device
         id: ipa
@@ -209,7 +209,7 @@ jobs:
         run: |
           set -o pipefail
           start=$(date +%s)
-          ./gradlew :shared:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee ipa-framework.log
+          ./gradlew :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee ipa-framework.log
           mid=$(date +%s)
           brew install xcodegen
           (cd iosApp && xcodegen generate)
@@ -221,7 +221,7 @@ jobs:
           ipa_kb=$(du -k ipa/spike.ipa | cut -f1)
           app_kb=$(du -sk ipa/Payload/iosApp.app | cut -f1)
           bin_kb=$(du -k ipa/Payload/iosApp.app/iosApp | cut -f1)
-          fw_kb=$(du -sk shared/build/bin/iosArm64/releaseFramework/Shared.framework | cut -f1)
+          fw_kb=$(du -sk spikeui/build/bin/iosArm64/releaseFramework/Shared.framework | cut -f1)
           echo "::notice title=iOS release IPA (device arm64, unsigned)::IPA ${ipa_kb} KB, .app ${app_kb} KB, app binary ${bin_kb} KB, Shared.framework (static, before the final link) ${fw_kb} KB; framework link $((mid - start)) s, Xcode build $((end - mid)) s"
       - name: Put the first errors in the annotations
         if: always()

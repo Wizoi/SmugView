@@ -1,4 +1,4 @@
-package com.smugview.shared.ui
+package com.smugview.spikeui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement

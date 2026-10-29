@@ -19,6 +19,6 @@ targets:
         SWIFT_VERSION: "5.0"
         CODE_SIGNING_ALLOWED: NO
         ENABLE_USER_SCRIPT_SANDBOXING: NO
-        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework"
-        "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]": "$(SRCROOT)/../shared/build/bin/iosArm64/releaseFramework"
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../spikeui/build/bin/iosSimulatorArm64/debugFramework"
+        "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]": "$(SRCROOT)/../spikeui/build/bin/iosArm64/releaseFramework"
         OTHER_LDFLAGS: ["$(inherited)", "-framework", "Shared"]
