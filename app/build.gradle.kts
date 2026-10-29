@@ -136,7 +136,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Room Database
-    val roomVersion = "2.6.1"
+    val roomVersion = "2.7.1"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.room:room-paging:$roomVersion")
@@ -153,14 +153,14 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
-    implementation("androidx.hilt:hilt-work:1.1.0")
-    kapt("androidx.hilt:hilt-compiler:1.1.0")
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    kapt("androidx.hilt:hilt-compiler:1.2.0")
 
     // Hilt Dependency Injection
-    val hiltVersion = "2.50"
+    val hiltVersion = "2.55"
     implementation("com.google.dagger:hilt-android:$hiltVersion")
     kapt("com.google.dagger:hilt-compiler:$hiltVersion")
-    implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
     // Encrypted storage for gallery passwords
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
@@ -190,7 +190,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.0.21")
+    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.1.10")
     // Real org.json for unit tests (Android's bundled org.json is stubbed in JVM tests)
     testImplementation("org.json:json:20231013")
     // Robolectric so Room's real SQLite (and the recursive-CTE queries) run in JVM unit tests
