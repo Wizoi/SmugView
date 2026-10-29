@@ -125,7 +125,7 @@ class ApiContractTest(private val method: String) {
 /** Every [SmugMugApi] method has a contract case, and every case names a method (a new endpoint cannot skip it). */
 class ApiContractCoverageTest {
     @Test fun `every SmugMugApi method has an ApiContractTest case`() {
-        val methods = SmugMugApi::class.java.declaredMethods.map { it.name }.toSet()
+        val methods = SmugMugApi::class.java.declaredMethods.filter { !it.isSynthetic && !it.name.contains('$') }.map { it.name }.toSet() // Kotlin 2.2+ also emits `<name>$default` helpers on an interface; they are not API methods
         assertEquals("methods without a case, or cases without a method", methods, ApiContractTest.CASES.keys)
     }
 

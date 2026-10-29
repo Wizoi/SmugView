@@ -77,9 +77,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -118,6 +115,12 @@ kapt {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
     // AndroidX & Core
     implementation("androidx.core:core-ktx:1.12.0")
@@ -136,7 +139,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Room Database
-    val roomVersion = "2.6.1"
+    val roomVersion = "2.7.1"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.room:room-paging:$roomVersion")
@@ -153,14 +156,14 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
-    implementation("androidx.hilt:hilt-work:1.1.0")
-    kapt("androidx.hilt:hilt-compiler:1.1.0")
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    kapt("androidx.hilt:hilt-compiler:1.2.0")
 
     // Hilt Dependency Injection
-    val hiltVersion = "2.50"
+    val hiltVersion = "2.58"
     implementation("com.google.dagger:hilt-android:$hiltVersion")
     kapt("com.google.dagger:hilt-compiler:$hiltVersion")
-    implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
     // Encrypted storage for gallery passwords
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
@@ -248,6 +251,11 @@ val archiveReleaseMapping by tasks.registering(Copy::class) {
     }
 }
 tasks.matching { it.name == "minifyReleaseWithR8" }.configureEach {
+    finalizedBy(archiveReleaseMapping)
+}
+// Compose compiler plugin 2.3 rewrites mapping.txt after R8 (it merges its own mapping in), so archive after that, not just after R8.
+archiveReleaseMapping.configure { mustRunAfter(tasks.matching { it.name == "mergeReleaseComposeMapping" }) }
+tasks.matching { it.name == "mergeReleaseComposeMapping" }.configureEach {
     finalizedBy(archiveReleaseMapping)
 }
 
