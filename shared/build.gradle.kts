@@ -55,6 +55,13 @@ val resolveIosKlibs by tasks.registering {
             "iosSimulatorArm64CompileKlibraries", "iosSimulatorArm64TestCompileKlibraries",
             "iosArm64CompileKlibraries", "iosArm64TestCompileKlibraries"
         ).forEach { name -> configurations.findByName(name)?.files }
+        // What was resolved and whether each file is really on disk: read by the CI diagnostics step.
+        val lines = listOf("iosSimulatorArm64CompileKlibraries").flatMap { name ->
+            (configurations.findByName(name)?.files ?: emptySet()).filter { "room" in it.name || "sqlite" in it.name }
+                .map { "$name: ${it.path} exists=${it.exists()}" }
+        }
+        layout.buildDirectory.file("resolved-klibs.txt").get().asFile.apply { parentFile.mkdirs() }.writeText(lines.joinToString("
+"))
     }
 }
 tasks.matching { it.name.startsWith("ksp") && it.name.contains("Ios") }.configureEach { dependsOn(resolveIosKlibs) }

@@ -64,6 +64,20 @@ jobs:
       - name: Put the first errors in the annotations
         if: always()
         run: bash .github/scripts/annotate-log.sh ios-build.log
+      - name: Diagnose the Gradle cache
+        if: always()
+        run: |
+          {
+            echo "== Room klibs in the Gradle cache"
+            ls -laR ~/.gradle/caches/modules-2/files-2.1/androidx.room/room-common-iossimulatorarm64 2>&1 | head -30
+            echo "== every room-common klib under ~/.gradle"
+            find ~/.gradle -name "room-common*klib" 2>&1 | head -20
+            echo "== what the resolve task saw"
+            cat shared/build/resolved-klibs.txt 2>&1 | head -20
+            echo "== gradle.properties flags seen by the build"
+            grep -E "ksp|configuration-cache|caching" gradle.properties
+          } > ios-diag.txt 2>&1
+          bash .github/scripts/annotate-log.sh ios-diag.txt "gradle cache"
       - name: Fail the job when the tests failed
         if: steps.tests.outcome == 'failure'
         run: exit 1
