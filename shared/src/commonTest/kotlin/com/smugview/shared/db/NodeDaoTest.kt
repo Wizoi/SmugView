@@ -2,10 +2,6 @@ package com.smugview.shared.db
 
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.Clock
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.minus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -21,9 +17,22 @@ expect fun newInMemoryDatabase(): AppDatabase
  *    root -> Family (password) -> School -> gallery, depth 3 under the root; dates are relative to now (findings #9).
  */
 class NodeDaoTest {
+    /** SmugMug's date shape, relative to now (findings #9): 2026-10-25T10:00:00+00:00. Plain arithmetic, no date library. */
     private fun daysAgo(days: Int): String {
-        val t = Clock.System.now().minus(days, DateTimeUnit.DAY, TimeZone.UTC)
-        return t.toString().substringBefore('.').removeSuffix("Z") + "+00:00" // SmugMug's shape: 2026-10-25T10:00:00+00:00
+        val ms = nowMillis() - days * 86_400_000L
+        val secondsOfDay = (ms / 1000).mod(86_400L).toInt()
+        // days since 1970-01-01 to a civil date (Howard Hinnant's algorithm)
+        val z = ms.floorDiv(86_400_000L) + 719_468
+        val era = z.floorDiv(146_097L)
+        val doe = z - era * 146_097
+        val yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
+        val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+        val mp = (5 * doy + 2) / 153
+        val d = (doy - (153 * mp + 2) / 5 + 1).toInt()
+        val m = (if (mp < 10) mp + 3 else mp - 9).toInt()
+        val y = (yoe + era * 400 + if (m <= 2) 1 else 0).toInt()
+        fun two(n: Int) = n.toString().padStart(2, '0')
+        return "$y-${two(m)}-${two(d)}T${two(secondsOfDay / 3600)}:${two(secondsOfDay % 3600 / 60)}:${two(secondsOfDay % 60)}+00:00"
     }
 
     private fun node(id: String, parent: String?, title: String, type: String = "Folder", access: String? = "Public") = CachedNode(

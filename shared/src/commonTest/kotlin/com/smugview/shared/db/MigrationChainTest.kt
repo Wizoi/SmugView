@@ -4,7 +4,6 @@ import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.sqlite.execSQL
 import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.Clock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -52,7 +51,7 @@ class MigrationChainTest {
 
     // The same rows as the app's MigrationTest.insertV13UserData: password folder 2sDN5x -> sub-folder P4BKB -> gallery node LCdk7F (AlbumKey FfHCms).
     private fun insertV13UserData(c: SQLiteConnection) {
-        val now = Clock.System.now().toEpochMilliseconds()
+        val now = nowMillis()
         val modified = "2026-10-27T12:00:00+00:00"
         c.execSQL(
             "INSERT INTO cached_nodes (nodeId, parentNodeId, type, title, access, uri, albumUri, sortIndex, dateModified, nickname) VALUES " +

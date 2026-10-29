@@ -99,3 +99,75 @@ jobs:
         with:
           name: ios-test-reports
           path: shared/build/reports/tests
+
+  # Stage 0, step 4: the shared Compose screen inside a tiny Xcode app, run on a simulator, with a screenshot. The PNG is pushed to the
+  # branch `ios-spike-artifacts` (artifacts need a login to download; a branch can be read by anyone).
+  ios-screen:
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cache the Kotlin/Native toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Build the Shared framework for the simulator
+        id: framework
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee screen-framework.log
+      - name: Generate and build the Xcode project
+        id: xcode
+        if: steps.framework.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          brew install xcodegen
+          (cd iosApp && xcodegen generate)
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/xcode ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build 2>&1 | tee screen-xcode.log
+      - name: Run it on a simulator and take a screenshot
+        id: run
+        if: steps.xcode.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available | grep -m1 "iPhone" | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          echo "simulator: $UDID" | tee screen-run.log
+          xcrun simctl boot "$UDID" 2>&1 | tee -a screen-run.log
+          xcrun simctl bootstatus "$UDID" -b 2>&1 | tee -a screen-run.log
+          xcrun simctl install "$UDID" build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app 2>&1 | tee -a screen-run.log
+          xcrun simctl launch "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
+          sleep 12
+          xcrun simctl io "$UDID" screenshot ios-spike-screen.png 2>&1 | tee -a screen-run.log
+          ls -la ios-spike-screen.png | tee -a screen-run.log
+      - name: Put the first errors in the annotations
+        if: always()
+        run: |
+          for f in screen-framework.log screen-xcode.log screen-run.log; do
+            [ -f "$f" ] && bash .github/scripts/annotate-log.sh "$f" "$f"
+          done
+          exit 0
+      - name: Publish the screenshot to the ios-spike-artifacts branch
+        if: steps.run.outcome == 'success'
+        run: |
+          mkdir -p "$RUNNER_TEMP/art" && cp ios-spike-screen.png "$RUNNER_TEMP/art/"
+          cd "$RUNNER_TEMP/art"
+          git init -q && git checkout -q -b ios-spike-artifacts
+          git config user.name "github-actions" && git config user.email "actions@users.noreply.github.com"
+          git add ios-spike-screen.png && git commit -q -m "iOS spike screenshot from run ${{ github.run_id }} (${{ github.sha }})"
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git push -q -f origin ios-spike-artifacts
+          echo "::notice title=screenshot::pushed to the ios-spike-artifacts branch"
+      - name: Fail the job when a step failed
+        if: steps.framework.outcome == 'failure' || steps.xcode.outcome == 'failure' || steps.run.outcome == 'failure'
+        run: exit 1

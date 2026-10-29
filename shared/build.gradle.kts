@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
     id("androidx.room")
+    id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 room {
@@ -31,6 +33,10 @@ kotlin {
         commonMain.dependencies {
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+            implementation(compose.runtime)
+            implementation(compose.foundation)
+            implementation(compose.material3)
+            implementation(compose.ui)
             implementation("androidx.room:room-runtime:2.8.5")
             implementation("androidx.sqlite:sqlite-bundled:2.6.2")
             implementation("io.ktor:ktor-client-core:3.0.3")
@@ -41,7 +47,6 @@ kotlin {
             implementation(kotlin("test"))
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
             implementation("io.ktor:ktor-client-mock:3.0.3")
-            implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
         }
         jvmMain.dependencies {
             implementation("io.ktor:ktor-client-okhttp:3.0.3")
