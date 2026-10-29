@@ -1,0 +1,1034 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 18,
+    "identityHash": "be14f024797575b6312b5ac9eea79606",
+    "entities": [
+      {
+        "tableName": "cached_nodes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`nodeId` TEXT NOT NULL, `parentNodeId` TEXT, `type` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT, `access` TEXT, `passwordHint` TEXT, `uri` TEXT NOT NULL, `childNodesUri` TEXT, `albumUri` TEXT, `highlightImageUrl` TEXT, `childCount` INTEGER, `sortIndex` INTEGER NOT NULL, `webUri` TEXT, `dateModified` TEXT, `nickname` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`nodeId`))",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "nodeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentNodeId",
+            "columnName": "parentNodeId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "access",
+            "columnName": "access",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "passwordHint",
+            "columnName": "passwordHint",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "uri",
+            "columnName": "uri",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "childNodesUri",
+            "columnName": "childNodesUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "albumUri",
+            "columnName": "albumUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "highlightImageUrl",
+            "columnName": "highlightImageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "childCount",
+            "columnName": "childCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sortIndex",
+            "columnName": "sortIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "webUri",
+            "columnName": "webUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dateModified",
+            "columnName": "dateModified",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "nodeId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_cached_nodes_parentNodeId",
+            "unique": false,
+            "columnNames": [
+              "parentNodeId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_cached_nodes_parentNodeId` ON `${TABLE_NAME}` (`parentNodeId`)"
+          },
+          {
+            "name": "index_cached_nodes_nickname",
+            "unique": false,
+            "columnNames": [
+              "nickname"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_cached_nodes_nickname` ON `${TABLE_NAME}` (`nickname`)"
+          }
+        ]
+      },
+      {
+        "tableName": "offline_collections",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `siteNickname` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteNickname",
+            "columnName": "siteNickname",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "collection_photos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`imageKey` TEXT NOT NULL, `collectionId` INTEGER NOT NULL, `albumKey` TEXT NOT NULL, `title` TEXT, `thumbnailUrl` TEXT, `archivedUri` TEXT, `localFilePath` TEXT, `dateTaken` TEXT, `keywords` TEXT, `isDownloaded` INTEGER NOT NULL, PRIMARY KEY(`imageKey`, `collectionId`), FOREIGN KEY(`collectionId`) REFERENCES `offline_collections`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "imageKey",
+            "columnName": "imageKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectionId",
+            "columnName": "collectionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumKey",
+            "columnName": "albumKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "thumbnailUrl",
+            "columnName": "thumbnailUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "archivedUri",
+            "columnName": "archivedUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "localFilePath",
+            "columnName": "localFilePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dateTaken",
+            "columnName": "dateTaken",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "keywords",
+            "columnName": "keywords",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isDownloaded",
+            "columnName": "isDownloaded",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "imageKey",
+            "collectionId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_collection_photos_collectionId",
+            "unique": false,
+            "columnNames": [
+              "collectionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_collection_photos_collectionId` ON `${TABLE_NAME}` (`collectionId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "offline_collections",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "collectionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "collection_bookmarks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `collectionId` INTEGER NOT NULL, `type` TEXT NOT NULL, `itemKey` TEXT NOT NULL, `title` TEXT NOT NULL, `albumKey` TEXT NOT NULL, `albumTitle` TEXT NOT NULL, `thumbnailUrl` TEXT, `extraData` TEXT, FOREIGN KEY(`collectionId`) REFERENCES `offline_collections`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectionId",
+            "columnName": "collectionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemKey",
+            "columnName": "itemKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumKey",
+            "columnName": "albumKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumTitle",
+            "columnName": "albumTitle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thumbnailUrl",
+            "columnName": "thumbnailUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "extraData",
+            "columnName": "extraData",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_collection_bookmarks_collectionId",
+            "unique": false,
+            "columnNames": [
+              "collectionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_collection_bookmarks_collectionId` ON `${TABLE_NAME}` (`collectionId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "offline_collections",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "collectionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "search_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`query` TEXT NOT NULL, `nickname` TEXT NOT NULL DEFAULT '', `timestamp` INTEGER NOT NULL, PRIMARY KEY(`query`, `nickname`))",
+        "fields": [
+          {
+            "fieldPath": "query",
+            "columnName": "query",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "query",
+            "nickname"
+          ]
+        }
+      },
+      {
+        "tableName": "search_results",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`searchQuery` TEXT NOT NULL, `searchScope` TEXT NOT NULL, `itemKey` TEXT NOT NULL, `itemType` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT, `thumbnailUrl` TEXT, `access` TEXT, `passwordHint` TEXT, `uri` TEXT, `childNodesUri` TEXT, `albumUri` TEXT, `webUri` TEXT, `archivedUri` TEXT, `date` TEXT, `format` TEXT, `videoUrl` TEXT, `originalWidth` INTEGER, `originalHeight` INTEGER, `fileName` TEXT, `originalSize` INTEGER, `keywords` TEXT, `sortIndex` INTEGER NOT NULL, PRIMARY KEY(`searchQuery`, `searchScope`, `itemKey`, `itemType`))",
+        "fields": [
+          {
+            "fieldPath": "searchQuery",
+            "columnName": "searchQuery",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "searchScope",
+            "columnName": "searchScope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemKey",
+            "columnName": "itemKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemType",
+            "columnName": "itemType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "thumbnailUrl",
+            "columnName": "thumbnailUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "access",
+            "columnName": "access",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "passwordHint",
+            "columnName": "passwordHint",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "uri",
+            "columnName": "uri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "childNodesUri",
+            "columnName": "childNodesUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "albumUri",
+            "columnName": "albumUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "webUri",
+            "columnName": "webUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "archivedUri",
+            "columnName": "archivedUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "format",
+            "columnName": "format",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "videoUrl",
+            "columnName": "videoUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "originalWidth",
+            "columnName": "originalWidth",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "originalHeight",
+            "columnName": "originalHeight",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "fileName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "originalSize",
+            "columnName": "originalSize",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "keywords",
+            "columnName": "keywords",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sortIndex",
+            "columnName": "sortIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "searchQuery",
+            "searchScope",
+            "itemKey",
+            "itemType"
+          ]
+        }
+      },
+      {
+        "tableName": "viewed_gallery_updates",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`nodeId` TEXT NOT NULL, `lastViewedDateModified` TEXT NOT NULL, PRIMARY KEY(`nodeId`))",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "nodeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastViewedDateModified",
+            "columnName": "lastViewedDateModified",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "nodeId"
+          ]
+        }
+      },
+      {
+        "tableName": "cached_albums",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`albumKey` TEXT NOT NULL, `nodeId` TEXT NOT NULL, `name` TEXT NOT NULL, `securityType` TEXT, `passwordHint` TEXT, `uri` TEXT NOT NULL, `webUri` TEXT, `urlPath` TEXT, `imageCount` INTEGER, `dateModified` TEXT, `galleryStyle` TEXT, `highlightImageUrl` TEXT, `sortIndex` INTEGER NOT NULL, `nickname` TEXT NOT NULL DEFAULT '', `parentNodeId` TEXT, `imagesLastUpdated` TEXT, PRIMARY KEY(`albumKey`))",
+        "fields": [
+          {
+            "fieldPath": "albumKey",
+            "columnName": "albumKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nodeId",
+            "columnName": "nodeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "securityType",
+            "columnName": "securityType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "passwordHint",
+            "columnName": "passwordHint",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "uri",
+            "columnName": "uri",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "webUri",
+            "columnName": "webUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "urlPath",
+            "columnName": "urlPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imageCount",
+            "columnName": "imageCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "dateModified",
+            "columnName": "dateModified",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "galleryStyle",
+            "columnName": "galleryStyle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "highlightImageUrl",
+            "columnName": "highlightImageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sortIndex",
+            "columnName": "sortIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "parentNodeId",
+            "columnName": "parentNodeId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imagesLastUpdated",
+            "columnName": "imagesLastUpdated",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "albumKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_cached_albums_nickname",
+            "unique": false,
+            "columnNames": [
+              "nickname"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_cached_albums_nickname` ON `${TABLE_NAME}` (`nickname`)"
+          }
+        ]
+      },
+      {
+        "tableName": "offline_files",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`fileKey` TEXT NOT NULL, `imageKey` TEXT NOT NULL, `albumKey` TEXT, `nickname` TEXT NOT NULL DEFAULT '', `sourceUrl` TEXT, `expectedBytes` INTEGER, `md5` TEXT, `title` TEXT, `thumbnailUrl` TEXT, `format` TEXT, `dateTaken` TEXT, `state` TEXT NOT NULL, `failure` TEXT, `retryable` INTEGER NOT NULL DEFAULT 0, `attempts` INTEGER NOT NULL DEFAULT 0, `nextAttemptAt` INTEGER, `httpCode` INTEGER, `wifiOnly` INTEGER NOT NULL DEFAULT 0, `claim` TEXT, `relPath` TEXT, `bytes` INTEGER, `legacyPath` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`fileKey`))",
+        "fields": [
+          {
+            "fieldPath": "fileKey",
+            "columnName": "fileKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageKey",
+            "columnName": "imageKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumKey",
+            "columnName": "albumKey",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "sourceUrl",
+            "columnName": "sourceUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "expectedBytes",
+            "columnName": "expectedBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "md5",
+            "columnName": "md5",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "thumbnailUrl",
+            "columnName": "thumbnailUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "format",
+            "columnName": "format",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dateTaken",
+            "columnName": "dateTaken",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failure",
+            "columnName": "failure",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "retryable",
+            "columnName": "retryable",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "columnName": "nextAttemptAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "httpCode",
+            "columnName": "httpCode",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "wifiOnly",
+            "columnName": "wifiOnly",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "claim",
+            "columnName": "claim",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "relPath",
+            "columnName": "relPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bytes",
+            "columnName": "bytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "legacyPath",
+            "columnName": "legacyPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "fileKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_offline_files_imageKey",
+            "unique": false,
+            "columnNames": [
+              "imageKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_offline_files_imageKey` ON `${TABLE_NAME}` (`imageKey`)"
+          },
+          {
+            "name": "index_offline_files_state",
+            "unique": false,
+            "columnNames": [
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_offline_files_state` ON `${TABLE_NAME}` (`state`)"
+          }
+        ]
+      },
+      {
+        "tableName": "offline_galleries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`collectionId` INTEGER NOT NULL, `albumKey` TEXT NOT NULL, `nickname` TEXT NOT NULL DEFAULT '', `title` TEXT, `state` TEXT NOT NULL, `failure` TEXT, `retryable` INTEGER NOT NULL DEFAULT 0, `listedAt` INTEGER, `listedIlu` TEXT, `photoCount` INTEGER, `wifiOnly` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`collectionId`, `albumKey`), FOREIGN KEY(`collectionId`) REFERENCES `offline_collections`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "collectionId",
+            "columnName": "collectionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumKey",
+            "columnName": "albumKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failure",
+            "columnName": "failure",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "retryable",
+            "columnName": "retryable",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "listedAt",
+            "columnName": "listedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "listedIlu",
+            "columnName": "listedIlu",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "photoCount",
+            "columnName": "photoCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "wifiOnly",
+            "columnName": "wifiOnly",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "collectionId",
+            "albumKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_offline_galleries_collectionId",
+            "unique": false,
+            "columnNames": [
+              "collectionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_offline_galleries_collectionId` ON `${TABLE_NAME}` (`collectionId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "offline_collections",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "collectionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "offline_gallery_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`collectionId` INTEGER NOT NULL, `albumKey` TEXT NOT NULL, `imageKey` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL, PRIMARY KEY(`collectionId`, `albumKey`, `imageKey`), FOREIGN KEY(`collectionId`, `albumKey`) REFERENCES `offline_galleries`(`collectionId`, `albumKey`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "collectionId",
+            "columnName": "collectionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "albumKey",
+            "columnName": "albumKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageKey",
+            "columnName": "imageKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortIndex",
+            "columnName": "sortIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "collectionId",
+            "albumKey",
+            "imageKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_offline_gallery_items_imageKey",
+            "unique": false,
+            "columnNames": [
+              "imageKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_offline_gallery_items_imageKey` ON `${TABLE_NAME}` (`imageKey`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "offline_galleries",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "collectionId",
+              "albumKey"
+            ],
+            "referencedColumns": [
+              "collectionId",
+              "albumKey"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "notify_sites",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`nickname` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `baselineDone` INTEGER NOT NULL, PRIMARY KEY(`nickname`))",
+        "fields": [
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baselineDone",
+            "columnName": "baselineDone",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "nickname"
+          ]
+        }
+      },
+      {
+        "tableName": "notify_known_albums",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`nickname` TEXT NOT NULL, `nodeId` TEXT NOT NULL, PRIMARY KEY(`nickname`, `nodeId`))",
+        "fields": [
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nodeId",
+            "columnName": "nodeId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "nickname",
+            "nodeId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'be14f024797575b6312b5ac9eea79606')"
+    ]
+  }
+}
