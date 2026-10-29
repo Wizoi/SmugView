@@ -830,3 +830,28 @@ are guesses until Stage 1a is measured.
 - The job needs no signing, so the whole build-and-measure path works on a free runner without an Apple account.
 - **Stage 0 is complete.** Steps 1 to 5 are done: models and strict parity, Room KMP with the real migrations, Ktor client, Compose screen
   on the simulator, and the device size. Loose end: the `resolveIosKlibs` diagnostic in `shared/build.gradle.kts` is no longer needed.
+
+## Stage 1d plan: Retrofit and OkHttp to Ktor (written 2026-10-29, NOT started; needs the owner's sign-off before any edit)
+
+What the code looks like now (measured): 17 main files and 38 test files import `retrofit2` or `okhttp3`. `SmugMugApi` is one interface of 19 GET
+endpoints. Retry lives in `RetryingCallFactory` (211 lines), a `Call.Factory` that schedules the backoff on a timer instead of blocking an
+OkHttp thread. It reports each logical request once (`CallOutcome`) to `HttpTelemetry`. Besides it there are `CachePolicy` (the HTTP cache and its
+`only-if-cached` rules), the in-memory cookie jar (password-folder unlock), `SyntheticCacheMiss`, and `HttpException` used in 5 main files.
+
+Why it is not a find-and-replace: Ktor's OkHttp engine accepts a pre-built `OkHttpClient`, not a `Call.Factory`, so the retry class cannot be
+kept as it is. Choices to approve:
+
+1. **Retry** becomes Ktor's `HttpRequestRetry` (a suspending `delay`, so no thread is held; same rule: 429 and 5xx, not the synthetic 504,
+   `Retry-After` honoured, 5 attempts, 500 ms doubling) plus one small plugin that reports the finished request to the telemetry. Tests: the existing
+   `RetryingCallFactory` cases ported first and shown failing against an empty plugin.
+2. **Cache.** On Android keep OkHttp's own `Cache` and its interceptors inside the engine (`preconfigured`), so the on-disk cache is NOT reset and
+   offline behaviour is unchanged. On iOS the Darwin engine has no such cache, so offline reading there needs `ApiResponseCache` (a Room table) in common
+   code; that is Stage 3 work, and the one-time cache reset the first design feared only happens if Android moves to that cache too (not proposed now).
+3. **Errors.** `HttpException(code)` becomes `ApiException(code)` (a plain exception, not an `IOException`, so `isOffline` stays correct).
+4. **Order, each step green on its own:** (a) `ApiException` and a Ktor implementation of the same `SmugMugApi` interface next to the Retrofit one,
+   with `ApiContractTest` run against both; (b) switch `AppModule` and the test rigs to the Ktor one; (c) delete Retrofit; (d) move the interface,
+   models and client to `:shared`.
+5. **Not changed:** request shapes (the contract test pins every parameter against the live OPTIONS list), the cookie jar, the 30-day dot logic.
+
+Risk: moderate; the failure to watch is a retry or cache difference that only shows on a flaky network. The emulator airplane-mode check and the
+phone batch cover it.
