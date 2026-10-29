@@ -125,7 +125,7 @@ kotlin {
 dependencies {
     // Room is left out until Stage 1e: the shared module is on Room 2.8, whose driver wants a database NAME where the app's 24 migration and
     // legacy-repair tests (and its database builders) pass a path. The app keeps Room 2.7.1 and does not use the shared database yet.
-    implementation(project(":shared")) { exclude(group = "androidx.room"); exclude(group = "androidx.sqlite") }
+    implementation(project(":shared")) { exclude(group = "androidx.sqlite", module = "sqlite-bundled") } // its native SQLite makes Robolectric tests flaky; the app uses the framework one
 
     // AndroidX & Core
     implementation("androidx.core:core-ktx:1.12.0")
@@ -144,7 +144,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Room Database
-    val roomVersion = "2.7.1"
+    val roomVersion = "2.8.5"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.room:room-paging:$roomVersion")

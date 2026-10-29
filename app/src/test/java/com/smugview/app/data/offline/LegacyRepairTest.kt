@@ -50,7 +50,10 @@ import java.nio.file.Files
 @Config(sdk = [33])
 class LegacyRepairTest {
     @get:Rule
-    val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), AppDatabase::class.java)
+    val helper = MigrationTestHelper(
+        InstrumentationRegistry.getInstrumentation(), AppDatabase::class.java, emptyList(),
+        com.smugview.app.data.db.PathNamedOpenHelperFactory(ApplicationProvider.getApplicationContext())
+    )
 
     private val app: Application = ApplicationProvider.getApplicationContext()
     private val fake = FakeSmugMugServer()
