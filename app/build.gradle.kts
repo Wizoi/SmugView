@@ -190,6 +190,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.0.20")
     // Real org.json for unit tests (Android's bundled org.json is stubbed in JVM tests)
     testImplementation("org.json:json:20231013")
     // Robolectric so Room's real SQLite (and the recursive-CTE queries) run in JVM unit tests

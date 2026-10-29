@@ -726,3 +726,25 @@ largest.
     internal after three supervised releases; always a click for review and release.*
 12. **Model and agent assignment:** per the owner's rule, Opus plans each stage and Sonnet implements. Stage 1d and 1e
     are the risky ones. *Recommend an Opus review of their diffs before commit.*
+
+---
+
+## Stage 0 results (running log, branch `spike/ios`)
+
+### 2026-10-29: steps 1 and 2, the parity check (VERIFIED, measured)
+
+- **Why the original plan changed.** `app/src/test/resources/snapshots/` (174 files) is git-ignored, 100 of them are tiny unlock replies,
+  50 more are the same album-keywords answer, and nothing in it covers `user!albums`, `!parents`, `!sizedetails` or video search. So it
+  cannot be the parity gate, and a macOS runner could not read it. A new, tracked set was recorded instead.
+- **`ParityRecorder`** (opt-in: `PARITY_RECORD=1`, live, anonymous, read-only) calls every GET of `SmugMugApi` with the app's own request
+  shapes and saves the answers to `app/src/test/resources/parity/<method>__<label>.json` (23 files, 297 KB; the API key is replaced by
+  `TESTKEY`, and a search of the saved files found no key). Nothing from a password folder is in it.
+- **`ModelParityTest`** parses each file with Gson into the model the method returns, then walks the object and counts non-null Kotlin
+  properties that came back null: the ones kotlinx.serialization would throw on (no default) or fill with a default.
+- **Result: 22 of 23 answers are clean (0 THROW, 0 DEFAULT).** The one exception is `searchUsers`: a user such as `mdkahn2` (an account
+  with no gallery) has no `Name` and no `Uris.Node`, so `UserData.name` and `UserUris.node` would throw. The app reads only `nickName` and
+  `webUri` from search users (`searchPublicSites`), so the Stage 1c change is small: make those two nullable (or give search its own
+  model).
+- **Limits.** Only anonymous, public answers (no password-folder data, no error bodies, no unlock replies). A field that is absent in
+  all 23 answers is not reported. Gson's leniency about types (a number in quotes, a string where an object is expected) is not covered;
+  the real kotlinx models in step 3 will show those.
