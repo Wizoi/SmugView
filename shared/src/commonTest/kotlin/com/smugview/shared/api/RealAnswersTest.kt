@@ -1,7 +1,6 @@
 package com.smugview.shared.api
 
 import kotlinx.serialization.json.Json
-import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -14,7 +13,7 @@ import kotlin.test.assertTrue
 class RealAnswersTest {
     // Unknown fields are ignored (SmugMug sends many); nothing is coerced.
     private val json = Json { ignoreUnknownKeys = true }
-    private fun fixture(name: String) = File("../app/src/test/resources/parity/$name").readText()
+    private fun fixture(name: String) = readFixture(name)
 
     @Test fun siteProfileGivesTheNicknameAndTheRootNode() {
         val user = json.decodeFromString<UserResponse>(fixture("getUserProfile__site.json")).response.user
