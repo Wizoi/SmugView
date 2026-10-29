@@ -748,3 +748,26 @@ largest.
 - **Limits.** Only anonymous, public answers (no password-folder data, no error bodies, no unlock replies). A field that is absent in
   all 23 answers is not reported. Gson's leniency about types (a number in quotes, a string where an object is expected) is not covered;
   the real kotlinx models in step 3 will show those.
+### 2026-10-29: step 3, the `shared` module on the JVM (VERIFIED, measured on Windows; the iOS targets compile only on macOS)
+
+- **Toolchain: no upgrade was needed for the spike.** Kotlin stays 2.0.20 (KSP 2.0.20-1.0.25, kotlinx.serialization 1.7.3, Ktor 3.0.3, coroutines
+  1.9.0, Room 2.7.1 with `sqlite-bundled` 2.5.1). `:shared` is a Kotlin Multiplatform module that `:app` does not depend on, so nothing on
+  Android changed. The design's Room 2.8 and "Kotlin 2.0.20 to current 2.x" are therefore not prerequisites of Stage 0.
+- **Models.** The ported kotlinx.serialization models read the real recorded answers (profile, folder listing, user search) with the strict
+  reader. Only `UserData.name` and `UserUris.node` became optional (the parity finding).
+- **HTTP.** A Ktor client with the Retrofit parameter names, order, defaults and headers (including the `!children` path), `ApiException(code)`
+  for non-2xx. Tested through Ktor's MockEngine. Not yet ported: retry (429/5xx, not the synthetic 504), the unlock cookie, the response cache.
+- **Database.** `Entities.kt` and `NotifyEntities.kt` copied unchanged except for the clock call. **Room KMP exports the same schema as the
+  app: identity hash `be14f024797575b6312b5ac9eea79606`, 13 tables, identical `CREATE` statements.** The REPLACE insert (findings #8) and the
+  recursive-CTE dot query give the expected NodeIDs on the bundled SQLite (root, Family, School and the gallery; nothing for a gallery older
+  than 30 days, another site's gallery, or a viewed one).
+- **Migrations.** The six migrations are generated from the app source by a mechanical transform (the SQL is untouched; the app's are pure SQL,
+  no cursors). A version-13 database rebuilt from the app's real `13.json`, with realistic user rows, opens through Room KMP, ends at
+  version 18 and keeps every user row; the 16 to 17 backfill produced the expected file and kept-gallery rows. Checked by breaking a
+  migration: the test fails. 12 to 13 is compiled but not exercised (schema 12 was never exported).
+- **Tests:** 12 in `:shared` (3 + 4 + 3 + 2), all green on the JVM. The iOS actuals (`Fixtures.ios.kt`, `TestDatabase.ios.kt`, the Darwin engine,
+  `Platform.ios.kt`) are written without a Mac and unverified: the first macOS run decides.
+- **CI.** `.github/workflows/ios-spike.yml` runs the JVM tests on Ubuntu and the iOS simulator tests on `macos-15` (push to `spike/ios` or
+  by hand). The repo had no Unix `gradlew`; one was added (executable, LF).
+- **Still open in Stage 0:** the first macOS run (does the iOS side compile and pass?), the Compose Multiplatform screen (step 4), and the
+  measurements (step 5: framework size, release-link time).
