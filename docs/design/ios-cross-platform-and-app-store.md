@@ -606,7 +606,7 @@ agents get the 45-minute box per step.
    - (d) The recursive-CTE dot query returns the same rows as on Android.
 4. A minimal Compose Multiplatform screen listing one site's folders, run in the simulator (screenshot artifact).
 5. Measurements: framework size, release-link time with cold and warm caches, IPA size.
-6. Email SmugMug (4.1). Owner sends; agent drafts.
+6. ~~Email SmugMug (4.1). Owner sends; agent drafts.~~ Dropped by the owner, 2026-10-29.
 
 **Verification:** a CI run link with all four simulator tests green, a measurements table appended to this doc, and
 the parity count.
@@ -699,7 +699,7 @@ largest.
 
 ## 7. Decisions only the owner can make
 
-1. **Go/no-go on SmugMug's answer** (4.1): a separate iOS API key, the name "SmugView" on iOS, and written permission
+1. **OWNER DECISION 2026-10-29: no email to SmugMug.** The owner does not think it is needed, so Stage 0 step 6 is dropped and the Stage 3 gate on a written yes no longer applies. Risk stays recorded: the API terms (4.1) say one key per application and no SmugMug marks in an app name, so a public iOS release could still be challenged later (iOS only; Android unaffected). Original item: **Go/no-go on SmugMug's answer** (4.1): a separate iOS API key, the name "SmugView" on iOS, and written permission
    for Apple. *Recommend: ask in Stage 0 and do not start Stage 3 without a yes.*
 2. **Budget:**
    - $99/year Apple Developer Program.
