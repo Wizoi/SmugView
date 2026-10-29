@@ -19,8 +19,13 @@ configurations.matching { it.name in setOf("kspJvm", "kspIosArm64", "kspIosSimul
 // compiled on a macOS runner; on Windows only the JVM target builds and runs its tests.
 kotlin {
     jvm()
-    iosArm64()
-    iosSimulatorArm64()
+    // The static framework Xcode will link (Stage 3); built here so CI can measure its size and link time (Stage 0, step 5).
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {

@@ -64,6 +64,19 @@ jobs:
       - name: Put the first errors in the annotations
         if: always()
         run: bash .github/scripts/annotate-log.sh ios-build.log
+      - name: Report the iOS test results
+        if: always()
+        run: python3 .github/scripts/report-tests.py shared/build/test-results iOS-simulator-tests
+      - name: Link the release framework and measure it (Stage 0, step 5)
+        if: steps.tests.outcome == 'success'
+        run: |
+          set -o pipefail
+          start=$(date +%s)
+          ./gradlew :shared:linkReleaseFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee ios-link.log
+          end=$(date +%s)
+          kb=$(du -sk shared/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework | cut -f1)
+          bin=$(find shared/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework -type f -name Shared -exec du -k {} + | cut -f1 | head -1)
+          echo "::notice title=iOS release link (simulator arm64)::link took $((end - start)) s (warm Gradle, cold K/N link), Shared.framework is ${kb} KB, the binary ${bin} KB"
       - name: Diagnose the Gradle cache
         if: always()
         run: |
