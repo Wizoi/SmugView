@@ -244,6 +244,9 @@ class FakeSmugMugServer {
     fun imageKeysOf(albumKey: String): List<String> =
         (1..(imageCounts[albumKey] ?: 12)).map { "${albumKey}i${it.toString().padStart(3, '0')}" }
 
+    /** `image!search` results (keys `s00001`...) that are videos, with the live shape. Empty: every result is a photo. */
+    var searchVideoKeys: Set<String> = emptySet()
+
     /** Whether galleries have a cover image (`Uris.NodeCoverImage`). Off: the node answers without one, as a gallery with none does. */
     var nodeCovers: Boolean = true
 
@@ -748,15 +751,29 @@ class FakeSmugMugServer {
         }
         val total = imageSearchTotal.coerceAtMost(SEARCH_WINDOW)
         val keys = (start..minOf(start + count - 1, total)).map { "s" + it.toString().padStart(5, '0') }
+        val expansions = mutableListOf<String>()
         val images = keys.joinToString(",") { ik ->
-            """{"Uri":"/api/v2/image/$ik-0","ImageKey":"$ik","Title":"","Caption":"","FileName":"$ik.jpg","Format":"JPG",""" +
+            // Live shape (2026-10-29, "concert" on idzifamily): a video answers Format MP4, its `ArchivedUri` is the JPEG still, and its
+            // `Uris.LargestVideo` (and the expansion that carries the MP4 address) appear ONLY when the request asks for them.
+            val video = ik in searchVideoKeys
+            val uris = linkedMapOf("ImageSizeDetails" to "/api/v2/image/$ik-0!sizedetails")
+            if (video) {
+                val lv = "/api/v2/image/$ik-0!largestvideo"
+                uris["LargestVideo"] = lv
+                if (expands(req, "LargestVideo") && req.url.queryParameter("_filteruri")?.split(',')?.contains("LargestVideo") == true) {
+                    expansions += """"$lv":{"Uri":"$lv","Locator":"LargestVideo","LocatorType":"Object","LargestVideo":{"Url":"https://photos.smugmug.com/Kentridge/Public/i-$ik/0/abc123/$ik-video.mp4"}}"""
+                }
+            }
+            """{"Uri":"/api/v2/image/$ik-0","ImageKey":"$ik","Title":"","Caption":"","FileName":"$ik.${if (video) "mp4" else "jpg"}","Format":"${if (video) "MP4" else "JPG"}",""" +
                 """"ThumbnailUrl":"https://photos.smugmug.com/Kentridge/Public/i-$ik/0/Th/$ik-Th.jpg","Date":"${daysAgo(10)}",""" +
-                """"KeywordArray":["kentridge"],"Keywords":"kentridge","Uris":{${urisJson(req, mapOf("ImageSizeDetails" to "/api/v2/image/$ik-0!sizedetails"))}}}"""
+                (if (video) """"ArchivedUri":"https://photos.smugmug.com/Kentridge/Public/i-$ik/0/abc123/D/$ik-D.jpg",""" else "") +
+                """"KeywordArray":["kentridge"],"Keywords":"kentridge","Uris":{${urisJson(req, uris)}}}"""
         }
         val next = if (start - 1 + keys.size < total) ""","NextPage":"${nextPage(req, "image!search", start + keys.size)}"""" else ""
+        val exp = if (expansions.isEmpty()) "" else ""","Expansions":{${expansions.joinToString(",")}}"""
         return json(
             req, 200,
-            """{"Response":{"Image":[$images],"Pages":{"Total":$total,"Start":$start,"Count":${keys.size},"RequestedCount":$count$next}},"Code":200}"""
+            """{"Response":{"Image":[$images],"Pages":{"Total":$total,"Start":$start,"Count":${keys.size},"RequestedCount":$count$next}},"Code":200$exp}"""
         )
     }
 

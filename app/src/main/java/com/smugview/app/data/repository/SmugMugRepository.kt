@@ -479,13 +479,17 @@ class SmugMugRepository @Inject constructor(
         apiKey: String,
         count: Int = SEARCH_PAGE,
         start: Int = 1
-    ): ImageSearchResponse = api.getImagesByKeyword(
-        apiKey = apiKey,
-        scope = scope,
-        text = keywords.replace(",", " "),
-        count = count,
-        start = start
-    )
+    ): ImageSearchResponse {
+        val response = api.getImagesByKeyword(
+            apiKey = apiKey,
+            scope = scope,
+            text = keywords.replace(",", " "),
+            count = count,
+            start = start
+        )
+        applyVideoUrls(response.response.images ?: emptyList(), response.expansions)
+        return response
+    }
 
     suspend fun updateImageMetadata(imageKey: String, apiKey: String, keywords: String): Boolean {
         val body = com.smugview.app.data.api.UpdateImageMetadataRequest(keywords)

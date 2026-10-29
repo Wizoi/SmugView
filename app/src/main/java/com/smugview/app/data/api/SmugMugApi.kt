@@ -110,8 +110,9 @@ interface SmugMugApi {
         @Query("start") start: Int = 1,
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,FileName,Format,Keywords,KeywordArray,Uris",
         // WebUri, DateTime and ImageAlbum are never present on search results (P4): not requested.
-        @Query("_filteruri") filterUri: String = "ImageSizeDetails",
-        @Query("_expand") expand: String? = null,
+        // A video's `ArchivedUri` is a JPEG still: without `LargestVideo` (expanded AND listed in `_filteruri`) a search result cannot play.
+        @Query("_filteruri") filterUri: String = "ImageSizeDetails,LargestVideo",
+        @Query("_expand") expand: String? = "LargestVideo",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 
@@ -244,7 +245,9 @@ interface SmugMugApi {
         @Query("start") start: Int = 1,
         @Query("_filter") filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,FileName,Format,Keywords,KeywordArray,Uris",
         // WebUri, DateTime and ImageAlbum are never present on search results (P4): not requested.
-        @Query("_filteruri") filterUri: String = "ImageSizeDetails",
+        // The video address, as for `searchImages`: the Tags tab lists videos too.
+        @Query("_filteruri") filterUri: String = "ImageSizeDetails,LargestVideo",
+        @Query("_expand") expand: String? = "LargestVideo",
         @Query("_verbosity") verbosity: Int = 1
     ): ImageSearchResponse
 
