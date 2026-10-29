@@ -55,7 +55,7 @@ jobs:
         run: |
           set -o pipefail
           start=$(date +%s)
-          ./gradlew :shared:iosSimulatorArm64Test --no-daemon --stacktrace 2>&1 | tee ios-build.log
+          ./gradlew :shared:iosSimulatorArm64Test --no-daemon --no-configuration-cache --no-build-cache --stacktrace 2>&1 | tee ios-build.log
           status=${PIPESTATUS[0]}
           end=$(date +%s)
           echo "iosSimulatorArm64Test took $((end - start)) s (exit $status)" | tee -a "$GITHUB_STEP_SUMMARY"
