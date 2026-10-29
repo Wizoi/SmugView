@@ -1,0 +1,2 @@
+Fixed:
+- Videos that come up in a search or a tag search now play when you open them. They used to show a still picture and do nothing.
