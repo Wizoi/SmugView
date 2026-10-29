@@ -82,6 +82,8 @@ data class NodeUris(
     @SerializedName("ChildNodes") val childNodes: String? = null,
     @SerializedName("Album") val album: String? = null,
     @SerializedName("HighlightImage") val highlightImage: String? = null,
+    /** The gallery's cover image (`node/{id}!cover`), a different picture from [highlightImage] on most galleries (checked live 2026-10-29: 8 of 12). */
+    @SerializedName("NodeCoverImage") val nodeCoverImage: String? = null,
     @SerializedName("ParentNode") val parentNode: String? = null,
     /** Present on `user!albums` galleries: `/api/v2/folder/user/{nick}/{path}` of the containing folder. */
     @SerializedName("Folder") val folder: String? = null

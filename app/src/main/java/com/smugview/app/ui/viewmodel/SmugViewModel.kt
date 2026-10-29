@@ -1016,6 +1016,13 @@ class SmugViewModel @Inject constructor(
         clearGlobalSiteSearch()
     }
 
+    /** The cover image of a gallery for the grid's header; null when unavailable. Remembered per gallery for the life of the view model. */
+    suspend fun galleryCoverUrl(albumKey: String): String? {
+        galleryCovers[albumKey]?.let { return it }
+        return repository.getGalleryCoverUrl(albumKey, apiKey)?.also { galleryCovers[albumKey] = it }
+    }
+    private val galleryCovers = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     suspend fun getNodeByAlbumKey(albumKey: String): CachedNode? {
         // Indexed lookup (nodeId PK, then a bounded albumUri match) instead of loading every
         // cached node into memory to scan — see the "getAllCachedNodes() full-table scan" rule.

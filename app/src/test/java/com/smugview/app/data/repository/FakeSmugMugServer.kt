@@ -244,6 +244,9 @@ class FakeSmugMugServer {
     fun imageKeysOf(albumKey: String): List<String> =
         (1..(imageCounts[albumKey] ?: 12)).map { "${albumKey}i${it.toString().padStart(3, '0')}" }
 
+    /** Whether galleries have a cover image (`Uris.NodeCoverImage`). Off: the node answers without one, as a gallery with none does. */
+    var nodeCovers: Boolean = true
+
     /** Replaces the answer to a `user!albums` page: return a Response, throw, or null to fall through. */
     var albumsOverride: ((start: Int, req: Request) -> Response?)? = null
 
@@ -700,10 +703,18 @@ class FakeSmugMugServer {
         if (path.startsWith("node/") && !path.contains("!")) {
             val id = path.removePrefix("node/")
             val n = lineages[id]?.first() ?: return json(req, 404, """{"Code":404,"Message":"Not Found"}""")
+            // The gallery cover (live shape, 2026-10-29): `Uris.NodeCoverImage` is `/api/v2/node/{id}!cover?_shorturis=`, expanded under that key,
+            // and its picture is NOT the highlight image of the same gallery.
+            val cover = "/api/v2/node/${n.id}!cover?_shorturis="
+            val withCover = nodeCovers && n.type == "Album" && req.url.queryParameter("_filteruri")?.split(',')?.contains("NodeCoverImage") != false
+            val coverUri = if (withCover) ""","NodeCoverImage":"$cover"""" else ""
+            val coverExpansion = if (withCover && expands(req, "NodeCoverImage")) {
+                ""","Expansions":{"$cover":{"Uri":"$cover","Locator":"Image","LocatorType":"Object","Image":{"ThumbnailUrl":"https://photos.smugmug.com/photos/cover-${n.id}/0/Th/cover-${n.id}-Th.jpg"}}}"""
+            } else ""
             return json(
                 req, 200,
                 """{"Response":{"Node":{"Uri":"/api/v2/node/${n.id}","NodeID":"${n.id}","Type":"${n.type}","Name":"${n.name}",""" +
-                    """"SecurityType":"${n.sec}","Uris":{"ParentNode":"/api/v2/node/${n.id}!parent"}}},"Code":200}"""
+                    """"SecurityType":"${n.sec}","Uris":{"ParentNode":"/api/v2/node/${n.id}!parent"$coverUri}}},"Code":200$coverExpansion}"""
             )
         }
         if (req.method == "GET" && path == "image!search") return imageSearch(req)

@@ -158,8 +158,17 @@ fun PhotoGridScreen(
     Scaffold(
         containerColor = DeepDarkBackground
     ) { paddingValues ->
-        var coverUrl by remember { mutableStateOf<String?>(null) }
-        LaunchedEffect(albumKey, lazyPhotos.itemCount) {
+        // The header shows the gallery's COVER image, then (when it has none or cannot be had) its feature image, then the first photo.
+        var galleryCover by remember(albumKey) { mutableStateOf<String?>(null) }
+        var coverLookedUp by remember(albumKey) { mutableStateOf(false) }
+        LaunchedEffect(albumKey) {
+            galleryCover = viewModel.galleryCoverUrl(albumKey)
+            coverLookedUp = true
+        }
+        var coverUrl by remember(albumKey) { mutableStateOf<String?>(null) }
+        LaunchedEffect(albumKey, lazyPhotos.itemCount, coverLookedUp, galleryCover) {
+            galleryCover?.let { coverUrl = it; return@LaunchedEffect }
+            if (!coverLookedUp) return@LaunchedEffect
             val node = viewModel.getNodeByAlbumKey(albumKey)
             if (node?.highlightImageUrl != null) {
                 coverUrl = node.highlightImageUrl

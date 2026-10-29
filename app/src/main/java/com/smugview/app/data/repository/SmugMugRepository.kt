@@ -1656,6 +1656,25 @@ class SmugMugRepository @Inject constructor(
         }
     }
 
+    /** The gallery's cover image address, or null when it cannot be had (offline, locked, no cover): the header then falls back. */
+    suspend fun getGalleryCoverUrl(albumKey: String, apiKey: String): String? {
+        return try {
+            // A gallery opened from search, a collection or a notification has no cached node row: ask the album for its NodeID.
+            val nodeId = dao.getNodeByIdOrKey(albumKey)?.nodeId
+                ?: api.getAlbum(albumKey, apiKey, ignoreErrors = "true").response.album.nodeId
+                ?: return null
+            val response = api.getNode(nodeId, apiKey, expand = "NodeCoverImage", filterUri = "NodeCoverImage", ignoreErrors = "true")
+            val coverUri = response.response.node.uris.nodeCoverImage ?: return null
+            val thumb = response.expansions?.get(coverUri)?.image?.thumbnailUrl ?: return null
+            // The expansion is the small thumbnail: ask for the L size, which fills a header (the viewer preloads L the same way).
+            thumb.replace("/Th/", "/L/").replace("/th/", "/l/").replace("-Th.", "-L.").replace("-th.", "-l.")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun getNode(nodeId: String, apiKey: String, ignoreErrors: String? = null): com.smugview.app.data.api.NodeData {
         return api.getNode(nodeId, apiKey, ignoreErrors = ignoreErrors).response.node
     }

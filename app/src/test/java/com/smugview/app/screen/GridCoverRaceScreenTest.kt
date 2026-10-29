@@ -54,6 +54,8 @@ class GridCoverRaceScreenTest {
 
     @Test fun `the cover read survives a type filter emptying the list while the node lookup is in flight`() {
         screens.rig.passwords.savePassword("2sDN5x", "family-pw")
+        // This test is about the FALLBACK (no cover, no highlight: the first photo's thumbnail), so the gallery has no cover.
+        screens.server.nodeCovers = false
         screens.viewModel.selectSite(FakeSmugMugServer.SITE_A)
         screens.awaitSiteQuiet()
         var probe: LazyPagingItems<AlbumImageData>? = null
