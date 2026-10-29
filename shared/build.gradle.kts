@@ -12,7 +12,7 @@ room {
 // Room's compiler runs through KSP once per target. A target that cannot be built on this machine (iOS on Windows) may have no
 // configuration, so this attaches the compiler to whichever of them exist.
 configurations.matching { it.name in setOf("kspJvm", "kspIosArm64", "kspIosSimulatorArm64") }.all {
-    project.dependencies.add(name, "androidx.room:room-compiler:2.7.1")
+    project.dependencies.add(name, "androidx.room:room-compiler:2.8.4")
 }
 
 // iOS spike (Stage 0, step 3): a Kotlin Multiplatform module that `:app` does not depend on yet. The iOS targets are declared here and
@@ -24,10 +24,10 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
-            implementation("androidx.room:room-runtime:2.7.1")
-            implementation("androidx.sqlite:sqlite-bundled:2.5.1")
+            implementation("androidx.room:room-runtime:2.8.4")
+            implementation("androidx.sqlite:sqlite-bundled:2.6.2")
             implementation("io.ktor:ktor-client-core:3.0.3")
             implementation("io.ktor:ktor-client-content-negotiation:3.0.3")
             implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.3")

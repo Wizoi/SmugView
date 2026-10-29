@@ -136,7 +136,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Room Database
-    val roomVersion = "2.7.1"
+    val roomVersion = "2.8.4"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.room:room-paging:$roomVersion")
@@ -157,7 +157,7 @@ dependencies {
     kapt("androidx.hilt:hilt-compiler:1.2.0")
 
     // Hilt Dependency Injection
-    val hiltVersion = "2.55"
+    val hiltVersion = "2.57.2"
     implementation("com.google.dagger:hilt-android:$hiltVersion")
     kapt("com.google.dagger:hilt-compiler:$hiltVersion")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
@@ -190,7 +190,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.1.21")
+    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.2.21")
     // Real org.json for unit tests (Android's bundled org.json is stubbed in JVM tests)
     testImplementation("org.json:json:20231013")
     // Robolectric so Room's real SQLite (and the recursive-CTE queries) run in JVM unit tests
