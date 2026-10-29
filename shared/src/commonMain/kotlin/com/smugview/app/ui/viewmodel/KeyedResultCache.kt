@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * at once, so the next open asks again instead of showing the old error for the rest of the session, and the cache
  * keeps at most [limit] keys, the least recently read going first.
  */
-internal class KeyedResultCache<T>(private val limit: Int = 200) {
+class KeyedResultCache<T>(private val limit: Int = 200) {
     private val map = object : LinkedHashMap<String, MutableStateFlow<Result<T>?>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MutableStateFlow<Result<T>?>>?) = size > limit
     }
