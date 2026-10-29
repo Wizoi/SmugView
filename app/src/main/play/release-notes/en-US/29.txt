@@ -1,0 +1,4 @@
+Fixed:
+- A gallery's page now shows the gallery's own cover image in its header, and respects galleries where the cover is turned off.
+- The screen-casting list now marks a Roku that says it can't be cast to with a red circle; tap it to see why, instead of failing after you pick it.
+- Roku and Fire TV devices found on your network now always appear in the list.
