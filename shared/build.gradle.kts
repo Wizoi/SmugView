@@ -60,8 +60,7 @@ val resolveIosKlibs by tasks.registering {
             (configurations.findByName(name)?.files ?: emptySet()).filter { "room" in it.name || "sqlite" in it.name }
                 .map { "$name: ${it.path} exists=${it.exists()}" }
         }
-        layout.buildDirectory.file("resolved-klibs.txt").get().asFile.apply { parentFile.mkdirs() }.writeText(lines.joinToString("
-"))
+        layout.buildDirectory.file("resolved-klibs.txt").get().asFile.apply { parentFile.mkdirs() }.writeText(lines.joinToString("\n"))
     }
 }
 tasks.matching { it.name.startsWith("ksp") && it.name.contains("Ios") }.configureEach { dependsOn(resolveIosKlibs) }
