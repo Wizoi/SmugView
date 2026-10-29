@@ -46,3 +46,15 @@ kotlin {
         }
     }
 }
+
+// On a clean machine the iOS KSP tasks started before Gradle had downloaded the iOS libraries ("KLIB resolver: Could not find
+// room-common-iosSimulatorArm64Main-2.7.1.klib", seen on the first three macOS CI runs). Resolving the klib configurations first downloads them.
+val resolveIosKlibs by tasks.registering {
+    doLast {
+        listOf(
+            "iosSimulatorArm64CompileKlibraries", "iosSimulatorArm64TestCompileKlibraries",
+            "iosArm64CompileKlibraries", "iosArm64TestCompileKlibraries"
+        ).forEach { name -> configurations.findByName(name)?.files }
+    }
+}
+tasks.matching { it.name.startsWith("ksp") && it.name.contains("Ios") }.configureEach { dependsOn(resolveIosKlibs) }
