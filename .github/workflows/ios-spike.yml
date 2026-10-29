@@ -46,15 +46,27 @@ jobs:
           key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts') }}
           restore-keys: konan-${{ runner.os }}-
       - name: Shared module tests on the iOS simulator
+        id: tests
+        continue-on-error: true
         env:
           # `simctl spawn` passes SIMCTL_CHILD_* to the test process without the prefix.
           SIMCTL_CHILD_PARITY_DIR: ${{ github.workspace }}/app/src/test/resources/parity
           SIMCTL_CHILD_SCHEMA_DIR: ${{ github.workspace }}/shared/schemas/com.smugview.shared.db.AppDatabase
         run: |
+          set -o pipefail
           start=$(date +%s)
-          ./gradlew :shared:iosSimulatorArm64Test --no-daemon --stacktrace
+          ./gradlew :shared:iosSimulatorArm64Test --no-daemon --stacktrace 2>&1 | tee ios-build.log
+          status=${PIPESTATUS[0]}
           end=$(date +%s)
-          echo "iosSimulatorArm64Test took $((end - start)) s" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "iosSimulatorArm64Test took $((end - start)) s (exit $status)" | tee -a "$GITHUB_STEP_SUMMARY"
+          exit $status
+      # Anyone can read annotations without logging in; build logs need a login. So the useful parts of the log go there.
+      - name: Put the first errors in the annotations
+        if: always()
+        run: bash .github/scripts/annotate-log.sh ios-build.log
+      - name: Fail the job when the tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
