@@ -375,4 +375,55 @@ class CastManagerTest {
     fun `the companion URL names the port that was bound`() {
         assertEquals("http://192.168.1.20:8083", webCompanionUrlFor("192.168.1.20", 8083))
     }
+
+
+    // ---- Casting: a device that says it cannot be cast to is marked in the list, not discovered after the tap -------------------
+
+    @Test
+    fun `a Roku that reports it cannot be cast to is listed as unsupported with the reason`() = runTest(dispatcher) {
+        io.rokuSupported = false
+        io.devices = listOf(CastDevice("192.168.1.30", "Living Room Roku", "192.168.1.30", CastType.ROKU))
+        castManager.startDiscovery()
+        advanceTimeBy(4_000); runCurrent()
+        val roku = castManager.discoveredDevices.value.single { it.id == "192.168.1.30" }
+        assertEquals(CastSupport.Unsupported(com.smugview.app.ui.text.UserMessages.CAST_ROKU_UNSUPPORTED), roku.support)
+        castManager.stopDiscovery()
+    }
+
+    @Test
+    fun `a Roku that accepts casting is listed as supported`() = runTest(dispatcher) {
+        io.rokuSupported = true
+        io.devices = listOf(CastDevice("192.168.1.30", "Living Room Roku", "192.168.1.30", CastType.ROKU))
+        castManager.startDiscovery()
+        advanceTimeBy(4_000); runCurrent()
+        assertEquals(CastSupport.Supported, castManager.discoveredDevices.value.single { it.id == "192.168.1.30" }.support)
+        castManager.stopDiscovery()
+    }
+
+    @Test
+    fun `devices nothing was asked of stay unknown and selectable`() = runTest(dispatcher) {
+        io.devices = listOf(CastDevice("192.168.1.40", "Fire TV", "192.168.1.40", CastType.AMAZON))
+        castManager.startDiscovery()
+        advanceTimeBy(4_000); runCurrent()
+        assertEquals(CastSupport.Unknown, castManager.discoveredDevices.value.single { it.id == "192.168.1.40" }.support)
+        castManager.stopDiscovery()
+    }
+
+    @Test
+    fun `a Roku is asked once per discovery, not on every scan`() = runTest(dispatcher) {
+        io.devices = listOf(CastDevice("192.168.1.30", "Living Room Roku", "192.168.1.30", CastType.ROKU))
+        castManager.startDiscovery()
+        advanceTimeBy(30_000); runCurrent() // several scans (one every 8 s)
+        assertTrue("more than one scan ran", io.scans.get() > 1)
+        assertEquals(1, io.rokuProbes.get())
+        castManager.stopDiscovery()
+    }
+
+    @Test
+    fun `unsupported devices sink to the bottom of the list and the rest keep their order`() {
+        val a = CastDevice("a", "A", "1", CastType.ROKU, support = CastSupport.Unsupported("no"))
+        val b = CastDevice("b", "B", "2", CastType.GOOGLE)
+        val c = CastDevice("c", "C", "3", CastType.AMAZON, support = CastSupport.Supported)
+        assertEquals(listOf("b", "c", "a"), listOf(a, b, c).unsupportedLast().map { it.id })
+    }
 }

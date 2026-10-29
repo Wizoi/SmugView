@@ -297,6 +297,7 @@ class DefaultCastManager @Inject constructor(
         }
 
         scope.launch(Dispatchers.Main) {
+            // A Cast route list that cannot be read must not hide the devices found on the network.
             try {
                 val routes = mediaRouter.routes.filter { route ->
                     route.matchesSelector(mediaRouteSelector) && !route.isDefault
@@ -316,12 +317,10 @@ class DefaultCastManager @Inject constructor(
                 }
                 googleCastDevices.clear()
                 googleCastDevices.addAll(newGoogle)
-
-                val combined = (ssdpDevices + googleCastDevices).distinctBy { it.id }
-                _discoveredDevices.value = combined
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+            _discoveredDevices.value = (ssdpDevices + googleCastDevices).distinctBy { it.id }
         }
     }
 
@@ -350,6 +349,7 @@ class DefaultCastManager @Inject constructor(
                 stopDiscovery()
             }
             if (discoveryJob != null) return
+            rokuSupport.clear() // a new sheet asks again: a Roku whose setting was just turned on is not stuck as unsupported
         }
 
         scope.launch(Dispatchers.Main) {
@@ -369,7 +369,7 @@ class DefaultCastManager @Inject constructor(
             _discoveredDevices.value = emptyList()
 
             while (isActive) {
-                val localDevices = io.ssdpScan()
+                val localDevices = withSupport(io.ssdpScan())
 
                 SmugLog.d("CastManager") { "SSDP: Scan successfully resolved ${localDevices.size} local devices." }
                 updateDiscoveredDevices(localDevices)
@@ -377,6 +377,30 @@ class DefaultCastManager @Inject constructor(
                 delay(8000)
             }
         }
+    }
+
+    /** What each Roku said about casting during this discovery (asked once, not on every 8 s scan). */
+    private val rokuSupport = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * Marks every Roku found with what it says about casting, asked in parallel. The probe answers true when it cannot be told
+     * (see [CastIo.rokuSupportsCasting]), so only a Roku that reports it does not accept casting is [CastSupport.Unsupported].
+     */
+    private suspend fun withSupport(found: List<CastDevice>): List<CastDevice> = coroutineScope {
+        found.map { device ->
+            async {
+                if (device.type != CastType.ROKU) {
+                    device
+                } else {
+                    val accepts = rokuSupport[device.ipAddress]
+                        ?: io.rokuSupportsCasting(device.ipAddress).also { rokuSupport[device.ipAddress] = it }
+                    device.copy(
+                        support = if (accepts) CastSupport.Supported
+                        else CastSupport.Unsupported(com.smugview.app.ui.text.UserMessages.CAST_ROKU_UNSUPPORTED)
+                    )
+                }
+            }
+        }.awaitAll()
     }
 
     override fun stopDiscovery() {

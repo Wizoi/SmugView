@@ -47,7 +47,11 @@ internal class FakeCastIo : CastIo {
         }
     }
 
+    /** How many Roku support probes were made. */
+    val rokuProbes = AtomicInteger()
+
     override suspend fun rokuSupportsCasting(ip: String): Boolean {
+        rokuProbes.incrementAndGet()
         if (probeMillis > 0) delay(probeMillis)
         return rokuSupported
     }

@@ -19,7 +19,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.smugview.app.data.cast.CastDevice
+import com.smugview.app.data.cast.CastSupport
 import com.smugview.app.data.cast.CastType
+import com.smugview.app.data.cast.unsupportedLast
 import com.smugview.app.data.cast.ConnectionState
 import kotlinx.coroutines.delay
 
@@ -141,7 +143,7 @@ fun CastDeviceSelectorBottomSheet(
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(devices) { device ->
+                    items(devices.unsupportedLast()) { device ->
                         DeviceItem(
                             device = device,
                             isConnectingGlobal = isConnecting,
@@ -166,6 +168,17 @@ fun DeviceItem(
     val surfaceDark = Color(0xFF121418)
     val neonBlue = Color(0xFF00E5FF)
     
+    val unsupported = device.support as? CastSupport.Unsupported
+    var showReason by remember { mutableStateOf(false) }
+    if (unsupported != null && showReason) {
+        AlertDialog(
+            onDismissRequest = { showReason = false },
+            title = { Text(device.name) },
+            text = { Text(unsupported.reason) },
+            confirmButton = { TextButton(onClick = { showReason = false }) { Text("OK") } }
+        )
+    }
+
     val borderStroke = if (device.state == ConnectionState.CONNECTED) {
         Modifier.border(1.dp, neonBlue, RoundedCornerShape(12.dp))
     } else {
@@ -190,7 +203,8 @@ fun DeviceItem(
             .then(borderStroke)
             .background(surfaceDark, RoundedCornerShape(12.dp))
             .clickable(enabled = !isConnectingGlobal && device.state != ConnectionState.CONNECTED) {
-                onDeviceSelected(device)
+                // A device that says it cannot be cast to is explained, never connected to.
+                if (unsupported != null) showReason = true else onDeviceSelected(device)
             }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -209,7 +223,7 @@ fun DeviceItem(
         ) {
             Text(
                 text = device.name,
-                color = Color.White,
+                color = if (unsupported != null) Color.White.copy(alpha = 0.5f) else Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp
             )
@@ -217,6 +231,15 @@ fun DeviceItem(
                 text = "$typeLabel • ${device.ipAddress}",
                 color = Color.Gray,
                 fontSize = 12.sp
+            )
+        }
+
+        if (unsupported != null) {
+            Icon(
+                imageVector = Icons.Default.Cancel,
+                contentDescription = "Cannot be cast to",
+                tint = Color(0xFFFF4D4D),
+                modifier = Modifier.size(20.dp)
             )
         }
 

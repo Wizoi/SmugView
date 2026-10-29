@@ -90,6 +90,9 @@ object UserMessages {
     const val HOME_OFFLINE = "You're offline. Galleries show here when you're back online."
     const val HOME_EMPTY = "This site has no public galleries."
 
+    /** `CAST_ROKU_UNSUPPORTED`: shown when a Roku that says it does not accept casting is tapped in the device list. */
+    const val CAST_ROKU_UNSUPPORTED = "This Roku reports that it does not accept casting. Check its Play on Roku setting."
+
     /** `CAST_DIAL_DEVICE` (design 5): a device that answered DIAL and does not say who made it. */
     const val CAST_DIAL_DEVICE = "TV or streaming device"
 
