@@ -76,7 +76,9 @@ data class NodeData(
     @SerializedName("PasswordHint") val passwordHint: String? = null,
     @SerializedName("WebUri") val webUri: String? = null,
     @SerializedName("Uris") val uris: NodeUris,
-    @SerializedName("DateModified") val dateModified: String? = null
+    @SerializedName("DateModified") val dateModified: String? = null,
+    /** The site owner's switch for the gallery's cover image: false means it must not be shown. Absent on nodes that never had one. */
+    @SerializedName("ShowCoverImage") val showCoverImage: Boolean? = null
 )
 data class NodeUris(
     @SerializedName("ChildNodes") val childNodes: String? = null,

@@ -44,6 +44,22 @@ class GalleryCoverTest {
         assertEquals("NodeCoverImage", request.url.queryParameter("_filteruri"))
     }
 
+    @Test fun `a gallery whose owner switched the cover off gets no cover, so the header uses the feature picture or the first photo`() {
+        rig.server.nodeShowCoverImage = false
+        assertNull(cover("N74KSK"))
+    }
+
+    @Test fun `a gallery with no ShowCoverImage flag at all still shows its cover`() {
+        rig.server.nodeShowCoverImage = null
+        assertEquals("https://photos.smugmug.com/photos/cover-sXQz4G/0/L/cover-sXQz4G-L.jpg", cover("N74KSK"))
+    }
+
+    @Test fun `the flag is asked for`() {
+        cover("N74KSK")
+        val request = rig.server.requestLog.first { it.url.encodedPath.endsWith("node/sXQz4G") }
+        assertTrue(request.url.queryParameter("_filter").orEmpty().split(',').contains("ShowCoverImage"))
+    }
+
     @Test fun `offline gives no cover and no crash, so the header can fall back`() {
         rig.server.failWith = { IOException("offline") }
         assertNull(cover("N74KSK"))

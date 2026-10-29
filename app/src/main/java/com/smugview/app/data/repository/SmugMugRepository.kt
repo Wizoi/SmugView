@@ -1663,7 +1663,12 @@ class SmugMugRepository @Inject constructor(
             val nodeId = dao.getNodeByIdOrKey(albumKey)?.nodeId
                 ?: api.getAlbum(albumKey, apiKey, ignoreErrors = "true").response.album.nodeId
                 ?: return null
-            val response = api.getNode(nodeId, apiKey, expand = "NodeCoverImage", filterUri = "NodeCoverImage", ignoreErrors = "true")
+            val response = api.getNode(
+                nodeId, apiKey, expand = "NodeCoverImage", filter = "Uri,NodeID,Type,Name,Uris,ShowCoverImage",
+                filterUri = "NodeCoverImage", ignoreErrors = "true"
+            )
+            // The owner switched the cover off for this gallery: show no cover (the header falls back to the feature image, then the first photo).
+            if (response.response.node.showCoverImage == false) return null
             val coverUri = response.response.node.uris.nodeCoverImage ?: return null
             val thumb = response.expansions?.get(coverUri)?.image?.thumbnailUrl ?: return null
             // The expansion is the small thumbnail: ask for the L size, which fills a header (the viewer preloads L the same way).

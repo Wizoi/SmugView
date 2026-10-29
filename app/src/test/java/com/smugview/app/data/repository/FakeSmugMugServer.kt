@@ -247,6 +247,9 @@ class FakeSmugMugServer {
     /** Whether galleries have a cover image (`Uris.NodeCoverImage`). Off: the node answers without one, as a gallery with none does. */
     var nodeCovers: Boolean = true
 
+    /** The node's `ShowCoverImage` flag: the site owner switched the cover off for the gallery when false (live: 4 of 12 galleries). */
+    var nodeShowCoverImage: Boolean? = true
+
     /** Replaces the answer to a `user!albums` page: return a Response, throw, or null to fall through. */
     var albumsOverride: ((start: Int, req: Request) -> Response?)? = null
 
@@ -714,6 +717,7 @@ class FakeSmugMugServer {
             return json(
                 req, 200,
                 """{"Response":{"Node":{"Uri":"/api/v2/node/${n.id}","NodeID":"${n.id}","Type":"${n.type}","Name":"${n.name}",""" +
+                    (nodeShowCoverImage?.let { """"ShowCoverImage":$it,""" } ?: "") +
                     """"SecurityType":"${n.sec}","Uris":{"ParentNode":"/api/v2/node/${n.id}!parent"$coverUri}}},"Code":200$coverExpansion}"""
             )
         }
