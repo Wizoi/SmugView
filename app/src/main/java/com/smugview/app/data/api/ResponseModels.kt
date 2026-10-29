@@ -1,149 +1,173 @@
 package com.smugview.app.data.api
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 // Generic container
+@Serializable
 data class UriContainer(
-    @SerializedName("Uri") val uri: String,
-    @SerializedName("Locator") val locator: String? = null
+    @SerialName("Uri") val uri: String,
+    @SerialName("Locator") val locator: String? = null
 )
 
+@Serializable
 data class PagesData(
-    @SerializedName("Start") val start: Int,
-    @SerializedName("Count") val count: Int,
-    @SerializedName("Total") val total: Int,
-    @SerializedName("Next") private val nextField: String? = null,
-    @SerializedName("NextPage") private val nextPageField: String? = null
+    @SerialName("Start") val start: Int,
+    @SerialName("Count") val count: Int,
+    @SerialName("Total") val total: Int,
+    @SerialName("Next") private val nextField: String? = null,
+    @SerialName("NextPage") private val nextPageField: String? = null
 ) {
     val next: String?
         get() = nextField ?: nextPageField
 }
 
 // User API Response
+@Serializable
 data class UserResponse(
-    @SerializedName("Response") val response: UserPayload,
-    @SerializedName("Expansions") val expansions: Map<String, UserExpansionContainer>? = null
+    @SerialName("Response") val response: UserPayload,
+    @SerialName("Expansions") val expansions: Map<String, UserExpansionContainer>? = null
 )
+@Serializable
 data class UserPayload(
-    @SerializedName("User") val user: UserData
+    @SerialName("User") val user: UserData
 )
+@Serializable
 data class UserData(
-    @SerializedName("NickName") val nickName: String,
-    @SerializedName("Name") val name: String,
-    @SerializedName("Uris") val uris: UserUris,
-    @SerializedName("WebUri") val webUri: String? = null,
+    @SerialName("NickName") val nickName: String,
+    @SerialName("Name") val name: String = "",
+    @SerialName("Uris") val uris: UserUris,
+    @SerialName("WebUri") val webUri: String? = null,
     val bioImageKey: String? = null,
     /** The BioImage's path-bearing `ThumbnailUrl` from the `_expand=BioImage` the profile call already makes (null if none). */
     val bioImageThumbnailUrl: String? = null
-)
+) {
+    /** The site's root node URI. A profile always has one; a `user!search` hit may not (recorded answer), so only profile code asks for it. */
+    val rootNodeUri: String get() = uris.node ?: error("user ${nickName} has no root node in this answer")
+}
+@Serializable
 data class UserUris(
-    @SerializedName("Node") val node: String
+    @SerialName("Node") val node: String? = null
 )
+@Serializable
 data class UserExpansionContainer(
-    @SerializedName("BioImage") val bioImage: BioImageData? = null
+    @SerialName("BioImage") val bioImage: BioImageData? = null
 )
 
 // Node List (Children) Response
+@Serializable
 data class NodeListResponse(
-    @SerializedName("Response") val response: NodeListPayload,
-    @SerializedName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
+    @SerialName("Response") val response: NodeListPayload,
+    @SerialName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
 )
 
+@Serializable
 data class ExpansionContainer(
-    @SerializedName("Image") val image: ExpansionImage? = null,
-    @SerializedName("LargestVideo") val largestVideo: ExpansionVideo? = null
+    @SerialName("Image") val image: ExpansionImage? = null,
+    @SerialName("LargestVideo") val largestVideo: ExpansionVideo? = null
 )
 
+@Serializable
 data class ExpansionVideo(
-    @SerializedName("Url") val url: String? = null
+    @SerialName("Url") val url: String? = null
 )
 
+@Serializable
 data class ExpansionImage(
-    @SerializedName("ThumbnailUrl") val thumbnailUrl: String? = null
+    @SerialName("ThumbnailUrl") val thumbnailUrl: String? = null
 )
+@Serializable
 data class NodeListPayload(
-    @SerializedName("Node") val nodes: List<NodeData>? = emptyList(),
-    @SerializedName("Pages") val pages: PagesData? = null
+    @SerialName("Node") val nodes: List<NodeData>? = emptyList(),
+    @SerialName("Pages") val pages: PagesData? = null
 )
+@Serializable
 data class NodeData(
-    @SerializedName("Uri") val uri: String,
-    @SerializedName("NodeID") val nodeId: String,
-    @SerializedName("Type") val type: String, // "Folder" or "Album"
-    @SerializedName("Name") val name: String? = null,
-    @SerializedName("Description") val description: String? = null,
-    @SerializedName("SecurityType") val securityType: String? = null,
-    @SerializedName("Privacy") val privacy: String? = null,
-    @SerializedName("PasswordHint") val passwordHint: String? = null,
-    @SerializedName("WebUri") val webUri: String? = null,
-    @SerializedName("Uris") val uris: NodeUris,
-    @SerializedName("DateModified") val dateModified: String? = null,
+    @SerialName("Uri") val uri: String,
+    @SerialName("NodeID") val nodeId: String,
+    @SerialName("Type") val type: String, // "Folder" or "Album"
+    @SerialName("Name") val name: String? = null,
+    @SerialName("Description") val description: String? = null,
+    @SerialName("SecurityType") val securityType: String? = null,
+    @SerialName("Privacy") val privacy: String? = null,
+    @SerialName("PasswordHint") val passwordHint: String? = null,
+    @SerialName("WebUri") val webUri: String? = null,
+    @SerialName("Uris") val uris: NodeUris,
+    @SerialName("DateModified") val dateModified: String? = null,
     /** The site owner's switch for the gallery's cover image: false means it must not be shown. Absent on nodes that never had one. */
-    @SerializedName("ShowCoverImage") val showCoverImage: Boolean? = null
+    @SerialName("ShowCoverImage") val showCoverImage: Boolean? = null
 )
+@Serializable
 data class NodeUris(
-    @SerializedName("ChildNodes") val childNodes: String? = null,
-    @SerializedName("Album") val album: String? = null,
-    @SerializedName("HighlightImage") val highlightImage: String? = null,
+    @SerialName("ChildNodes") val childNodes: String? = null,
+    @SerialName("Album") val album: String? = null,
+    @SerialName("HighlightImage") val highlightImage: String? = null,
     /** The gallery's cover image (`node/{id}!cover`), a different picture from [highlightImage] on most galleries (checked live 2026-10-29: 8 of 12). */
-    @SerializedName("NodeCoverImage") val nodeCoverImage: String? = null,
-    @SerializedName("ParentNode") val parentNode: String? = null,
+    @SerialName("NodeCoverImage") val nodeCoverImage: String? = null,
+    @SerialName("ParentNode") val parentNode: String? = null,
     /** Present on `user!albums` galleries: `/api/v2/folder/user/{nick}/{path}` of the containing folder. */
-    @SerializedName("Folder") val folder: String? = null
+    @SerialName("Folder") val folder: String? = null
 )
 
 // Node lineage (`node/{id}!parents`): self first, then each ancestor up to the site root.
+@Serializable
 data class NodeParentsResponse(
-    @SerializedName("Response") val response: NodeParentsPayload
+    @SerialName("Response") val response: NodeParentsPayload
 )
+@Serializable
 data class NodeParentsPayload(
-    @SerializedName("Node") val nodes: List<ParentNodeData>? = null
+    @SerialName("Node") val nodes: List<ParentNodeData>? = null
 )
+@Serializable
 data class ParentNodeData(
-    @SerializedName("Uri") val uri: String? = null,
-    @SerializedName("NodeID") val nodeId: String,
-    @SerializedName("Type") val type: String? = null,
-    @SerializedName("Name") val name: String? = null,
+    @SerialName("Uri") val uri: String? = null,
+    @SerialName("NodeID") val nodeId: String,
+    @SerialName("Type") val type: String? = null,
+    @SerialName("Name") val name: String? = null,
     /** "Password", "None", ... SmugMug never sends "Inherited" (findings #19). */
-    @SerializedName("SecurityType") val securityType: String? = null,
-    @SerializedName("EffectiveSecurityType") val effectiveSecurityType: String? = null,
-    @SerializedName("WebUri") val webUri: String? = null
+    @SerialName("SecurityType") val securityType: String? = null,
+    @SerialName("EffectiveSecurityType") val effectiveSecurityType: String? = null,
+    @SerialName("WebUri") val webUri: String? = null
 )
 
 // Album Images Response
+@Serializable
 data class AlbumImagesResponse(
-    @SerializedName("Response") val response: AlbumImagesPayload,
-    @SerializedName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
+    @SerialName("Response") val response: AlbumImagesPayload,
+    @SerialName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
 )
+@Serializable
 data class AlbumImagesPayload(
-    @SerializedName("AlbumImage") val images: List<AlbumImageData>? = emptyList(),
-    @SerializedName("Pages") val pages: PagesData? = null
+    @SerialName("AlbumImage") val images: List<AlbumImageData>? = emptyList(),
+    @SerialName("Pages") val pages: PagesData? = null
 )
+@Serializable
 data class AlbumImageData(
-    @SerializedName("ImageKey") val imageKey: String,
-    @SerializedName("Title") val title: String? = null,
-    @SerializedName("Caption") val caption: String? = null,
-    @SerializedName("ThumbnailUrl") val thumbnailUrl: String? = null,
-    @SerializedName("ArchivedUri") val archivedUri: String? = null,
-    @SerializedName("Date") val date: String? = null,
-    @SerializedName("DateTime") val dateTime: String? = null,
-    @SerializedName("FileName") val fileName: String? = null,
-    @SerializedName("Keywords") val keywords: String? = null,
-    @SerializedName("KeywordArray") val keywordArray: List<String>? = null,
-    @SerializedName("WebUri") val webUri: String? = null,
-    @SerializedName("OriginalWidth") val originalWidth: Int? = null,
-    @SerializedName("OriginalHeight") val originalHeight: Int? = null,
-    @SerializedName("OriginalSize") val originalSize: Long? = null,
+    @SerialName("ImageKey") val imageKey: String,
+    @SerialName("Title") val title: String? = null,
+    @SerialName("Caption") val caption: String? = null,
+    @SerialName("ThumbnailUrl") val thumbnailUrl: String? = null,
+    @SerialName("ArchivedUri") val archivedUri: String? = null,
+    @SerialName("Date") val date: String? = null,
+    @SerialName("DateTime") val dateTime: String? = null,
+    @SerialName("FileName") val fileName: String? = null,
+    @SerialName("Keywords") val keywords: String? = null,
+    @SerialName("KeywordArray") val keywordArray: List<String>? = null,
+    @SerialName("WebUri") val webUri: String? = null,
+    @SerialName("OriginalWidth") val originalWidth: Int? = null,
+    @SerialName("OriginalHeight") val originalHeight: Int? = null,
+    @SerialName("OriginalSize") val originalSize: Long? = null,
     /** What the original weighs and its MD5 (5-7): the offline download verifies both. */
-    @SerializedName("ArchivedSize") val archivedSize: Long? = null,
-    @SerializedName("ArchivedMD5") val archivedMd5: String? = null,
-    @SerializedName("Format") val format: String? = null,
-    @SerializedName("Uris") val uris: AlbumImageUris? = null,
+    @SerialName("ArchivedSize") val archivedSize: Long? = null,
+    @SerialName("ArchivedMD5") val archivedMd5: String? = null,
+    @SerialName("Format") val format: String? = null,
+    @SerialName("Uris") val uris: AlbumImageUris? = null,
     var videoUrl: String? = null,
     /**
      * The saved copy on this phone (5-9, a `file:` URI), set by the view model for a photo with a DONE offline file. Never
-     * serialized (`@Transient`: Gson skips it). The viewer shows it first, so a saved photo opens with no network.
+     * serialized (`@Transient`: the serializer skips it). The viewer shows it first, so a saved photo opens with no network.
      */
-    @Transient var localUri: String? = null
+    @kotlinx.serialization.Transient var localUri: String? = null
 ) {
     val keywordsString: String?
         get() {
@@ -157,55 +181,63 @@ data class AlbumImageData(
         }
 }
 
+@Serializable
 data class AlbumImageUris(
-    @SerializedName("LargestVideo") val largestVideo: String? = null,
-    @SerializedName("Album") val album: String? = null,
-    @SerializedName("ImageAlbum") val imageAlbum: String? = null,
-    @SerializedName("ImageSizeDetails") val imageSizeDetails: String? = null
+    @SerialName("LargestVideo") val largestVideo: String? = null,
+    @SerialName("Album") val album: String? = null,
+    @SerialName("ImageAlbum") val imageAlbum: String? = null,
+    @SerialName("ImageSizeDetails") val imageSizeDetails: String? = null
 )
 
 // Image Size Details Response
+@Serializable
 data class ImageSizeDetailsResponse(
-    @SerializedName("Response") val response: ImageSizeDetailsResponseWrapper
+    @SerialName("Response") val response: ImageSizeDetailsResponseWrapper
 )
+@Serializable
 data class ImageSizeDetailsResponseWrapper(
-    @SerializedName("ImageSizeDetails") val details: ImageSizeDetailsPayload
+    @SerialName("ImageSizeDetails") val details: ImageSizeDetailsPayload
 )
+@Serializable
 data class ImageSizeDetailsPayload(
-    @SerializedName("ImageSizeMedium") val medium: ImageSizeEntry? = null,
-    @SerializedName("ImageSizeLarge") val large: ImageSizeEntry? = null,
-    @SerializedName("ImageSizeXLarge") val xLarge: ImageSizeEntry? = null,
-    @SerializedName("ImageSizeX2Large") val x2Large: ImageSizeEntry? = null,
-    @SerializedName("ImageSizeX3Large") val x3Large: ImageSizeEntry? = null,
-    @SerializedName("ImageSizeOriginal") val original: ImageSizeEntry? = null
+    @SerialName("ImageSizeMedium") val medium: ImageSizeEntry? = null,
+    @SerialName("ImageSizeLarge") val large: ImageSizeEntry? = null,
+    @SerialName("ImageSizeXLarge") val xLarge: ImageSizeEntry? = null,
+    @SerialName("ImageSizeX2Large") val x2Large: ImageSizeEntry? = null,
+    @SerialName("ImageSizeX3Large") val x3Large: ImageSizeEntry? = null,
+    @SerialName("ImageSizeOriginal") val original: ImageSizeEntry? = null
 ) {
     /** Largest non-original rendition SmugMug actually generated for this image. */
     val bestHalfway: ImageSizeEntry?
         get() = x3Large ?: x2Large ?: xLarge ?: large ?: medium
 }
+@Serializable
 data class ImageSizeEntry(
-    @SerializedName("Url") val url: String,
-    @SerializedName("Width") val width: Int,
-    @SerializedName("Height") val height: Int
+    @SerialName("Url") val url: String,
+    @SerialName("Width") val width: Int,
+    @SerialName("Height") val height: Int
 )
 
 // Image Metadata (EXIF) Response
+@Serializable
 data class ExifResponse(
-    @SerializedName("Response") val response: ExifPayload
+    @SerialName("Response") val response: ExifPayload
 )
+@Serializable
 data class ExifPayload(
-    @SerializedName("ImageMetadata") val exif: ExifData
+    @SerialName("ImageMetadata") val exif: ExifData
 )
+@Serializable
 data class ExifData(
-    @SerializedName("Make") val make: String? = null,
-    @SerializedName("Model") val model: String? = null,
-    @SerializedName("Lens") val lens: String? = null,
-    @SerializedName("Aperture") val aperture: String? = null,
-    @SerializedName("Exposure") val exposure: String? = null,
-    @SerializedName("ISO") val iso: Int? = null,
-    @SerializedName("FocalLength") val focalLength: String? = null,
-    @SerializedName("DateTimeCreated") val dateTimeCreated: String? = null,
-    @SerializedName("DateCreated") val dateCreated: String? = null
+    @SerialName("Make") val make: String? = null,
+    @SerialName("Model") val model: String? = null,
+    @SerialName("Lens") val lens: String? = null,
+    @SerialName("Aperture") val aperture: String? = null,
+    @SerialName("Exposure") val exposure: String? = null,
+    @SerialName("ISO") val iso: Int? = null,
+    @SerialName("FocalLength") val focalLength: String? = null,
+    @SerialName("DateTimeCreated") val dateTimeCreated: String? = null,
+    @SerialName("DateCreated") val dateCreated: String? = null
 ) {
     val camera: String?
         get() {
@@ -226,44 +258,49 @@ data class ExifData(
 }
 
 // Album Details Response
+@Serializable
 data class AlbumResponse(
-    @SerializedName("Response") val response: AlbumPayload
+    @SerialName("Response") val response: AlbumPayload
 )
+@Serializable
 data class AlbumPayload(
-    @SerializedName("Album") val album: AlbumDetails
+    @SerialName("Album") val album: AlbumDetails
 )
+@Serializable
 data class AlbumDetails(
-    @SerializedName("Uri") val uri: String,
-    @SerializedName("AlbumKey") val albumKey: String,
-    @SerializedName("NodeID") val nodeId: String? = null,
-    @SerializedName("Name") val name: String,
-    @SerializedName("GalleryStyle") val galleryStyle: String? = null,
-    @SerializedName("UrlPath") val urlPath: String? = null,
-    @SerializedName("WebUri") val webUri: String? = null,
-    @SerializedName("ImageCount") val imageCount: Int? = null,
-    @SerializedName("SecurityType") val securityType: String? = null,
-    @SerializedName("PasswordHint") val passwordHint: String? = null,
-    @SerializedName("Uris") val uris: NodeUris? = null,
-    @SerializedName("LastUpdated") val dateModified: String? = null,
+    @SerialName("Uri") val uri: String,
+    @SerialName("AlbumKey") val albumKey: String,
+    @SerialName("NodeID") val nodeId: String? = null,
+    @SerialName("Name") val name: String = "", // a locked album answers without a Name (album-locked.json)
+    @SerialName("GalleryStyle") val galleryStyle: String? = null,
+    @SerialName("UrlPath") val urlPath: String? = null,
+    @SerialName("WebUri") val webUri: String? = null,
+    @SerialName("ImageCount") val imageCount: Int? = null,
+    @SerialName("SecurityType") val securityType: String? = null,
+    @SerialName("PasswordHint") val passwordHint: String? = null,
+    @SerialName("Uris") val uris: NodeUris? = null,
+    @SerialName("LastUpdated") val dateModified: String? = null,
     /** When the photos in the gallery last changed: the one "is it new?" date (design Q3). */
-    @SerializedName("ImagesLastUpdated") val imagesLastUpdated: String? = null,
+    @SerialName("ImagesLastUpdated") val imagesLastUpdated: String? = null,
     /**
      * What this caller may see of the gallery: "Public", or "Password" while it is locked for them (the
      * `!images` of a locked gallery is a 200 with no photos, the shape of an empty one). The server sends
      * it whatever `_filter` says (design P7), so it is not in the filter.
      */
-    @SerializedName("ResponseLevel") val responseLevel: String? = null
+    @SerialName("ResponseLevel") val responseLevel: String? = null
 ) {
     val isLocked: Boolean get() = responseLevel == "Password"
 }
 
+@Serializable
 data class UserAlbumsResponse(
-    @SerializedName("Response") val response: UserAlbumsPayload,
-    @SerializedName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
+    @SerialName("Response") val response: UserAlbumsPayload,
+    @SerialName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
 )
+@Serializable
 data class UserAlbumsPayload(
-    @SerializedName("Album") val albums: List<AlbumDetails>? = emptyList(),
-    @SerializedName("Pages") val pages: PagesData? = null
+    @SerialName("Album") val albums: List<AlbumDetails>? = emptyList(),
+    @SerialName("Pages") val pages: PagesData? = null
 )
 
 val AlbumImageData.isVideo: Boolean
@@ -272,102 +309,123 @@ val AlbumImageData.isVideo: Boolean
             (archivedUri?.lowercase()?.contains(".mov") ?: false)
 
 // User BioImage Response
+@Serializable
 data class BioImageResponse(
-    @SerializedName("Response") val response: BioImagePayload
+    @SerialName("Response") val response: BioImagePayload
 )
+@Serializable
 data class BioImagePayload(
-    @SerializedName("BioImage") val bioImage: BioImageData
+    @SerialName("BioImage") val bioImage: BioImageData
 )
+@Serializable
 data class BioImageData(
-    @SerializedName("ImageKey") val imageKey: String,
-    @SerializedName("ThumbnailUrl") val thumbnailUrl: String? = null
+    @SerialName("ImageKey") val imageKey: String,
+    @SerialName("ThumbnailUrl") val thumbnailUrl: String? = null
 )
 
 // Image Search Response
+@Serializable
 data class ImageSearchResponse(
-    @SerializedName("Response") val response: ImageSearchPayload,
-    @SerializedName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
+    @SerialName("Response") val response: ImageSearchPayload,
+    @SerialName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
 )
+@Serializable
 data class ImageSearchPayload(
-    @SerializedName("Image") val images: List<AlbumImageData>? = emptyList(),
-    @SerializedName("Pages") val pages: PagesData? = null
+    @SerialName("Image") val images: List<AlbumImageData>? = emptyList(),
+    @SerialName("Pages") val pages: PagesData? = null
 )
 
 // Single Image Response
+@Serializable
 data class ImageResponse(
-    @SerializedName("Response") val response: ImagePayload,
-    @SerializedName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
+    @SerialName("Response") val response: ImagePayload,
+    @SerialName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
 )
+@Serializable
 data class ImagePayload(
-    @SerializedName("Image") val image: AlbumImageData
+    @SerialName("Image") val image: AlbumImageData
 )
 
 // `image/{key}-0` narrowed to where the original is (phase 5 offline downloads)
+@Serializable
 data class ImageSourceResponse(
-    @SerializedName("Response") val response: ImageSourcePayload
+    @SerialName("Response") val response: ImageSourcePayload
 )
+@Serializable
 data class ImageSourcePayload(
-    @SerializedName("Image") val image: ImageSourceData
+    @SerialName("Image") val image: ImageSourceData
 )
+@Serializable
 data class ImageSourceData(
-    @SerializedName("ImageKey") val imageKey: String? = null,
-    @SerializedName("ArchivedUri") val archivedUri: String? = null,
-    @SerializedName("ArchivedSize") val archivedSize: Long? = null,
-    @SerializedName("ArchivedMD5") val archivedMd5: String? = null,
-    @SerializedName("Format") val format: String? = null,
-    @SerializedName("IsVideo") val isVideo: Boolean? = null
+    @SerialName("ImageKey") val imageKey: String? = null,
+    @SerialName("ArchivedUri") val archivedUri: String? = null,
+    @SerialName("ArchivedSize") val archivedSize: Long? = null,
+    @SerialName("ArchivedMD5") val archivedMd5: String? = null,
+    @SerialName("Format") val format: String? = null,
+    @SerialName("IsVideo") val isVideo: Boolean? = null
 )
 
 // User Top Keywords Response
+@Serializable
 data class TopKeywordsResponse(
-    @SerializedName("Response") val response: TopKeywordsPayload
+    @SerialName("Response") val response: TopKeywordsPayload
 )
 
+@Serializable
 data class TopKeywordsPayload(
-    @SerializedName("UserTopKeywords") val userTopKeywords: UserTopKeywordsContainer? = null
+    @SerialName("UserTopKeywords") val userTopKeywords: UserTopKeywordsContainer? = null
 )
 
+@Serializable
 data class UserTopKeywordsContainer(
-    @SerializedName("TopKeywords") val keywords: List<String>? = null
+    @SerialName("TopKeywords") val keywords: List<String>? = null
 )
 
+@Serializable
 data class UpdateImageMetadataRequest(
-    @SerializedName("Keywords") val keywords: String
+    @SerialName("Keywords") val keywords: String
 )
 
+@Serializable
 data class AlbumPreview(
     val title: String,
     val thumbnailUrl: String?
 )
 
+@Serializable
 data class SingleNodeResponse(
-    @SerializedName("Response") val response: SingleNodePayload,
-    @SerializedName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
+    @SerialName("Response") val response: SingleNodePayload,
+    @SerialName("Expansions") val expansions: Map<String, ExpansionContainer>? = null
 )
 
+@Serializable
 data class SingleNodePayload(
-    @SerializedName("Node") val node: NodeData
+    @SerialName("Node") val node: NodeData
 )
 
 // User Search Response & Expansions
+@Serializable
 data class UserSearchResponse(
-    @SerializedName("Response") val response: UserSearchPayload,
-    @SerializedName("Expansions") val expansions: Map<String, UserSearchExpansion>? = null
+    @SerialName("Response") val response: UserSearchPayload,
+    @SerialName("Expansions") val expansions: Map<String, UserSearchExpansion>? = null
 )
 
+@Serializable
 data class UserSearchPayload(
-    @SerializedName("User") val users: List<UserData>? = emptyList(),
-    @SerializedName("Pages") val pages: PagesData? = null
+    @SerialName("User") val users: List<UserData>? = emptyList(),
+    @SerialName("Pages") val pages: PagesData? = null
 )
 
+@Serializable
 data class UserSearchExpansion(
-    @SerializedName("UserAlbums") val userAlbums: UserAlbumsExpansion? = null,
-    @SerializedName("HighlightImage") val highlightImage: AlbumImageData? = null
+    @SerialName("UserAlbums") val userAlbums: UserAlbumsExpansion? = null,
+    @SerialName("HighlightImage") val highlightImage: AlbumImageData? = null
 )
 
+@Serializable
 data class UserAlbumsExpansion(
-    @SerializedName("Album") val albums1: List<AlbumDetails>? = null,
-    @SerializedName("AlbumDetail") val albums2: List<AlbumDetails>? = null
+    @SerialName("Album") val albums1: List<AlbumDetails>? = null,
+    @SerialName("AlbumDetail") val albums2: List<AlbumDetails>? = null
 ) {
     val albums: List<AlbumDetails>
         get() = albums1 ?: albums2 ?: emptyList()

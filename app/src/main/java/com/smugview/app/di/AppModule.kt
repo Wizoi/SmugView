@@ -23,7 +23,7 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -196,7 +196,7 @@ object AppModule {
         return Retrofit.Builder()
             .baseUrl("https://api.smugmug.com/api/v2/")
             .callFactory(callFactory)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(apiConverterFactory())
             .build()
             .create(SmugMugApi::class.java)
     }

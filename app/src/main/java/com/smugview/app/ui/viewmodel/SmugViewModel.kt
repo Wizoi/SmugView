@@ -886,7 +886,7 @@ class SmugViewModel @Inject constructor(
                             android.util.Log.d("SmugViewModel", "loadUserProfile success: $nickname")
                         }
                         _activeUserProfile.value = userData
-                        val nodeUri = userData.uris.node
+                        val nodeUri = userData.rootNodeUri
                         val rootId = repository.parseNodeIdFromUri(nodeUri)
                         _splashState.value = SplashUiState.Success(rootId)
 
@@ -954,7 +954,7 @@ class SmugViewModel @Inject constructor(
                 result.fold(
                     onSuccess = { userData ->
                         _activeUserProfile.value = userData
-                        val nodeUri = userData.uris.node
+                        val nodeUri = userData.rootNodeUri
                         val rootId = repository.parseNodeIdFromUri(nodeUri)
 
                         // Save as active site

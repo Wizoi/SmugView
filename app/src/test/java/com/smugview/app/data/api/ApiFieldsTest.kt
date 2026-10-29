@@ -12,7 +12,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 
 /**
  * Step 4-9 (design 3.5, 3.1, R-29, P4): the fields the app reads must be asked for. `Uris.ImageSizeDetails`
@@ -30,7 +30,7 @@ class ApiFieldsTest {
             .addInterceptor(server.interceptor)
             .build()
         Retrofit.Builder().baseUrl("https://api.smugmug.com/api/v2/")
-            .addConverterFactory(GsonConverterFactory.create()).client(client).build().create(SmugMugApi::class.java)
+            .addConverterFactory(apiConverterFactory()).client(client).build().create(SmugMugApi::class.java)
     }
 
     private fun requested(name: String): Set<String> =
@@ -65,7 +65,7 @@ class ApiFieldsTest {
     @Test fun `a real album listing parses ArchivedSize and ArchivedMD5`() {
         val json = ApiFieldsTest::class.java.classLoader!!
             .getResourceAsStream("api-contract/album-images-public-archived.json")!!.bufferedReader().readText()
-        val parsed = com.google.gson.Gson().fromJson(json, AlbumImagesResponse::class.java)
+        val parsed = ApiJson.decodeFromString<AlbumImagesResponse>(json)
         val first = parsed.response.images!!.first()
 
         assertEquals(688974L, first.archivedSize)

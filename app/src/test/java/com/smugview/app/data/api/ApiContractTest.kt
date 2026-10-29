@@ -13,7 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 
 /**
  * Phase 4 step 4-1 (design 3.1, R-23, R-28, P14): the app may send only parameters SmugMug accepts, and
@@ -88,7 +88,7 @@ class ApiContractTest(private val method: String) {
             .addInterceptor(server.interceptor)
             .build()
         val api = Retrofit.Builder().baseUrl("https://api.smugmug.com/api/v2/")
-            .addConverterFactory(GsonConverterFactory.create()).client(client).build().create(SmugMugApi::class.java)
+            .addConverterFactory(apiConverterFactory()).client(client).build().create(SmugMugApi::class.java)
 
         // The call may fail to parse the placeholder body; the request and the echo are what is checked.
         runCatching { runBlocking { CASES.getValue(method)(api) } }

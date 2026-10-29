@@ -13,7 +13,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 import java.io.File
 import java.io.IOException
 import java.net.InetAddress
@@ -86,7 +86,7 @@ class LoopbackSmugMug(val fake: FakeSmugMugServer, cacheDir: File) : AutoCloseab
 
     /** The app's API over [client]; with [retrying] it goes through the app's real [RetryingCallFactory]. */
     fun api(client: OkHttpClient = this.client, retrying: Boolean = false): SmugMugApi {
-        val builder = Retrofit.Builder().baseUrl(baseUrl).addConverterFactory(GsonConverterFactory.create())
+        val builder = Retrofit.Builder().baseUrl(baseUrl).addConverterFactory(apiConverterFactory())
         if (retrying) builder.callFactory(RetryingCallFactory(client, initialDelayMs = 1)) else builder.client(client)
         return builder.build().create(SmugMugApi::class.java)
     }

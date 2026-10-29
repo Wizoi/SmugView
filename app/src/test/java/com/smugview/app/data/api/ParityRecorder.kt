@@ -11,7 +11,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assume
 import org.junit.Test
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 import java.io.File
 import java.util.Properties
 
@@ -46,7 +46,7 @@ class ParityRecorder {
             })
             .build()
         val api = Retrofit.Builder().baseUrl("https://api.smugmug.com/api/v2/").client(client)
-            .addConverterFactory(GsonConverterFactory.create()).build().create(SmugMugApi::class.java)
+            .addConverterFactory(apiConverterFactory()).build().create(SmugMugApi::class.java)
 
         fun <T> rec(method: String, label: String, call: suspend () -> T): JsonObject? {
             current = "${method}__$label"

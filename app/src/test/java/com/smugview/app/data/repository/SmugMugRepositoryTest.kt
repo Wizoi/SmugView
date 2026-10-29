@@ -1,5 +1,6 @@
 package com.smugview.app.data.repository
 
+import kotlinx.serialization.encodeToString
 import com.smugview.app.data.api.*
 import com.smugview.app.data.db.*
 import com.smugview.app.data.security.FakePasswordStore
@@ -22,7 +23,7 @@ import okhttp3.Response
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], manifest = Config.NONE)
@@ -59,7 +60,7 @@ class SmugMugRepositoryTest {
         val retrofit = Retrofit.Builder()
             .baseUrl("https://api.smugmug.com/api/v2/")
             .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(apiConverterFactory())
             .build()
             
         return retrofit.create(SmugMugApi::class.java)
@@ -735,7 +736,7 @@ class SmugMugRepositoryTest {
             } else if (request.url.encodedPath.endsWith("!parents")) {
                 parentsDoc("testNodeId", "Password")
             } else {
-                com.google.gson.Gson().toJson(com.smugview.app.data.api.SingleNodeResponse(com.smugview.app.data.api.SingleNodePayload(mockNodeData)))
+                com.smugview.app.data.api.ApiJson.encodeToString(com.smugview.app.data.api.SingleNodeResponse(com.smugview.app.data.api.SingleNodePayload(mockNodeData)))
             }
             Response.Builder()
                 .request(chain.request())
@@ -778,7 +779,7 @@ class SmugMugRepositoryTest {
                     .build()
             } else {
                 Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
-                    .body(com.google.gson.Gson().toJson(SingleNodeResponse(SingleNodePayload(folder)))
+                    .body(com.smugview.app.data.api.ApiJson.encodeToString(SingleNodeResponse(SingleNodePayload(folder)))
                         .toResponseBody("application/json".toMediaTypeOrNull()))
                     .build()
             }

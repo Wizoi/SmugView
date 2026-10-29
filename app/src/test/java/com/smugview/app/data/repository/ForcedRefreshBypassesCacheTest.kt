@@ -21,7 +21,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 import java.net.ServerSocket
 import kotlin.concurrent.thread
 
@@ -78,7 +78,7 @@ class ForcedRefreshBypassesCacheTest {
             .addNetworkInterceptor(smugMugCacheRewriteInterceptor())
             .build()
         return Retrofit.Builder().baseUrl("http://localhost:${server.localPort}/api/v2/").client(client)
-            .addConverterFactory(GsonConverterFactory.create()).build().create(SmugMugApi::class.java)
+            .addConverterFactory(apiConverterFactory()).build().create(SmugMugApi::class.java)
     }
 
     private fun repo(api: SmugMugApi) = SmugMugRepository(

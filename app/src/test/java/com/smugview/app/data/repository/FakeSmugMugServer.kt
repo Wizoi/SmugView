@@ -9,7 +9,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -447,7 +447,7 @@ class FakeSmugMugServer {
         val client = OkHttpClient.Builder().addInterceptor(interceptor).build()
         val builder = Retrofit.Builder()
             .baseUrl("https://api.smugmug.com/api/v2/")
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(apiConverterFactory())
         if (retrying) builder.callFactory(com.smugview.app.data.api.RetryingCallFactory(client, initialDelayMs = 1))
         else builder.client(client)
         return builder.build().create(SmugMugApi::class.java)

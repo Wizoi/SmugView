@@ -1,5 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.shared.platform.SimpleLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -10,26 +11,27 @@ import kotlinx.coroutines.flow.asStateFlow
  * keeps at most [limit] keys, the least recently read going first.
  */
 class KeyedResultCache<T>(private val limit: Int = 200) {
-    private val map = object : LinkedHashMap<String, MutableStateFlow<Result<T>?>>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MutableStateFlow<Result<T>?>>?) = size > limit
-    }
+    private val lock = SimpleLock()
+    // A plain LinkedHashMap keeps insertion order in common code (the access-order constructor is JVM only), so a read re-inserts its key.
+    private val map = LinkedHashMap<String, MutableStateFlow<Result<T>?>>()
 
     /** The flow of [key]; [load] runs once when it is new and reports through [Publisher]. */
-    @Synchronized
-    fun flowFor(key: String, load: (Publisher) -> Unit): StateFlow<Result<T>?> {
-        map[key]?.let { return it.asStateFlow() }
+    fun flowFor(key: String, load: (Publisher) -> Unit): StateFlow<Result<T>?> = lock.withLock {
+        map.remove(key)?.let { map[key] = it; return@withLock it.asStateFlow() }
         val flow = MutableStateFlow<Result<T>?>(null)
         map[key] = flow
+        while (map.size > limit) map.remove(map.keys.first())
         load(Publisher(key, flow))
-        return flow.asStateFlow()
+        flow.asStateFlow()
     }
 
-    @Synchronized fun clear() = map.clear()
+    fun clear() = lock.withLock { map.clear() }
 
-    @Synchronized fun contains(key: String) = map.containsKey(key)
+    fun contains(key: String) = lock.withLock { map.containsKey(key) }
 
-    @Synchronized private fun forget(key: String, flow: MutableStateFlow<Result<T>?>) {
+    private fun forget(key: String, flow: MutableStateFlow<Result<T>?>) = lock.withLock {
         if (map[key] === flow) map.remove(key)
+        Unit
     }
 
     inner class Publisher(private val key: String, private val flow: MutableStateFlow<Result<T>?>) {

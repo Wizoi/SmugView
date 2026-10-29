@@ -29,7 +29,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 import java.io.File
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -89,7 +89,7 @@ class SyncReportTest {
     private fun repo(interceptor: Interceptor): SmugMugRepository {
         val client = OkHttpClient.Builder().addInterceptor(interceptor).build()
         val api = Retrofit.Builder().baseUrl("https://api.smugmug.com/api/v2/").client(client)
-            .addConverterFactory(GsonConverterFactory.create()).build().create(SmugMugApi::class.java)
+            .addConverterFactory(apiConverterFactory()).build().create(SmugMugApi::class.java)
         return SmugMugRepository(
             api, db.collectionDao(), FakePasswordStore(), ApplicationProvider.getApplicationContext(), reporter
         )

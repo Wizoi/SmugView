@@ -4,7 +4,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.*
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import com.smugview.app.data.api.apiConverterFactory
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import okhttp3.ResponseBody
@@ -287,7 +287,7 @@ class SmugMugApiTest {
         val userResponse = runBlocking {
             api.getUserProfile(nickname, apiKey)
         }
-        val rootNodeId = userResponse.response.user.uris.node.substringAfterLast("/")
+        val rootNodeId = userResponse.response.user.rootNodeUri.substringAfterLast("/")
 
         val albumsResponse = runBlocking {
             api.getUserAlbums(nickname, apiKey, count = 100)
@@ -433,7 +433,7 @@ class SmugMugApiTest {
         val retrofit = Retrofit.Builder()
             .baseUrl("https://api.smugmug.com/api/v2/")
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(apiConverterFactory())
             .build()
 
         return Pair(retrofit.create(SmugMugApi::class.java), apiKey)

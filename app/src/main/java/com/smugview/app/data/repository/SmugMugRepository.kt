@@ -138,6 +138,7 @@ class SmugMugRepository @Inject constructor(
         try {
             val userResponse = api.getUserProfile(nickname, apiKey, ignoreErrors = ignoreErrors)
             val bioImage = userResponse.expansions?.values?.firstOrNull { it.bioImage != null }?.bioImage
+            userResponse.response.user.rootNodeUri // a profile without a root node is a failure here, not later in a screen
             val enrichedUser = userResponse.response.user.copy(
                 bioImageKey = bioImage?.imageKey,
                 bioImageThumbnailUrl = bioImage?.thumbnailUrl
@@ -167,7 +168,7 @@ class SmugMugRepository @Inject constructor(
         }
         try {
             val response = api.getUserProfile(nickname, apiKey)
-            val nodeUri = response.response.user.uris.node
+            val nodeUri = response.response.user.rootNodeUri
             val nodeId = parseNodeIdFromUri(nodeUri)
             rootNodeIdCache[nickname] = nodeId
             if (com.smugview.app.BuildConfig.DEBUG) {
