@@ -254,6 +254,11 @@ val archiveReleaseMapping by tasks.registering(Copy::class) {
 tasks.matching { it.name == "minifyReleaseWithR8" }.configureEach {
     finalizedBy(archiveReleaseMapping)
 }
+// Compose compiler plugin 2.3 rewrites mapping.txt after R8 (it merges its own mapping in), so archive after that, not just after R8.
+archiveReleaseMapping.configure { mustRunAfter(tasks.matching { it.name == "mergeReleaseComposeMapping" }) }
+tasks.matching { it.name == "mergeReleaseComposeMapping" }.configureEach {
+    finalizedBy(archiveReleaseMapping)
+}
 
 play {
     serviceAccountCredentials.set(rootProject.file("play-service-account.json"))
