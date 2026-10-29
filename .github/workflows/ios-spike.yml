@@ -22,7 +22,19 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       - name: Shared module tests on the JVM
-        run: ./gradlew :shared:jvmTest
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :shared:jvmTest --stacktrace 2>&1 | tee jvm-build.log
+      - name: Put the first errors and the test counts in the annotations
+        if: always()
+        run: |
+          bash .github/scripts/annotate-log.sh jvm-build.log "jvm"
+          python3 .github/scripts/report-tests.py shared/build/test-results jvm-tests
+      - name: Fail the job when the tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
