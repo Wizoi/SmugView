@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import coil.Coil
 import coil.ImageLoader
@@ -133,7 +134,10 @@ class ScreenRig(
     }
 
     /** Renders [content] under the app theme. */
-    fun setContent(content: @Composable () -> Unit) = compose.setContent { SmugViewTheme { content() } }
+    fun setContent(content: @Composable () -> Unit) = compose.setContent { if (shown) SmugViewTheme { content() } }
+
+    /** Taken off the screen by [close] before the database closes, so no screen is still reading Room when its pool shuts. */
+    private var shown by androidx.compose.runtime.mutableStateOf(true)
 
     /** Phase 6 journeys (design 8.1): the app's own `NavHost` and screens over this rig's view model, as `MainActivity` hosts them. */
     fun setAppContent() = setContent { com.smugview.app.SmugViewNavigation(viewModel) }
@@ -222,6 +226,9 @@ class ScreenRig(
     }
 
     fun close() {
+        // A screen that observes a Room Flow must be gone before the database closes, or its last read hits a closed pool
+        // ("connection pool has been closed": RemoveConfirmScreenTest and the bell test failed one full run in a few).
+        runCatching { compose.runOnUiThread { shown = false }; settle() }
         rig.close()
     }
 
