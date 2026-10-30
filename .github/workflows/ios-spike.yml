@@ -246,11 +246,11 @@ jobs:
           # First launch: open a public site (the Hub's own featured one, so no one's galleries are shown) as if tapped. The app saves it
           # as the active site once its profile loads. Then relaunch: a returning user opens straight into that site, which is the screen
           # worth a screenshot (a fresh launch with no saved site shows the Hub).
-          SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch --terminate-running-process --stdout="$PWD/app-first-stdout.log" --stderr="$PWD/app-first-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
+          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch --terminate-running-process --stdout="$PWD/app-first-stdout.log" --stderr="$PWD/app-first-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
           sleep 20
           xcrun simctl terminate "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log || true
           sleep 2
-          xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
+          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
           sleep 25
           xcrun simctl io "$UDID" screenshot ios-spike-screen.png 2>&1 | tee -a screen-run.log
           ls -la ios-spike-screen.png | tee -a screen-run.log
@@ -263,7 +263,8 @@ jobs:
             running=$(xcrun simctl spawn "$UDID" launchctl list | grep -ci "UIKitApplication:com.smugview" || true)
             echo "--- app processes running after launch: $running"
             echo '--- app stderr (first 80 lines)'; head -80 app-stderr.log 2>&1
-            echo '--- app stdout (first 40 lines)'; head -40 app-stdout.log 2>&1
+            echo '--- first launch stdout (trace)'; head -40 app-first-stdout.log 2>&1
+            echo '--- second launch stdout (trace)'; head -40 app-stdout.log 2>&1
             echo '--- crash reports present:'; ls ~/Library/Logs/DiagnosticReports/ 2>&1
             python3 - <<'PY'
           import glob, json, os
