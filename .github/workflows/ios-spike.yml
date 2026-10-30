@@ -243,8 +243,14 @@ jobs:
           set -o pipefail
           xcrun simctl bootstatus "$UDID" -b 2>&1 | tee -a screen-run.log
           xcrun simctl install "$UDID" build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app 2>&1 | tee -a screen-run.log
-          # A public site (the Hub's own featured one), so the screenshot can show real data without exposing anyone's galleries.
-          SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
+          # First launch: open a public site (the Hub's own featured one, so no one's galleries are shown) as if tapped. The app saves it
+          # as the active site once its profile loads. Then relaunch: a returning user opens straight into that site, which is the screen
+          # worth a screenshot (a fresh launch with no saved site shows the Hub).
+          SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch --terminate-running-process --stdout="$PWD/app-first-stdout.log" --stderr="$PWD/app-first-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
+          sleep 20
+          xcrun simctl terminate "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log || true
+          sleep 2
+          xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
           sleep 25
           xcrun simctl io "$UDID" screenshot ios-spike-screen.png 2>&1 | tee -a screen-run.log
           ls -la ios-spike-screen.png | tee -a screen-run.log
@@ -291,7 +297,7 @@ jobs:
       - name: Put the first errors in the annotations
         if: always()
         run: |
-          for f in screen-framework.log screen-xcode.log screen-run.log app-stderr.log; do
+          for f in screen-framework.log screen-xcode.log screen-run.log app-first-stderr.log app-stderr.log; do
             [ -f "$f" ] && bash .github/scripts/annotate-log.sh "$f" "$f"
           done
           exit 0
