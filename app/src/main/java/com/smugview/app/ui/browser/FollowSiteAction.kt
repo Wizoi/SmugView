@@ -1,10 +1,10 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Icon
@@ -31,11 +31,11 @@ internal fun FollowSiteAction(follow: NewGalleryFollow, nickname: String) {
 
     fun startFollowing() {
         scope.launch { follow.follow(nickname) }
-        Toast.makeText(context, NewGalleryText.followed(nickname), Toast.LENGTH_LONG).show()
+        Toaster.show(NewGalleryText.followed(nickname), long = true)
     }
 
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startFollowing() else Toast.makeText(context, NewGalleryText.PERMISSION_DENIED, Toast.LENGTH_LONG).show()
+        if (granted) startFollowing() else Toaster.show(NewGalleryText.PERMISSION_DENIED, long = true)
     }
 
     IconButton(onClick = {
@@ -44,7 +44,7 @@ internal fun FollowSiteAction(follow: NewGalleryFollow, nickname: String) {
         when (FollowTap.of(following, canNotify)) {
             FollowTap.Unfollow -> {
                 scope.launch { follow.unfollow(nickname) }
-                Toast.makeText(context, NewGalleryText.unfollowed(nickname), Toast.LENGTH_SHORT).show()
+                Toaster.show(NewGalleryText.unfollowed(nickname))
             }
             FollowTap.AskPermission -> askPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
             FollowTap.Follow -> startFollowing()

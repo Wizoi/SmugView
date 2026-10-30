@@ -3,7 +3,6 @@ package com.smugview.app.ui.viewmodel
 import android.app.Application
 import android.content.Context
 import android.net.Uri
-import android.widget.Toast
 import androidx.lifecycle.SavedStateHandle
 import com.smugview.app.BuildConfig
 import com.smugview.app.data.cast.CastManager
@@ -13,7 +12,9 @@ import com.smugview.app.data.prefs.SharedPrefsStore
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.data.security.PasswordStore
 import com.smugview.app.diag.SyncReporter
+import com.smugview.app.util.AndroidToaster
 import com.smugview.app.util.KeyValueStore
+import com.smugview.app.util.Toaster
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import java.io.File
@@ -40,9 +41,9 @@ class AppSmugViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : SmugViewModel(
     apiKey = BuildConfig.SMUGMUG_API_KEY,
-    sharedPrefs = prefsOf(application, "smugview_prefs"),
+    sharedPrefs = prefsOf(application, "smugview_prefs").also { AndroidToaster.install(application) },
     searchStatusPrefs = prefsOf(application, "smugview_search_status"),
-    showMessage = { message -> Toast.makeText(application, message, Toast.LENGTH_SHORT).show() },
+    showMessage = { message -> Toaster.show(message) },
     fileUri = { path -> Uri.fromFile(File(path)).toString() },
     repository = repository,
     offline = offline,
@@ -67,9 +68,9 @@ fun smugViewModelFor(
     savedStateHandle: SavedStateHandle = SavedStateHandle()
 ): SmugViewModel = SmugViewModel(
     apiKey = BuildConfig.SMUGMUG_API_KEY,
-    sharedPrefs = prefsOf(application, "smugview_prefs"),
+    sharedPrefs = prefsOf(application, "smugview_prefs").also { AndroidToaster.install(application) },
     searchStatusPrefs = prefsOf(application, "smugview_search_status"),
-    showMessage = { message -> Toast.makeText(application, message, Toast.LENGTH_SHORT).show() },
+    showMessage = { message -> Toaster.show(message) },
     fileUri = { path -> Uri.fromFile(File(path)).toString() },
     repository = repository,
     offline = offline,

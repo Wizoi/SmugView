@@ -54,6 +54,7 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        com.smugview.app.util.AndroidToaster.install(this)
         diagnostics.start()
         // Settle what the pre-17 offline code left (once), THEN queue a pass for the files still wanted (from before
         // the process died, or a failed retry). The order is the point: see OfflineStartup. Never blocks start-up.

@@ -1,8 +1,8 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import android.graphics.drawable.BitmapDrawable
-import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -299,7 +299,7 @@ fun ImmersivePhotoPage(
                                 val fav = localCollections.find { it.name.lowercase() == "favorites" }
                                 if (fav != null) {
                                     viewModel.addPhotoToCollection(photo, fav.id)
-                                    Toast.makeText(context, "Added to Favorites!", Toast.LENGTH_SHORT).show()
+                                    Toaster.show("Added to Favorites!")
                                 } else {
                                     onRequestAddToCollection()
                                 }
@@ -396,7 +396,7 @@ fun PhotoActionCapsule(
             val fav = localCollections.find { it.name.lowercase() == "favorites" }
             if (fav != null) {
                 viewModel.addPhotoToCollection(photo, fav.id)
-                Toast.makeText(context, "Added to Favorites!", Toast.LENGTH_SHORT).show()
+                Toaster.show("Added to Favorites!")
             } else {
                 onRequestAddToCollection()
             }
@@ -405,8 +405,8 @@ fun PhotoActionCapsule(
         }
         IconButton(onClick = {
             when {
-                !linkResolved -> Toast.makeText(context, "Loading photo details, please wait...", Toast.LENGTH_SHORT).show()
-                shareLink == null -> Toast.makeText(context, com.smugview.app.ui.text.UserMessages.SHARE_NO_LINK, Toast.LENGTH_LONG).show()
+                !linkResolved -> Toaster.show("Loading photo details, please wait...")
+                shareLink == null -> Toaster.show(com.smugview.app.ui.text.UserMessages.SHARE_NO_LINK, long = true)
                 else -> showShareDialog = true
             }
         }) {

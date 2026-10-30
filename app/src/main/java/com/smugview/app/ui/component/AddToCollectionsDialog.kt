@@ -1,7 +1,7 @@
 package com.smugview.app.ui.component
 
+import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -67,11 +67,11 @@ fun AddToCollectionsDialog(
                     collectionId = col.id, type = type, itemKey = itemKey, title = title,
                     albumKey = key, albumTitle = albumTitle, thumbnailUrl = thumbnailUrl, imageUrl = imageUrl
                 )
-                Toast.makeText(context, "Saved to ${col.name}!", Toast.LENGTH_SHORT).show()
+                Toaster.show("Saved to ${col.name}!")
             }
             removed.forEach { col ->
                 viewModel.removeBookmark(col.id, type, itemKey)
-                Toast.makeText(context, "Removed from ${col.name}", Toast.LENGTH_SHORT).show()
+                Toaster.show("Removed from ${col.name}")
             }
             viewModel.lastSelectedCollectionIds = localCollections.filter { ticked[it.id] == true }.map { it.id }.toSet()
             onDismissRequest()
@@ -222,7 +222,7 @@ fun AddToCollectionsDialog(
                         onClick = {
                             if (newCollectionName.trim().isNotEmpty()) {
                                 viewModel.createCollection(newCollectionName.trim())
-                                Toast.makeText(context, "Collection created!", Toast.LENGTH_SHORT).show()
+                                Toaster.show("Collection created!")
                                 newCollectionName = ""
                             }
                         },

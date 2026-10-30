@@ -1,5 +1,6 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
@@ -7,7 +8,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Popup
 import android.content.Intent
-import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
@@ -173,7 +173,7 @@ fun CollectionsTabView(
             scope.launch {
                 val key = viewModel.getAlbumKeyFromWebUri(thumbnailUrl)
                 if (key.isNullOrBlank()) {
-                    Toast.makeText(context, com.smugview.app.ui.text.UserMessages.line(com.smugview.app.ui.text.Problem.Gone(com.smugview.app.ui.text.Subject.Photo)), Toast.LENGTH_SHORT).show()
+                    Toaster.show(com.smugview.app.ui.text.UserMessages.line(com.smugview.app.ui.text.Problem.Gone(com.smugview.app.ui.text.Subject.Photo)))
                 } else {
                     onImageClick(key, imageKey)
                 }

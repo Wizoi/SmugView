@@ -1,8 +1,8 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import android.content.res.Configuration
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -167,7 +167,7 @@ fun SearchPhotoDetailScreen(
                                     if (!resolved.isNullOrEmpty()) {
                                         onNavigateToGallery(resolved, imageKey)
                                     } else {
-                                        Toast.makeText(context, "Couldn't find this photo's gallery. Please try again.", Toast.LENGTH_SHORT).show()
+                                        Toaster.show("Couldn't find this photo's gallery. Please try again.")
                                     }
                                 }
                             }

@@ -1,5 +1,6 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import android.content.ClipData
 import android.content.Context
@@ -8,7 +9,6 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Environment
-import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -651,7 +651,7 @@ fun sharePhoto(
     photo: AlbumImageData,
     link: String?
 ) {
-    Toast.makeText(context, com.smugview.app.ui.text.UserMessages.SHARE_PREPARING, Toast.LENGTH_SHORT).show()
+    Toaster.show(com.smugview.app.ui.text.UserMessages.SHARE_PREPARING)
 
     coroutineScope.launch {
         try {
@@ -678,7 +678,7 @@ fun sharePhoto(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            Toast.makeText(context, com.smugview.app.ui.text.UserMessages.shareFailed(shareProblem(e)), Toast.LENGTH_SHORT).show()
+            Toaster.show(com.smugview.app.ui.text.UserMessages.shareFailed(shareProblem(e)))
         }
     }
 }
@@ -708,7 +708,7 @@ suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, view
     var detailedPhoto = photo
     var detailsError: Throwable? = null
     if (saved == null && detailedPhoto.archivedUri == null) {
-        Toast.makeText(context, "Fetching high-resolution image details...", Toast.LENGTH_SHORT).show()
+        Toaster.show("Fetching high-resolution image details...")
         try {
             val result = viewModel.getImageDetails(photo.imageKey).first { it != null }
             if (result != null && result.isSuccess) detailedPhoto = result.getOrThrow() else detailsError = result?.exceptionOrNull()
@@ -727,11 +727,11 @@ suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, view
         val result = com.smugview.app.download.PhotoDownloader(context, factory)
             .download(photo.imageKey, detailedPhoto.fileName ?: photo.fileName, saved, sourceUrl, smaller)
         val said = if (result.original) com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED else com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED_SMALLER
-        Toast.makeText(context, said, Toast.LENGTH_LONG).show()
+        Toaster.show(said, long = true)
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
-        Toast.makeText(context, com.smugview.app.download.downloadMessage(e), Toast.LENGTH_LONG).show()
+        Toaster.show(com.smugview.app.download.downloadMessage(e), long = true)
     }
 }
 
@@ -751,7 +751,7 @@ fun rememberPhotoDownloadAction(viewModel: SmugViewModel): (AlbumImageData) -> U
         waiting = null
         if (photo == null) return@rememberLauncherForActivityResult
         if (granted) scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
-        else Toast.makeText(context, com.smugview.app.ui.text.UserMessages.DOWNLOAD_PERMISSION, Toast.LENGTH_LONG).show()
+        else Toaster.show(com.smugview.app.ui.text.UserMessages.DOWNLOAD_PERMISSION, long = true)
     }
     return { photo ->
         val needsPermission = android.os.Build.VERSION.SDK_INT < 29 &&

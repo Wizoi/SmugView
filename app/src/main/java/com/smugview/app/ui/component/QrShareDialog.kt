@@ -1,9 +1,9 @@
 package com.smugview.app.ui.component
 
+import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import android.content.Intent
 import android.graphics.Bitmap
-import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -133,7 +133,7 @@ fun QrShareDialog(
                         enabled = hasLink,
                         onClick = {
                             clipboardManager.setText(AnnotatedString(url))
-                            Toast.makeText(context, "Link copied", Toast.LENGTH_SHORT).show()
+                            Toaster.show("Link copied")
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
