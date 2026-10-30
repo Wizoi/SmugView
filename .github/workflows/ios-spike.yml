@@ -27,6 +27,14 @@ on:
         description: 'Also link the release framework (about 36 minutes)'
         type: boolean
         default: false
+      native_heap:
+        description: 'Release link: Kotlin/Native compiler heap, e.g. 6g (empty: the 5g in gradle.properties). The runner has 7.5 GB and no swap.'
+        type: string
+        default: ''
+      gradle_heap:
+        description: 'Release link: Gradle JVM heap, e.g. 512m'
+        type: string
+        default: '1536m'
       release_binary_cache:
         description: 'Release link: try kotlin.native.binary.enableReleaseBinaryCache (faster, changes the binary: a timing check, not a size number)'
         type: boolean
@@ -153,20 +161,23 @@ jobs:
           set -o pipefail
           cache_flag=""
           if [ "${{ inputs.release_binary_cache }}" = "true" ]; then cache_flag="-Pkotlin.native.binary.enableReleaseBinaryCache=true"; fi
-          echo "release binary cache flag: '${cache_flag}'" | tee mem.log
+          heap_flag=""
+          if [ -n "${{ inputs.native_heap }}" ]; then heap_flag="-Pkotlin.native.jvmArgs=-Xmx${{ inputs.native_heap }}"; fi
+          gradle_heap="${{ inputs.gradle_heap }}"; gradle_heap="${gradle_heap:-1536m}"
+          echo "release binary cache flag: '${cache_flag}', native heap flag: '${heap_flag}', gradle heap: ${gradle_heap}" | tee mem.log
           sysctl hw.memsize hw.ncpu 2>&1 | tee -a mem.log
           ( while true; do echo "$(date +%H:%M:%S) $(sysctl -n vm.swapusage)"; sleep 30; done ) >> mem.log 2>&1 &
           sampler=$!
           start=$(date +%s)
           ./gradlew :spikeui:linkReleaseFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache \
-            -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" $cache_flag 2>&1 | tee ios-link.log
+            -Dorg.gradle.jvmargs="-Xmx${gradle_heap} -Dfile.encoding=UTF-8" $cache_flag $heap_flag 2>&1 | tee ios-link.log
           status=${PIPESTATUS[0]}
           end=$(date +%s)
           kill $sampler 2>/dev/null || true
           vm_stat >> mem.log 2>&1
           kb=$(du -sk spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework 2>/dev/null | cut -f1)
           bin=$(find spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework -type f -name Shared -exec du -k {} + 2>/dev/null | cut -f1 | head -1)
-          echo "::notice title=iOS release link (simulator arm64)::link took $((end - start)) s (exit $status, cache flag '${cache_flag}'), Shared.framework is ${kb:-0} KB, the binary ${bin:-0} KB"
+          echo "::notice title=iOS release link (simulator arm64)::link took $((end - start)) s (exit $status, cache flag '${cache_flag}', ${heap_flag}), Shared.framework is ${kb:-0} KB, the binary ${bin:-0} KB"
           exit $status
       - name: Put the first errors and the swap samples in the annotations
         if: always()
