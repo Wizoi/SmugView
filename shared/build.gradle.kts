@@ -42,6 +42,7 @@ kotlin {
             api("io.ktor:ktor-client-core:3.0.3")
             // The Compose runtime only (state holders such as mutableStateOf in the view-model layer); the screens stay in the app.
             implementation(compose.runtime)
+            api(compose.ui) // ImageVector (the icons) and the other graphics types the shared UI state uses
             // The multiplatform ViewModel and SavedStateHandle (the base of SmugViewModel).
             api("androidx.lifecycle:lifecycle-viewmodel:2.10.0")
             api("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.10.0")

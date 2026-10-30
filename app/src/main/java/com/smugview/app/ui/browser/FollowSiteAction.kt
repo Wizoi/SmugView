@@ -1,14 +1,12 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.ui.icons.AppIcons
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -53,7 +51,7 @@ internal fun FollowSiteAction(follow: NewGalleryFollow, nickname: String) {
         }
     }) {
         Icon(
-            imageVector = if (following) Icons.Default.NotificationsActive else Icons.Default.NotificationsNone,
+            imageVector = if (following) AppIcons.NotificationsActive else AppIcons.NotificationsNone,
             contentDescription = if (following) NewGalleryText.UNFOLLOW_DESCRIPTION else NewGalleryText.FOLLOW_DESCRIPTION,
             tint = NeonBlue
         )

@@ -1,5 +1,6 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.ui.icons.AppIcons
 import com.smugview.app.data.repository.UnlockManager
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
@@ -10,7 +11,6 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -34,39 +34,10 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.PhotoAlbum
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
 import com.smugview.app.data.api.isVideo
 import androidx.compose.animation.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
 import com.smugview.app.ui.component.ProfilePreviewCard
 import com.smugview.app.ui.component.ProfileAvatar
 import com.smugview.app.ui.text.UserMessages
@@ -277,7 +248,7 @@ fun HomeTabView(
                                 }
                             },
                             placeholder = { Text("Search by nickname or keyword", color = Color.White.copy(alpha = 0.4f)) },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = NeonBlue) },
+                            leadingIcon = { Icon(AppIcons.Search, contentDescription = "Search", tint = NeonBlue) },
                             trailingIcon = {
                                 if (nicknameQuery.isNotEmpty()) {
                                     IconButton(onClick = {
@@ -285,7 +256,7 @@ fun HomeTabView(
                                         viewModel.clearGlobalSiteSearch()
                                         focusManager.clearFocus()
                                     }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White.copy(alpha = 0.5f))
+                                        Icon(AppIcons.Close, contentDescription = "Clear", tint = Color.White.copy(alpha = 0.5f))
                                     }
                                 }
                             },
@@ -407,7 +378,7 @@ fun HomeTabView(
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.History,
+                                            imageVector = AppIcons.History,
                                             contentDescription = "History",
                                             tint = Color.White.copy(alpha = 0.4f),
                                             modifier = Modifier.size(16.dp)
@@ -658,7 +629,7 @@ fun HomeTabView(
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Icon(
-                                            imageVector = Icons.Default.Photo,
+                                            imageVector = AppIcons.Photo,
                                             contentDescription = "No Results",
                                             tint = Color.White.copy(alpha = 0.1f),
                                             modifier = Modifier.size(72.dp)
@@ -774,7 +745,7 @@ fun HomeTabView(
                             onClick = { showShareDialog = true }
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Share,
+                                imageVector = AppIcons.Share,
                                 contentDescription = "Share",
                                 tint = NeonBlue
                             )
@@ -940,7 +911,7 @@ fun HomeTabView(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Filled.Folder,
+                                                imageVector = AppIcons.Folder,
                                                 contentDescription = "Folder",
                                                 tint = NeonBlue.copy(alpha = 0.6f),
                                                 modifier = Modifier.size(40.dp)
@@ -963,7 +934,7 @@ fun HomeTabView(
                                         )
                                     }
                                     if (lock != UnlockManager.RowLock.None) {
-                                        val lockIcon = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock
+                                        val lockIcon = if (isUnlocked) AppIcons.LockOpen else AppIcons.Lock
                                         val lockColor = if (isUnlocked) Color(0xFF00E5FF) else Color(0xFFFFB800)
                                         Icon(
                                             imageVector = lockIcon,

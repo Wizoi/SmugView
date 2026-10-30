@@ -1,5 +1,6 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.ui.icons.AppIcons
 import android.graphics.drawable.BitmapDrawable
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
@@ -15,20 +16,6 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.Iso
-import androidx.compose.material.icons.filled.Lens
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -414,7 +401,7 @@ fun PhotoActionCapsule(
                 onRequestAddToCollection()
             }
         }) {
-            Icon(Icons.Default.BookmarkBorder, "Save", tint = Color.White, modifier = Modifier.size(26.dp))
+            Icon(AppIcons.BookmarkBorder, "Save", tint = Color.White, modifier = Modifier.size(26.dp))
         }
         IconButton(onClick = {
             when {
@@ -424,7 +411,7 @@ fun PhotoActionCapsule(
             }
         }) {
             Icon(
-                Icons.Default.Share, "Share Link",
+                AppIcons.Share, "Share Link",
                 tint = Color.White.copy(alpha = if (linkResolved && shareLink == null) 0.35f else 1f),
                 modifier = Modifier.size(26.dp)
             )
@@ -432,10 +419,10 @@ fun PhotoActionCapsule(
         IconButton(onClick = {
             downloadPhoto(photo)
         }) {
-            Icon(Icons.Default.Download, "Download Photo", tint = Color.White, modifier = Modifier.size(26.dp))
+            Icon(AppIcons.Download, "Download Photo", tint = Color.White, modifier = Modifier.size(26.dp))
         }
         IconButton(onClick = onShowExif) {
-            Icon(Icons.Default.Info, "Info Details", tint = Color.White, modifier = Modifier.size(26.dp))
+            Icon(AppIcons.Info, "Info Details", tint = Color.White, modifier = Modifier.size(26.dp))
         }
     }
 
@@ -489,41 +476,41 @@ fun PhotoExifSheet(
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                                 val cam = data.camera
                                 ExifCardItem(
-                                    icon = Icons.Default.CameraAlt,
+                                    icon = AppIcons.CameraAlt,
                                     label = "Camera Model",
                                     value = cam ?: "Unknown",
                                     modifier = Modifier.weight(1f),
                                     iconContent = if (!cam.isNullOrEmpty()) { { CameraLogo(data.make ?: cam) } } else null
                                 )
-                                ExifCardItem(Icons.Default.Lens, "Lens / Focal", data.focalLength ?: "Unknown", Modifier.weight(1f))
+                                ExifCardItem(AppIcons.Lens, "Lens / Focal", data.focalLength ?: "Unknown", Modifier.weight(1f))
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                                ExifCardItem(Icons.Default.LightMode, "Aperture", data.aperture ?: "Unknown", Modifier.weight(1f))
-                                ExifCardItem(Icons.Default.Speed, "Exposure Time", data.exposure ?: "Unknown", Modifier.weight(1f))
+                                ExifCardItem(AppIcons.LightMode, "Aperture", data.aperture ?: "Unknown", Modifier.weight(1f))
+                                ExifCardItem(AppIcons.Speed, "Exposure Time", data.exposure ?: "Unknown", Modifier.weight(1f))
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                                ExifCardItem(Icons.Default.Iso, "ISO Speed", data.iso?.toString() ?: "Unknown", Modifier.weight(1f))
+                                ExifCardItem(AppIcons.Iso, "ISO Speed", data.iso?.toString() ?: "Unknown", Modifier.weight(1f))
                                 val w = detailedPhoto?.originalWidth ?: currentPhoto.originalWidth
                                 val h = detailedPhoto?.originalHeight ?: currentPhoto.originalHeight
                                 ExifCardItem(
-                                    Icons.Default.ZoomIn, "Original Dimensions",
+                                    AppIcons.ZoomIn, "Original Dimensions",
                                     if (w != null && h != null) "$w x $h" else "Unknown", Modifier.weight(1f)
                                 )
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                                 ExifCardItem(
-                                    Icons.Default.Event, "Date Taken",
+                                    AppIcons.Event, "Date Taken",
                                     formatToLocalTime(data.dateTimeCreated ?: data.dateCreated ?: currentPhoto.date ?: currentPhoto.dateTime),
                                     Modifier.weight(1f)
                                 )
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                                 val fileName = detailedPhoto?.fileName ?: currentPhoto.fileName ?: currentPhoto.title ?: "Unknown"
-                                ExifCardItem(Icons.Default.InsertDriveFile, "File Name", fileName, Modifier.fillMaxWidth())
+                                ExifCardItem(AppIcons.InsertDriveFile, "File Name", fileName, Modifier.fillMaxWidth())
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                                 val sizeStr = formatPhotoFileSize(detailedPhoto?.originalSize ?: currentPhoto.originalSize)
-                                ExifCardItem(Icons.Default.DataUsage, "File Size", sizeStr, Modifier.weight(1f))
+                                ExifCardItem(AppIcons.DataUsage, "File Size", sizeStr, Modifier.weight(1f))
                             }
                         }
                     }

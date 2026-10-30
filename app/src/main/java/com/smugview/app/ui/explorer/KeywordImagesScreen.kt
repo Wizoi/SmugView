@@ -1,5 +1,6 @@
 package com.smugview.app.ui.explorer
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,13 +14,6 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -88,7 +82,7 @@ fun KeywordImagesScreen(
                 title = { Text("Keyword Search", color = Color.White, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(AppIcons.ArrowBackMirrored, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DeepDarkBackground)
@@ -113,7 +107,7 @@ fun KeywordImagesScreen(
                     placeholder = { Text("Add tag filter...", color = Color.White.copy(alpha = 0.4f)) },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Default.LocalOffer,
+                            imageVector = AppIcons.LocalOffer,
                             contentDescription = "Tag",
                             tint = NeonBlue
                         )
@@ -121,7 +115,7 @@ fun KeywordImagesScreen(
                     trailingIcon = {
                         if (tagInput.isNotEmpty()) {
                             IconButton(onClick = { tagInput = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White.copy(alpha = 0.5f))
+                                Icon(AppIcons.Close, contentDescription = "Clear", tint = Color.White.copy(alpha = 0.5f))
                             }
                         }
                     },
@@ -176,7 +170,7 @@ fun KeywordImagesScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.LocalOffer,
+                                        imageVector = AppIcons.LocalOffer,
                                         contentDescription = null,
                                         tint = NeonBlue.copy(alpha = 0.7f),
                                         modifier = Modifier.size(16.dp)
@@ -235,7 +229,7 @@ fun KeywordImagesScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Icon(
-                                    imageVector = Icons.Default.Close,
+                                    imageVector = AppIcons.Close,
                                     contentDescription = "Remove",
                                     tint = textColor.copy(alpha = 0.7f),
                                     modifier = Modifier
@@ -310,7 +304,7 @@ fun KeywordImagesScreen(
                             modifier = Modifier.size(24.dp)
                         ) {
                             Icon(
-                                imageVector = if (viewModel.keywordPhotosSortOrder == "Ascending") Icons.Default.SortByAlpha else Icons.Default.Sort,
+                                imageVector = if (viewModel.keywordPhotosSortOrder == "Ascending") AppIcons.SortByAlpha else AppIcons.Sort,
                                 contentDescription = "Toggle Sort Order",
                                 tint = if (isLoadingPhotos) Color.Gray else NeonBlue,
                                 modifier = Modifier.size(18.dp)
@@ -352,7 +346,7 @@ fun KeywordImagesScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.PlayArrow,
+                                            imageVector = AppIcons.PlayArrow,
                                             contentDescription = "Video",
                                             tint = Color.White,
                                             modifier = Modifier.size(12.dp)

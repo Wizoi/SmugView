@@ -1,5 +1,6 @@
 package com.smugview.app.ui.component
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,8 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -91,7 +90,7 @@ fun CastDeviceSelectorBottomSheet(
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Refresh,
+                            imageVector = AppIcons.Refresh,
                             contentDescription = "Rescan devices",
                             tint = Color.LightGray
                         )
@@ -118,7 +117,7 @@ fun CastDeviceSelectorBottomSheet(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            imageVector = Icons.Default.TvOff,
+                            imageVector = AppIcons.TvOff,
                             contentDescription = "No Cast devices found",
                             tint = Color.Gray,
                             modifier = Modifier.size(48.dp)
@@ -186,9 +185,9 @@ fun DeviceItem(
     }
 
     val icon = when (device.type) {
-        CastType.GOOGLE -> Icons.Default.Cast
-        CastType.ROKU -> Icons.Default.Tv
-        CastType.AMAZON -> Icons.Default.DeveloperBoard
+        CastType.GOOGLE -> AppIcons.Cast
+        CastType.ROKU -> AppIcons.Tv
+        CastType.AMAZON -> AppIcons.DeveloperBoard
     }
 
     val typeLabel = when (device.type) {
@@ -236,7 +235,7 @@ fun DeviceItem(
 
         if (unsupported != null) {
             Icon(
-                imageVector = Icons.Default.Cancel,
+                imageVector = AppIcons.Cancel,
                 contentDescription = "Cannot be cast to",
                 tint = Color(0xFFFF4D4D),
                 modifier = Modifier.size(20.dp)
@@ -253,7 +252,7 @@ fun DeviceItem(
             }
             ConnectionState.CONNECTED -> {
                 Icon(
-                    imageVector = Icons.Default.CheckCircle,
+                    imageVector = AppIcons.CheckCircle,
                     contentDescription = "Connected",
                     tint = neonBlue,
                     modifier = Modifier.size(18.dp)

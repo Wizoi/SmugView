@@ -1,5 +1,6 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -9,7 +10,6 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -33,39 +33,10 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.PhotoAlbum
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
 import com.smugview.app.data.api.isVideo
 import androidx.compose.animation.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
 import com.smugview.app.ui.component.ProfilePreviewCard
 import com.smugview.app.ui.component.ProfileAvatar
 import com.smugview.app.ui.component.AddToCollectionsDialog
@@ -162,7 +133,7 @@ fun SearchTabView(
                     focusManager.clearFocus()
                 }) {
                     Icon(
-                        imageVector = Icons.Default.Search,
+                        imageVector = AppIcons.Search,
                         contentDescription = "Search",
                         tint = NeonBlue
                     )
@@ -174,7 +145,7 @@ fun SearchTabView(
                         searchInput = ""
                         viewModel.performSearch("")
                     }) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White.copy(alpha = 0.5f))
+                        Icon(AppIcons.Close, contentDescription = "Clear", tint = Color.White.copy(alpha = 0.5f))
                     }
                 }
             },
@@ -226,7 +197,7 @@ fun SearchTabView(
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Info,
+                            imageVector = AppIcons.Info,
                             contentDescription = "Scope Info",
                             tint = NeonBlue,
                             modifier = Modifier.size(16.dp)
@@ -241,7 +212,7 @@ fun SearchTabView(
                         if (activeScope.name != "Entire Site") {
                             Spacer(modifier = Modifier.width(8.dp))
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = AppIcons.Close,
                                 contentDescription = "Clear Scope",
                                 tint = Color.White.copy(alpha = 0.6f),
                                 modifier = Modifier
@@ -264,7 +235,7 @@ fun SearchTabView(
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Refresh,
+                                imageVector = AppIcons.Refresh,
                                 contentDescription = "Refresh Search",
                                 tint = NeonBlue,
                                 modifier = Modifier.size(20.dp)
@@ -288,7 +259,7 @@ fun SearchTabView(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Search,
+                            imageVector = AppIcons.Search,
                             contentDescription = "Search Idle",
                             tint = Color.White.copy(alpha = 0.15f),
                             modifier = Modifier.size(80.dp)
@@ -422,7 +393,7 @@ fun SearchTabView(
                                                         modifier = Modifier.size(24.dp)
                                                     ) {
                                                         Icon(
-                                                            imageVector = if (viewModel.searchPhotosSortOrder == "Ascending") Icons.Default.SortByAlpha else Icons.Default.Sort,
+                                                            imageVector = if (viewModel.searchPhotosSortOrder == "Ascending") AppIcons.SortByAlpha else AppIcons.Sort,
                                                             contentDescription = "Toggle Sort Order",
                                                             tint = if (isSearchPhotosLoading) Color.Gray else NeonBlue,
                                                             modifier = Modifier.size(18.dp)
@@ -458,7 +429,7 @@ fun SearchTabView(
                                                                 
                                                                 if (image.format?.equals("Video", ignoreCase = true) == true || image.videoUrl != null) {
                                                                     Icon(
-                                                                        imageVector = Icons.Default.PlayArrow,
+                                                                        imageVector = AppIcons.PlayArrow,
                                                                         contentDescription = "Video",
                                                                         tint = Color.White,
                                                                         modifier = Modifier
@@ -522,7 +493,7 @@ fun SearchTabView(
                                                         modifier = Modifier.size(24.dp)
                                                     ) {
                                                         Icon(
-                                                            imageVector = if (viewModel.searchGallerySortOrder == "Ascending") Icons.Default.SortByAlpha else Icons.Default.Sort,
+                                                            imageVector = if (viewModel.searchGallerySortOrder == "Ascending") AppIcons.SortByAlpha else AppIcons.Sort,
                                                             contentDescription = "Toggle Sort Order",
                                                             tint = NeonBlue,
                                                             modifier = Modifier.size(18.dp)
@@ -645,7 +616,7 @@ fun SearchTabView(
                                         contentAlignment = Alignment.CenterEnd
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Delete,
+                                            imageVector = AppIcons.Delete,
                                             contentDescription = "Delete",
                                             tint = Color.Red
                                         )
@@ -666,7 +637,7 @@ fun SearchTabView(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.History,
+                                            imageVector = AppIcons.History,
                                             contentDescription = "History",
                                             tint = Color.White.copy(alpha = 0.5f),
                                             modifier = Modifier.size(18.dp)

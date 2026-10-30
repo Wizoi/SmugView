@@ -1,5 +1,6 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,8 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,7 +34,7 @@ import com.smugview.app.ui.viewmodel.SmugViewModel
 @Composable
 internal fun NetworkSettingsAction(onClick: () -> Unit) {
     IconButton(onClick = onClick) {
-        Icon(Icons.Default.Settings, contentDescription = OfflineMessages.SETTINGS_ICON, tint = NeonBlue)
+        Icon(AppIcons.Settings, contentDescription = OfflineMessages.SETTINGS_ICON, tint = NeonBlue)
     }
 }
 

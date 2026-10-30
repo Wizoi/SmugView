@@ -1,5 +1,6 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -9,7 +10,6 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -33,39 +33,10 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.PhotoAlbum
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
 import com.smugview.app.data.api.isVideo
 import androidx.compose.animation.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
 import com.smugview.app.ui.component.ProfilePreviewCard
 import com.smugview.app.ui.component.ProfileAvatar
 import com.smugview.app.ui.component.AddToCollectionsDialog
@@ -240,7 +211,7 @@ fun CollectionsTabView(
                         selectedCollectionForShortcuts = null
                     }
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    Icon(AppIcons.ArrowBackMirrored, contentDescription = "Back", tint = Color.White)
                 }
 
                 if (isRenaming) {
@@ -268,10 +239,10 @@ fun CollectionsTabView(
                             }
                         }
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = "Save Name", tint = NeonBlue)
+                        Icon(AppIcons.Check, contentDescription = "Save Name", tint = NeonBlue)
                     }
                     IconButton(onClick = { isRenaming = false }) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.White)
+                        Icon(AppIcons.Close, contentDescription = "Cancel", tint = Color.White)
                     }
                 } else {
                     Text(
@@ -293,14 +264,14 @@ fun CollectionsTabView(
                             isRenaming = true
                         }
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Rename", tint = Color.White.copy(alpha = 0.7f))
+                        Icon(AppIcons.Edit, contentDescription = "Rename", tint = Color.White.copy(alpha = 0.7f))
                     }
                     
                     // Delete Button
                     IconButton(
                         onClick = { requestDelete(col.copy(name = activeColName)) }
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete Collection", tint = Color.Red.copy(alpha = 0.8f))
+                        Icon(AppIcons.Delete, contentDescription = "Delete Collection", tint = Color.Red.copy(alpha = 0.8f))
                     }
                 }
             }
@@ -364,7 +335,7 @@ fun CollectionsTabView(
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Folder,
+                                        imageVector = AppIcons.Folder,
                                         contentDescription = "Folder",
                                         tint = NeonBlue.copy(alpha = 0.8f),
                                         modifier = Modifier.size(20.dp)
@@ -379,7 +350,7 @@ fun CollectionsTabView(
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Close,
+                                        imageVector = AppIcons.Close,
                                         contentDescription = "Unsave",
                                         tint = Color.White.copy(alpha = 0.5f),
                                         modifier = Modifier.size(16.dp)
@@ -421,7 +392,7 @@ fun CollectionsTabView(
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.PhotoAlbum,
+                                        imageVector = AppIcons.PhotoAlbum,
                                         contentDescription = "Gallery",
                                         tint = NeonBlue.copy(alpha = 0.8f),
                                         modifier = Modifier.size(20.dp)
@@ -436,7 +407,7 @@ fun CollectionsTabView(
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Close,
+                                        imageVector = AppIcons.Close,
                                         contentDescription = "Unsave",
                                         tint = Color.White.copy(alpha = 0.5f),
                                         modifier = Modifier.size(16.dp)
@@ -511,7 +482,7 @@ fun CollectionsTabView(
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Close,
+                                        imageVector = AppIcons.Close,
                                         contentDescription = "Unsave",
                                         tint = Color.White.copy(alpha = 0.5f),
                                         modifier = Modifier.size(16.dp)
@@ -556,7 +527,7 @@ fun CollectionsTabView(
                                             modifier = Modifier.weight(1f)
                                         ) {
                                             Icon(
-                                                imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                                                imageVector = if (isExpanded) AppIcons.KeyboardArrowDown else AppIcons.KeyboardArrowRight,
                                                 contentDescription = if (isExpanded) "Collapse" else "Expand",
                                                 tint = Color.White.copy(alpha = 0.6f),
                                                 modifier = Modifier.size(20.dp)
@@ -619,7 +590,7 @@ fun CollectionsTabView(
                                                                 contentAlignment = Alignment.Center
                                                             ) {
                                                                 Icon(
-                                                                    imageVector = Icons.Default.Photo,
+                                                                    imageVector = AppIcons.Photo,
                                                                     contentDescription = null,
                                                                     tint = Color.White.copy(alpha = 0.3f),
                                                                     modifier = Modifier.size(16.dp)
@@ -669,7 +640,7 @@ fun CollectionsTabView(
                                                             },
                                                         ) {
                                                             Icon(
-                                                                imageVector = Icons.Default.Share,
+                                                                imageVector = AppIcons.Share,
                                                                 contentDescription = "Share",
                                                                 tint = Color.White.copy(alpha = 0.7f),
                                                                 modifier = Modifier.size(14.dp)
@@ -696,7 +667,7 @@ fun CollectionsTabView(
                                                             },
                                                         ) {
                                                             Icon(
-                                                                imageVector = Icons.Default.Download,
+                                                                imageVector = AppIcons.Download,
                                                                 contentDescription = "Download",
                                                                 tint = Color.White.copy(alpha = 0.7f),
                                                                 modifier = Modifier.size(14.dp)
@@ -706,7 +677,7 @@ fun CollectionsTabView(
                                                             onClick = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), img.itemKey, img.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${img.itemKey}", dropsPhotoRow = false, dropsBookmark = true) }) { viewModel.removeBookmark(col.id, "Image", img.itemKey) } },
                                                         ) {
                                                             Icon(
-                                                                imageVector = Icons.Default.Close,
+                                                                imageVector = AppIcons.Close,
                                                                 contentDescription = "Unsave",
                                                                 tint = Color.White.copy(alpha = 0.5f),
                                                                 modifier = Modifier.size(14.dp)
@@ -826,7 +797,7 @@ fun CollectionsTabView(
                                         },
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Filled.Cast,
+                                            imageVector = AppIcons.Cast,
                                             contentDescription = "Cast Collection",
                                             tint = if (isCasting) NeonBlue else Color.White.copy(alpha = 0.5f),
                                             modifier = Modifier.size(16.dp)
@@ -837,7 +808,7 @@ fun CollectionsTabView(
                                         onClick = { requestDelete(col) },
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Close,
+                                            imageVector = AppIcons.Close,
                                             contentDescription = "Delete Collection",
                                             tint = Color.White.copy(alpha = 0.5f),
                                             modifier = Modifier.size(16.dp)
@@ -852,7 +823,7 @@ fun CollectionsTabView(
                                     horizontalAlignment = Alignment.Start
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.PhotoAlbum,
+                                        imageVector = AppIcons.PhotoAlbum,
                                         contentDescription = null,
                                         tint = glowColor,
                                         modifier = Modifier.size(32.dp)

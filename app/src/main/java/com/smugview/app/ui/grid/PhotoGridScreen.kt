@@ -1,5 +1,6 @@
 package com.smugview.app.ui.grid
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,15 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -636,7 +628,7 @@ fun PhotoGridScreen(
                     modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        imageVector = AppIcons.ArrowBackMirrored,
                         contentDescription = "Back",
                         tint = Color.White
                     )
@@ -663,7 +655,7 @@ fun PhotoGridScreen(
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Search,
+                            imageVector = AppIcons.Search,
                             contentDescription = "Search in Album",
                             tint = Color.White
                         )
@@ -677,7 +669,7 @@ fun PhotoGridScreen(
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.BookmarkBorder,
+                            imageVector = AppIcons.BookmarkBorder,
                             contentDescription = "Bookmark Album",
                             tint = Color.White
                         )
@@ -689,7 +681,7 @@ fun PhotoGridScreen(
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Share,
+                            imageVector = AppIcons.Share,
                             contentDescription = "Share Album",
                             tint = Color.White
                         )
@@ -801,7 +793,7 @@ fun PhotoGridScreen(
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FilterList,
+                            imageVector = AppIcons.FilterList,
                             contentDescription = "Filters",
                             tint = if (filterType != com.smugview.app.ui.viewmodel.GalleryFilterType.ALL || sortBy != "date_desc") NeonBlue else Color.White
                         )
@@ -910,7 +902,7 @@ fun PhotoGridItem(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.PlayArrow,
+                    imageVector = AppIcons.PlayArrow,
                     contentDescription = "Video",
                     tint = Color.White,
                     modifier = Modifier.size(16.dp)

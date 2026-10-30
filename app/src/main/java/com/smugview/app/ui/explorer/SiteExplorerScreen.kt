@@ -1,5 +1,6 @@
 package com.smugview.app.ui.explorer
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,10 +10,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -131,7 +128,7 @@ fun SiteExplorerScreen(
                 value = nicknameQuery,
                 onValueChange = { nicknameQuery = it },
                 placeholder = { Text("e.g. smugmug", color = Color.White.copy(alpha = 0.4f)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = NeonBlue) },
+                leadingIcon = { Icon(AppIcons.Search, contentDescription = "Search", tint = NeonBlue) },
                 singleLine = true,
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -161,7 +158,7 @@ fun SiteExplorerScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
-                            imageVector = Icons.Default.History,
+                            imageVector = AppIcons.History,
                             contentDescription = "History",
                             tint = Color.White.copy(alpha = 0.4f),
                             modifier = Modifier.size(16.dp)

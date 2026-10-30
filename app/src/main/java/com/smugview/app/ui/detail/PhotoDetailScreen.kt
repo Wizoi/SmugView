@@ -1,5 +1,6 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.ui.icons.AppIcons
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -21,35 +22,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Forward
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.Add
 import kotlinx.coroutines.flow.first
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.AspectRatio
-import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Lens
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Iso
-import androidx.compose.material.icons.filled.ZoomIn
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Event
 import androidx.compose.material3.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -348,7 +321,7 @@ fun PhotoDetailScreen(
                             .clip(CircleShape)
                             .background(SurfaceGlass)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(AppIcons.ArrowBackMirrored, contentDescription = "Back", tint = Color.White)
                     }
 
                     val cState = activeDevice?.state ?: com.smugview.app.data.cast.ConnectionState.DISCONNECTED
@@ -619,7 +592,7 @@ fun CameraLogo(cameraName: String) {
         )
     } else {
         Icon(
-            imageVector = Icons.Default.CameraAlt,
+            imageVector = AppIcons.CameraAlt,
             contentDescription = "Camera",
             tint = Color.White.copy(alpha = 0.7f),
             modifier = Modifier.size(24.dp)
@@ -911,7 +884,7 @@ fun VideoPlayerView(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FastRewind,
+                            imageVector = AppIcons.FastRewind,
                             contentDescription = "-15s",
                             tint = Color.White,
                             modifier = Modifier.size(36.dp)
@@ -931,7 +904,7 @@ fun VideoPlayerView(
                         }
                     ) {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            imageVector = if (isPlaying) AppIcons.Pause else AppIcons.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play",
                             tint = Color.White,
                             modifier = Modifier.size(48.dp)
@@ -947,7 +920,7 @@ fun VideoPlayerView(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FastForward,
+                            imageVector = AppIcons.FastForward,
                             contentDescription = "+15s",
                             tint = Color.White,
                             modifier = Modifier.size(36.dp)

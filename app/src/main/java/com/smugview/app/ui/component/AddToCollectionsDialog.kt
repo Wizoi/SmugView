@@ -1,15 +1,12 @@
 package com.smugview.app.ui.component
 
+import com.smugview.app.ui.icons.AppIcons
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -165,7 +162,7 @@ fun AddToCollectionsDialog(
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Folder,
+                                            imageVector = AppIcons.Folder,
                                             contentDescription = "Collection",
                                             tint = NeonBlue.copy(alpha = 0.8f),
                                             modifier = Modifier.size(20.dp)
@@ -234,7 +231,7 @@ fun AddToCollectionsDialog(
                             .background(NeonBlue, RoundedCornerShape(8.dp))
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Add,
+                            imageVector = AppIcons.Add,
                             contentDescription = "Create",
                             tint = Color.Black
                         )

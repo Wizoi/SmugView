@@ -1,5 +1,6 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.ui.icons.AppIcons
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -14,9 +15,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -137,7 +135,7 @@ fun SearchPhotoDetailScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBackClick, modifier = Modifier.clip(CircleShape).background(SurfaceGlass)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    Icon(AppIcons.ArrowBackMirrored, contentDescription = "Back", tint = Color.White)
                 }
                 if (currentPhoto != null) {
                     Button(
@@ -181,7 +179,7 @@ fun SearchPhotoDetailScreen(
                         if (isResolvingAlbum) {
                             CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                         } else {
-                            Icon(Icons.Default.FolderOpen, "Jump to Gallery", tint = Color.White, modifier = Modifier.size(18.dp))
+                            Icon(AppIcons.FolderOpen, "Jump to Gallery", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Jump to Gallery", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)

@@ -1,5 +1,6 @@
 package com.smugview.app.ui.component
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,10 +10,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -109,7 +106,7 @@ fun ProfilePreviewCard(
                         ) {
                             Text("Browse", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Icon(
-                                imageVector = Icons.Default.ChevronRight,
+                                imageVector = AppIcons.ChevronRight,
                                 contentDescription = "Browse",
                                 modifier = Modifier.size(14.dp)
                             )
@@ -186,7 +183,7 @@ fun ProfilePreviewCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
-                            imageVector = Icons.Default.ChevronRight,
+                            imageVector = AppIcons.ChevronRight,
                             contentDescription = "Enter",
                             tint = Color.White
                         )
