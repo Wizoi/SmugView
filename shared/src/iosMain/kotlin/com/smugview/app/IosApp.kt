@@ -29,7 +29,6 @@ import com.smugview.app.data.cast.CastManager
 import com.smugview.app.data.cast.WebCompanionFailure
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.Migrations
-import com.smugview.app.data.offline.InMemoryOfflineSettings
 import com.smugview.app.data.offline.NetworkClass
 import com.smugview.app.data.offline.NetworkKind
 import com.smugview.app.data.offline.OfflineCollections
@@ -37,13 +36,14 @@ import com.smugview.app.data.offline.OfflineReader
 import com.smugview.app.data.offline.OfflineScheduling
 import com.smugview.app.data.offline.OfflineStore
 import com.smugview.app.data.offline.PassResult
-import com.smugview.app.data.repository.InMemorySyncStateStore
 import com.smugview.app.data.repository.SmugMugRepository
-import com.smugview.app.data.security.PasswordStore
 import com.smugview.app.diag.SyncReporter
+import com.smugview.app.util.UserDefaultsStore
+import com.smugview.app.data.security.KeychainPasswordStore
+import com.smugview.app.data.repository.KeyValueSyncStateStore
+import com.smugview.app.data.offline.KeyValueOfflineSettings
 import com.smugview.app.ui.theme.SmugViewTheme
 import com.smugview.app.ui.viewmodel.SmugViewModel
-import com.smugview.app.util.KeyValueStore
 import com.smugview.app.util.Toaster
 import com.smugview.app.util.ioDispatcher
 import com.smugview.shared.api.platformEngine
@@ -60,7 +60,6 @@ import platform.Foundation.NSBundle
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
-import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
@@ -148,15 +147,15 @@ private object IosRoot {
     }
 
     fun viewModel(): SmugViewModel {
-        val passwordStore = MemoryPasswordStore()
-        val settings = InMemoryOfflineSettings()
+        val passwordStore = KeychainPasswordStore()
+        val settings = KeyValueOfflineSettings(UserDefaultsStore("smugview_offline_settings"))
         val store = OfflineStore(database, documents)
         val repository = SmugMugRepository(
             KtorSmugMugApi(ApiHttp(HttpClient(platformEngine()))),
             database.collectionDao(),
             passwordStore,
             SyncReporter.NOOP,
-            InMemorySyncStateStore()
+            KeyValueSyncStateStore(UserDefaultsStore("smugview_sync_state"))
         )
         return SmugViewModel(
             apiKey = apiKey,
@@ -172,38 +171,6 @@ private object IosRoot {
             defaultDispatcher = Dispatchers.Default
         )
     }
-}
-
-/** [KeyValueStore] over one `UserDefaults` suite. */
-private class UserDefaultsStore(name: String) : KeyValueStore {
-    private val defaults = NSUserDefaults(suiteName = name)
-    override fun getString(key: String, default: String?): String? = defaults.stringForKey(key) ?: default
-    override fun putString(key: String, value: String) = defaults.setObject(value, forKey = key)
-    override fun getLong(key: String, default: Long): Long = if (defaults.objectForKey(key) == null) default else defaults.integerForKey(key)
-    override fun putLong(key: String, value: Long) = defaults.setInteger(value, forKey = key)
-    override fun remove(key: String) = defaults.removeObjectForKey(key)
-}
-
-/** Stage 3 replaces this with the Keychain. Until then passwords last for the session only, and the screens say so. */
-private class MemoryPasswordStore : PasswordStore {
-    private val map = HashMap<String, String>()
-    private val keys = MutableStateFlow<Set<String>>(emptySet())
-    private val count = MutableStateFlow(0L)
-    override val unlockedKeys: StateFlow<Set<String>> = keys
-    override val revision: StateFlow<Long> = count
-    override val keptOnlyThisSession: StateFlow<Boolean> = MutableStateFlow(true)
-    override fun getPassword(key: String?): String? = key?.let { map[it] }
-    override fun savePassword(key: String, value: String) {
-        map[key] = value
-        keys.value = map.keys.toSet()
-        count.value = count.value + 1
-    }
-    override fun remove(key: String) {
-        map.remove(key)
-        keys.value = map.keys.toSet()
-        count.value = count.value + 1
-    }
-    override fun all(): Map<String, String> = map.toMap()
 }
 
 /** Stage 3 registers a `BGAppRefreshTask`; until then saved photos are fetched only when the app asks directly. */
