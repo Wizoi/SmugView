@@ -89,6 +89,11 @@ jobs:
           kb=$(du -sk spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework | cut -f1)
           bin=$(find spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework -type f -name Shared -exec du -k {} + | cut -f1 | head -1)
           echo "::notice title=iOS release link (simulator arm64)::link took $((end - start)) s (warm Gradle, cold K/N link), Shared.framework is ${kb} KB, the binary ${bin} KB"
+      - name: Put the first errors of the release link in the annotations
+        if: always()
+        run: |
+          [ -f ios-link.log ] && bash .github/scripts/annotate-log.sh ios-link.log release-link
+          exit 0
       - name: Diagnose the Gradle cache
         if: always()
         run: |
