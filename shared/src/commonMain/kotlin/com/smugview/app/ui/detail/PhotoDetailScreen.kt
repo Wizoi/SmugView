@@ -656,7 +656,7 @@ fun sharePhoto(
 }
 
 /** What a failed share says (design 3.5): a status from SmugMug is never "you went offline" (CLAUDE.md, offline means no answer). */
-internal fun shareProblem(e: Throwable): com.smugview.app.ui.text.Problem {
+fun shareProblem(e: Throwable): com.smugview.app.ui.text.Problem {
     val photo = com.smugview.app.ui.text.Subject.Photo
     return when {
         e is com.smugview.app.share.HttpFailure -> when (e.code) {

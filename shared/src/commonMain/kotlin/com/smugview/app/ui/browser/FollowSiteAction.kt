@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 
 /** The Hub top bar bell: follow this site for new-gallery notifications, asking for the notification permission first when Android needs it. */
 @Composable
-internal fun FollowSiteAction(follow: SiteFollow, nickname: String) {
+fun FollowSiteAction(follow: SiteFollow, nickname: String) {
     val scope = rememberCoroutineScope()
     val following by remember(nickname) { follow.isFollowing(nickname) }.collectAsState(initial = false)
 

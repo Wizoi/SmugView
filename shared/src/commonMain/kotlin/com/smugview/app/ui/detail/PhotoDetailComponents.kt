@@ -61,7 +61,7 @@ import kotlinx.coroutines.withContext
  */
 
 /** Zoom limit used until the photo's real pixel size is known. */
-internal const val UNKNOWN_SIZE_MAX_ZOOM = 10f
+const val UNKNOWN_SIZE_MAX_ZOOM = 10f
 
 /** Longest side we ask the decoder for: past this a bitmap may not upload to the GPU (texture limit), so deeper zoom upscales. */
 internal const val MAX_DECODE_PX = 8192
@@ -72,7 +72,7 @@ internal fun fittedSizePx(aspect: Float, boxWidth: Int, boxHeight: Int): Pair<Fl
     else boxHeight * aspect to boxHeight.toFloat()
 
 /** The pinch limit: one image pixel per screen pixel, and no sooner. */
-internal fun maxZoomScale(originalWidth: Int?, originalHeight: Int?, boxWidth: Int, boxHeight: Int): Float {
+fun maxZoomScale(originalWidth: Int?, originalHeight: Int?, boxWidth: Int, boxHeight: Int): Float {
     if (originalWidth == null || originalHeight == null || originalHeight <= 0 || boxWidth <= 0 || boxHeight <= 0) {
         return UNKNOWN_SIZE_MAX_ZOOM
     }
@@ -546,7 +546,7 @@ fun rememberCameraDetails(imageKey: String, viewModel: SmugViewModel): String {
  * 5-9 (Q2): a saved copy on this phone wins over everything ([localUri]): it is the original, needs no network
  * and no size lookup.
  */
-internal fun zoomFallbackUrl(thumbnailUrl: String?, archivedUri: String?, localUri: String? = null): String? =
+fun zoomFallbackUrl(thumbnailUrl: String?, archivedUri: String?, localUri: String? = null): String? =
     localUri
         ?: thumbnailUrl?.replace("/Th/", "/X3/")?.replace("/th/", "/x3/")
             ?.replace("-Th.", "-X3.")?.replace("-th.", "-x3.")
@@ -556,7 +556,7 @@ internal fun zoomFallbackUrl(thumbnailUrl: String?, archivedUri: String?, localU
  * The picture a still opens with (5-9, Q2): the saved copy when there is one, otherwise the large rendition derived
  * from the thumbnail, otherwise the original.
  */
-internal fun viewerImageModel(thumbnailUrl: String?, archivedUri: String?, localUri: String?): String? =
+fun viewerImageModel(thumbnailUrl: String?, archivedUri: String?, localUri: String?): String? =
     localUri
         ?: thumbnailUrl?.replace("/Th/", "/L/")?.replace("/th/", "/l/")?.replace("-Th.", "-L.")?.replace("-th.", "-l.")
         ?: archivedUri

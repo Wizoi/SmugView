@@ -43,7 +43,7 @@ internal fun NetworkSettingsAction(onClick: () -> Unit) {
  * [waiting] feeds the size line under "Wi-Fi or mobile data", so the cost is read before it is chosen.
  */
 @Composable
-internal fun NetworkSettingDialog(
+fun NetworkSettingDialog(
     rule: OfflineNetworkRule,
     waiting: OfflineStore.GalleryWaiting,
     onChoose: (OfflineNetworkRule) -> Unit,

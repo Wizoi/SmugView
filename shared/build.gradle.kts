@@ -49,11 +49,11 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.components.resources)
             api("androidx.paging:paging-compose:3.5.3")
-            api("org.jetbrains.androidx.navigation:navigation-compose:2.10.0") // the navigation graph (SmugViewNavigation)
+            api("org.jetbrains.androidx.navigation:navigation-compose:2.10.0-beta01") // the navigation graph (SmugViewNavigation)
             api(compose.material3) // MaterialTheme and the components the screens use
             api(compose.foundation)
             implementation(compose.animation) // animateColorAsState (the viewer's background)
-            api("io.coil-kt.coil3:coil-compose:3.6.3") // AsyncImage and ImageRequest in the screens
+            api("io.coil-kt.coil3:coil-compose:3.4.0") // AsyncImage and ImageRequest in the screens
             api(compose.ui) // ImageVector (the icons) and the other graphics types the shared UI state uses
             // The multiplatform ViewModel and SavedStateHandle (the base of SmugViewModel).
             api("androidx.lifecycle:lifecycle-viewmodel:2.10.0")
@@ -83,7 +83,7 @@ kotlin {
         }
         iosMain.dependencies {
             implementation("io.ktor:ktor-client-darwin:3.0.3")
-            implementation("io.coil-kt.coil3:coil-network-ktor3:3.6.3") // fetches images over the Darwin engine
+            implementation("io.coil-kt.coil3:coil-network-ktor3:3.4.0") // fetches images over the Darwin engine
         }
     }
 }
