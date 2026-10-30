@@ -1,3 +1,3 @@
-package com.smugview.shared.db
+package com.smugview.app.data.db
 
 actual fun nowMillis(): Long = System.currentTimeMillis()

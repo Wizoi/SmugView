@@ -17,7 +17,8 @@
           {
             "fieldPath": "parentNodeId",
             "columnName": "parentNodeId",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "type",
@@ -34,17 +35,20 @@
           {
             "fieldPath": "description",
             "columnName": "description",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "access",
             "columnName": "access",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "passwordHint",
             "columnName": "passwordHint",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "uri",
@@ -55,22 +59,26 @@
           {
             "fieldPath": "childNodesUri",
             "columnName": "childNodesUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "albumUri",
             "columnName": "albumUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "highlightImageUrl",
             "columnName": "highlightImageUrl",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "childCount",
             "columnName": "childCount",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "sortIndex",
@@ -81,12 +89,14 @@
           {
             "fieldPath": "webUri",
             "columnName": "webUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "dateModified",
             "columnName": "dateModified",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "nickname",
@@ -121,7 +131,8 @@
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_cached_nodes_nickname` ON `${TABLE_NAME}` (`nickname`)"
           }
-        ]
+        ],
+        "foreignKeys": []
       },
       {
         "tableName": "offline_collections",
@@ -157,7 +168,9 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "collection_photos",
@@ -184,32 +197,38 @@
           {
             "fieldPath": "title",
             "columnName": "title",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "thumbnailUrl",
             "columnName": "thumbnailUrl",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "archivedUri",
             "columnName": "archivedUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "localFilePath",
             "columnName": "localFilePath",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "dateTaken",
             "columnName": "dateTaken",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "keywords",
             "columnName": "keywords",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "isDownloaded",
@@ -299,12 +318,14 @@
           {
             "fieldPath": "thumbnailUrl",
             "columnName": "thumbnailUrl",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "extraData",
             "columnName": "extraData",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -368,7 +389,9 @@
             "query",
             "nickname"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "search_results",
@@ -407,87 +430,104 @@
           {
             "fieldPath": "description",
             "columnName": "description",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "thumbnailUrl",
             "columnName": "thumbnailUrl",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "access",
             "columnName": "access",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "passwordHint",
             "columnName": "passwordHint",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "uri",
             "columnName": "uri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "childNodesUri",
             "columnName": "childNodesUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "albumUri",
             "columnName": "albumUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "webUri",
             "columnName": "webUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "archivedUri",
             "columnName": "archivedUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "date",
             "columnName": "date",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "format",
             "columnName": "format",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "videoUrl",
             "columnName": "videoUrl",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "originalWidth",
             "columnName": "originalWidth",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "originalHeight",
             "columnName": "originalHeight",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "fileName",
             "columnName": "fileName",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "originalSize",
             "columnName": "originalSize",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "keywords",
             "columnName": "keywords",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "sortIndex",
@@ -504,7 +544,9 @@
             "itemKey",
             "itemType"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "viewed_gallery_updates",
@@ -528,7 +570,9 @@
           "columnNames": [
             "nodeId"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "cached_albums",
@@ -555,12 +599,14 @@
           {
             "fieldPath": "securityType",
             "columnName": "securityType",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "passwordHint",
             "columnName": "passwordHint",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "uri",
@@ -571,32 +617,38 @@
           {
             "fieldPath": "webUri",
             "columnName": "webUri",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "urlPath",
             "columnName": "urlPath",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "imageCount",
             "columnName": "imageCount",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "dateModified",
             "columnName": "dateModified",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "galleryStyle",
             "columnName": "galleryStyle",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "highlightImageUrl",
             "columnName": "highlightImageUrl",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "sortIndex",
@@ -614,12 +666,14 @@
           {
             "fieldPath": "parentNodeId",
             "columnName": "parentNodeId",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "imagesLastUpdated",
             "columnName": "imagesLastUpdated",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -638,7 +692,8 @@
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_cached_albums_nickname` ON `${TABLE_NAME}` (`nickname`)"
           }
-        ]
+        ],
+        "foreignKeys": []
       },
       {
         "tableName": "offline_files",
@@ -659,7 +714,8 @@
           {
             "fieldPath": "albumKey",
             "columnName": "albumKey",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "nickname",
@@ -671,37 +727,44 @@
           {
             "fieldPath": "sourceUrl",
             "columnName": "sourceUrl",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "expectedBytes",
             "columnName": "expectedBytes",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "md5",
             "columnName": "md5",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "title",
             "columnName": "title",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "thumbnailUrl",
             "columnName": "thumbnailUrl",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "format",
             "columnName": "format",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "dateTaken",
             "columnName": "dateTaken",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "state",
@@ -712,7 +775,8 @@
           {
             "fieldPath": "failure",
             "columnName": "failure",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "retryable",
@@ -731,12 +795,14 @@
           {
             "fieldPath": "nextAttemptAt",
             "columnName": "nextAttemptAt",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "httpCode",
             "columnName": "httpCode",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "wifiOnly",
@@ -748,22 +814,26 @@
           {
             "fieldPath": "claim",
             "columnName": "claim",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "relPath",
             "columnName": "relPath",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "bytes",
             "columnName": "bytes",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "legacyPath",
             "columnName": "legacyPath",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "createdAt",
@@ -803,7 +873,8 @@
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_offline_files_state` ON `${TABLE_NAME}` (`state`)"
           }
-        ]
+        ],
+        "foreignKeys": []
       },
       {
         "tableName": "offline_galleries",
@@ -831,7 +902,8 @@
           {
             "fieldPath": "title",
             "columnName": "title",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "state",
@@ -842,7 +914,8 @@
           {
             "fieldPath": "failure",
             "columnName": "failure",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "retryable",
@@ -854,17 +927,20 @@
           {
             "fieldPath": "listedAt",
             "columnName": "listedAt",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "listedIlu",
             "columnName": "listedIlu",
-            "affinity": "TEXT"
+            "affinity": "TEXT",
+            "notNull": false
           },
           {
             "fieldPath": "photoCount",
             "columnName": "photoCount",
-            "affinity": "INTEGER"
+            "affinity": "INTEGER",
+            "notNull": false
           },
           {
             "fieldPath": "wifiOnly",
@@ -998,7 +1074,9 @@
           "columnNames": [
             "nickname"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       },
       {
         "tableName": "notify_known_albums",
@@ -1023,9 +1101,12 @@
             "nickname",
             "nodeId"
           ]
-        }
+        },
+        "indices": [],
+        "foreignKeys": []
       }
     ],
+    "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
       "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'be14f024797575b6312b5ac9eea79606')"

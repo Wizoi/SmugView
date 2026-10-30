@@ -9,11 +9,13 @@ import java.io.File
  * exported schema JSON and a registered migration; these fail loudly when one is forgotten.
  */
 class SchemaGuardTest {
-    private val schemas = File("schemas/com.smugview.app.data.db.AppDatabase")
+    // The database, its migrations and the exported schemas live in the shared module (Stage 1e); the app keeps the registration (AppModule).
+    private val schemas = File("../shared/schemas/com.smugview.app.data.db.AppDatabase")
     private val main = File("src/main/java/com/smugview/app")
+    private val sharedDb = File("../shared/src/commonMain/kotlin/com/smugview/app/data/db")
 
     private fun declaredVersion(): Int {
-        val src = File(main, "data/db/AppDatabase.kt").readText()
+        val src = File(sharedDb, "AppDatabase.kt").readText()
         return Regex("""version\s*=\s*(\d+)""").find(src)!!.groupValues[1].toInt()
     }
 
@@ -25,7 +27,7 @@ class SchemaGuardTest {
 
     @Test
     fun everyMigrationDefinedInAppDatabase_isRegisteredInAppModule() {
-        val db = File(main, "data/db/AppDatabase.kt").readText()
+        val db = File(sharedDb, "Migrations.kt").readText()
         val module = File(main, "di/AppModule.kt").readText()
         val defined = Regex("""val (MIGRATION_\d+_\d+)\s*=""").findAll(db).map { it.groupValues[1] }.toList()
         assertTrue("no migrations found, the regex is stale", defined.isNotEmpty())
@@ -36,7 +38,7 @@ class SchemaGuardTest {
 
     @Test
     fun migrationChain_reachesCurrentVersion() {
-        val db = File(main, "data/db/AppDatabase.kt").readText()
+        val db = File(sharedDb, "Migrations.kt").readText()
         val ends = Regex("""MIGRATION_\d+_(\d+)\s*=""").findAll(db).map { it.groupValues[1].toInt() }.toList()
         assertTrue("no migration ends at version ${declaredVersion()}", declaredVersion() in ends)
     }

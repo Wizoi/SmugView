@@ -1,4 +1,4 @@
-package com.smugview.shared.db
+package com.smugview.app.data.db
 
 import platform.Foundation.NSDate
 import platform.Foundation.timeIntervalSince1970

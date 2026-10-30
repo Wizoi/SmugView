@@ -1,38 +1,16 @@
 package com.smugview.app.data.db
 
-import androidx.room.Database
-import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 
-@Database(
-    entities = [
-        CachedNode::class,
-        OfflineCollection::class,
-        CollectionPhoto::class,
-        CollectionBookmark::class,
-        SearchHistory::class,
-        SearchResult::class,
-        ViewedGalleryUpdate::class,
-        CachedAlbum::class,
-        OfflineFile::class,
-        OfflineGallery::class,
-        OfflineGalleryItem::class,
-        NotifySite::class,
-        NotifyKnownAlbum::class
-    ],
-    version = 18,
-    // Schemas are exported to app/schemas (see the KSP room.schemaLocation arg in
-    // build.gradle.kts) so migrations can be validated with MigrationTestHelper.
-    exportSchema = true
-)
-abstract class AppDatabase : RoomDatabase() {
-    abstract fun collectionDao(): CollectionDao
-    abstract fun doctorDao(): DoctorDao
-    abstract fun offlineDao(): OfflineDao
-    abstract fun notifyDao(): NotifyDao
+/**
+ * iOS spike: the app's six migrations (12 to 18), generated from `app/.../data/db/AppDatabase.kt` by a mechanical transform (the SQL is
+ * untouched; `SupportSQLiteDatabase.execSQL` became `SQLiteConnection.execSQL`, `System.currentTimeMillis()` became `nowMillis()`).
+ * They are pure SQL, no cursors.
+ */
+object Migrations {
 
-    companion object {
         /**
          * v12 -> v13: Site-scoping for search history and cached nodes.
          *
@@ -47,20 +25,20 @@ abstract class AppDatabase : RoomDatabase() {
          *   - viewed_gallery_updates
          */
         val MIGRATION_12_13 = object : Migration(12, 13) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(connection: SQLiteConnection) {
                 // 1. Add nickname column to cached_nodes (safe ALTER TABLE, no PK change needed)
-                database.execSQL(
+                connection.execSQL(
                     "ALTER TABLE cached_nodes ADD COLUMN nickname TEXT NOT NULL DEFAULT ''"
                 )
 
                 // Create index on nickname column as expected by Room
-                database.execSQL(
+                connection.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_cached_nodes_nickname` ON `cached_nodes` (`nickname`)"
                 )
 
                 // 2. Recreate search_history with composite PK (query + nickname)
                 //    SQLite cannot ALTER a primary key — must DROP and recreate.
-                database.execSQL("""
+                connection.execSQL("""
                     CREATE TABLE IF NOT EXISTS search_history_new (
                         `query` TEXT NOT NULL,
                         `nickname` TEXT NOT NULL DEFAULT '',
@@ -68,11 +46,11 @@ abstract class AppDatabase : RoomDatabase() {
                         PRIMARY KEY (`query`, `nickname`)
                     )
                 """.trimIndent())
-                database.execSQL("DROP TABLE IF EXISTS search_history")
-                database.execSQL("ALTER TABLE search_history_new RENAME TO search_history")
+                connection.execSQL("DROP TABLE IF EXISTS search_history")
+                connection.execSQL("ALTER TABLE search_history_new RENAME TO search_history")
 
                 // 3. Clear search_results — stale cross-site cache, repopulated on next search
-                database.execSQL("DELETE FROM search_results")
+                connection.execSQL("DELETE FROM search_results")
 
                 // offline_collections, collection_photos, collection_bookmarks,
                 // viewed_gallery_updates are NOT touched — they contain user personal data.
@@ -84,8 +62,8 @@ abstract class AppDatabase : RoomDatabase() {
          * synced incrementally instead of re-crawled from the API on every launch.
          */
         val MIGRATION_13_14 = object : Migration(13, 14) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("""
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("""
                     CREATE TABLE IF NOT EXISTS cached_albums (
                         `albumKey` TEXT NOT NULL,
                         `nodeId` TEXT NOT NULL,
@@ -104,7 +82,7 @@ abstract class AppDatabase : RoomDatabase() {
                         PRIMARY KEY(`albumKey`)
                     )
                 """.trimIndent())
-                database.execSQL(
+                connection.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_cached_albums_nickname` ON `cached_albums` (`nickname`)"
                 )
             }
@@ -119,8 +97,8 @@ abstract class AppDatabase : RoomDatabase() {
          * showing stale content until a manual refresh.
          */
         val MIGRATION_14_15 = object : Migration(14, 15) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE cached_albums ADD COLUMN parentNodeId TEXT")
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE cached_albums ADD COLUMN parentNodeId TEXT")
             }
         }
 
@@ -132,10 +110,10 @@ abstract class AppDatabase : RoomDatabase() {
          * rows, search history, saved passwords) is untouched. Good rows stay; listings repair the rest.
          */
         val MIGRATION_15_16 = object : Migration(15, 16) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE cached_albums ADD COLUMN imagesLastUpdated TEXT")
-                db.execSQL("DELETE FROM cached_nodes WHERE parentNodeId = nodeId OR instr(parentNodeId, '!') > 0")
-                db.execSQL("UPDATE cached_albums SET parentNodeId = NULL")
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE cached_albums ADD COLUMN imagesLastUpdated TEXT")
+                connection.execSQL("DELETE FROM cached_nodes WHERE parentNodeId = nodeId OR instr(parentNodeId, '!') > 0")
+                connection.execSQL("UPDATE cached_albums SET parentNodeId = NULL")
             }
         }
 
@@ -153,8 +131,8 @@ abstract class AppDatabase : RoomDatabase() {
          * starts `PENDING` with `legacyPath = 'offline_photos/{key}.jpg'`.
          */
         val MIGRATION_16_17 = object : Migration(16, 17) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
                     "CREATE TABLE IF NOT EXISTS `offline_files` (`fileKey` TEXT NOT NULL, `imageKey` TEXT NOT NULL, " +
                         "`albumKey` TEXT, `nickname` TEXT NOT NULL DEFAULT '', `sourceUrl` TEXT, `expectedBytes` INTEGER, " +
                         "`md5` TEXT, `title` TEXT, `thumbnailUrl` TEXT, `format` TEXT, `dateTaken` TEXT, " +
@@ -163,28 +141,28 @@ abstract class AppDatabase : RoomDatabase() {
                         "`wifiOnly` INTEGER NOT NULL DEFAULT 0, `claim` TEXT, `relPath` TEXT, `bytes` INTEGER, " +
                         "`legacyPath` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`fileKey`))"
                 )
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_files_imageKey` ON `offline_files` (`imageKey`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_files_state` ON `offline_files` (`state`)")
-                db.execSQL(
+                connection.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_files_imageKey` ON `offline_files` (`imageKey`)")
+                connection.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_files_state` ON `offline_files` (`state`)")
+                connection.execSQL(
                     "CREATE TABLE IF NOT EXISTS `offline_galleries` (`collectionId` INTEGER NOT NULL, `albumKey` TEXT NOT NULL, " +
                         "`nickname` TEXT NOT NULL DEFAULT '', `title` TEXT, `state` TEXT NOT NULL, `failure` TEXT, " +
                         "`retryable` INTEGER NOT NULL DEFAULT 0, `listedAt` INTEGER, `listedIlu` TEXT, `photoCount` INTEGER, " +
                         "`wifiOnly` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`collectionId`, `albumKey`), " +
                         "FOREIGN KEY(`collectionId`) REFERENCES `offline_collections`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
                 )
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_galleries_collectionId` ON `offline_galleries` (`collectionId`)")
-                db.execSQL(
+                connection.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_galleries_collectionId` ON `offline_galleries` (`collectionId`)")
+                connection.execSQL(
                     "CREATE TABLE IF NOT EXISTS `offline_gallery_items` (`collectionId` INTEGER NOT NULL, `albumKey` TEXT NOT NULL, " +
                         "`imageKey` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL, " +
                         "PRIMARY KEY(`collectionId`, `albumKey`, `imageKey`), " +
                         "FOREIGN KEY(`collectionId`, `albumKey`) REFERENCES `offline_galleries`(`collectionId`, `albumKey`) " +
                         "ON UPDATE NO ACTION ON DELETE CASCADE )"
                 )
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_gallery_items_imageKey` ON `offline_gallery_items` (`imageKey`)")
+                connection.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_gallery_items_imageKey` ON `offline_gallery_items` (`imageKey`)")
 
-                val now = System.currentTimeMillis()
+                val now = nowMillis()
                 // Photos of the Favorites path: one file row per key, whatever the number of collections.
-                db.execSQL(
+                connection.execSQL(
                     "INSERT OR IGNORE INTO offline_files (fileKey, imageKey, albumKey, nickname, sourceUrl, title, thumbnailUrl, " +
                         "dateTaken, state, retryable, attempts, wifiOnly, legacyPath, createdAt, updatedAt) " +
                         "SELECT cp.imageKey || '/orig', cp.imageKey, MAX(cp.albumKey), MAX(c.siteNickname), " +
@@ -193,7 +171,7 @@ abstract class AppDatabase : RoomDatabase() {
                         "FROM collection_photos cp JOIN offline_collections c ON c.id = cp.collectionId GROUP BY cp.imageKey"
                 )
                 // Image bookmarks (source unknown: resolved later with image/{key}-0). A key already above wins.
-                db.execSQL(
+                connection.execSQL(
                     "INSERT OR IGNORE INTO offline_files (fileKey, imageKey, albumKey, nickname, sourceUrl, title, thumbnailUrl, " +
                         "dateTaken, state, retryable, attempts, wifiOnly, legacyPath, createdAt, updatedAt) " +
                         "SELECT b.itemKey || '/orig', b.itemKey, MAX(b.albumKey), MAX(c.siteNickname), NULL, MAX(b.title), " +
@@ -202,7 +180,7 @@ abstract class AppDatabase : RoomDatabase() {
                         "WHERE b.type = 'Image' GROUP BY b.itemKey"
                 )
                 // Gallery bookmarks: resolved once in Kotlin by step 5-8 (the "finished" flag is in SharedPreferences).
-                db.execSQL(
+                connection.execSQL(
                     "INSERT OR IGNORE INTO offline_galleries (collectionId, albumKey, nickname, title, state, retryable, wifiOnly) " +
                         "SELECT b.collectionId, b.itemKey, c.siteNickname, b.title, 'LEGACY', 0, 1 " +
                         "FROM collection_bookmarks b JOIN offline_collections c ON c.id = b.collectionId WHERE b.type = 'Album'"
@@ -212,10 +190,11 @@ abstract class AppDatabase : RoomDatabase() {
 
         /** v17 -> v18: the two tables behind new-gallery notifications. Additive; nothing existing is touched. */
         val MIGRATION_17_18 = object : Migration(17, 18) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("CREATE TABLE IF NOT EXISTS `notify_sites` (`nickname` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `baselineDone` INTEGER NOT NULL, PRIMARY KEY(`nickname`))")
-                db.execSQL("CREATE TABLE IF NOT EXISTS `notify_known_albums` (`nickname` TEXT NOT NULL, `nodeId` TEXT NOT NULL, PRIMARY KEY(`nickname`, `nodeId`))")
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS `notify_sites` (`nickname` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `baselineDone` INTEGER NOT NULL, PRIMARY KEY(`nickname`))")
+                connection.execSQL("CREATE TABLE IF NOT EXISTS `notify_known_albums` (`nickname` TEXT NOT NULL, `nodeId` TEXT NOT NULL, PRIMARY KEY(`nickname`, `nodeId`))")
             }
         }
-    }
+
+    val all = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
 }

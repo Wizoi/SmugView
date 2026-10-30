@@ -96,23 +96,16 @@ android {
     }
     // Room migration tests read the exported schema JSONs from this directory.
     sourceSets {
-        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+        getByName("androidTest").assets.srcDir("${rootProject.projectDir}/shared/schemas")
         // Phase 1c: Robolectric unit tests read assets from the *debug variant's* merged assets
         // (test_config.properties android_merged_assets = mergeDebugAssets), not from the "test"
         // source set, so the schemas go in the debug source set (~40 KB, debug APKs only).
-        getByName("debug").assets.srcDir("$projectDir/schemas")
+        getByName("debug").assets.srcDir("${rootProject.projectDir}/shared/schemas")
     }
     bundle {
         language { enableSplit = true }
         density { enableSplit = true }
         abi { enableSplit = true }
-    }
-}
-
-// Export Room schemas to app/schemas/ so migrations can be validated with MigrationTestHelper.
-kapt {
-    arguments {
-        arg("room.schemaLocation", "$projectDir/schemas")
     }
 }
 
@@ -148,7 +141,6 @@ dependencies {
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.room:room-paging:$roomVersion")
-    kapt("androidx.room:room-compiler:$roomVersion")
 
     // Retrofit & Networking
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
@@ -162,6 +154,9 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("androidx.hilt:hilt-work:1.2.0")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
+    // androidx.hilt's processor reads Kotlin metadata through this library; its own (older) copy cannot read Kotlin 2.3 metadata. It used to arrive
+    // through kapt(room-compiler), which now lives in the shared module.
+    kapt("androidx.room:room-compiler-processing:2.8.5")
 
     // Hilt Dependency Injection
     val hiltVersion = "2.58"
