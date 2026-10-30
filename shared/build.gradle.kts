@@ -22,12 +22,17 @@ android {
     namespace = "com.smugview.shared"
     compileSdk = 36
     defaultConfig { minSdk = 26 }
+    // The app is built for Java 17; inline functions from this library must not be built for a newer target.
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 }
 
 kotlin {
     jvm()
     // Stage 1: the Android app consumes the shared code through this target.
-    androidTarget()
+    androidTarget { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
     iosArm64()
     iosSimulatorArm64()
 
