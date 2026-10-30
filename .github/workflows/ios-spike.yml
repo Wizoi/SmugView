@@ -227,11 +227,14 @@ jobs:
         id: xcode
         if: steps.framework.outcome == 'success'
         continue-on-error: true
+        env:
+          # Optional: without the secret the app starts but cannot load a site. Set it with `gh secret set SMUGMUG_API_KEY`.
+          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
         run: |
           set -o pipefail
           brew install xcodegen
           (cd iosApp && xcodegen generate)
-          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/xcode ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build 2>&1 | tee screen-xcode.log
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/xcode ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SMUGMUG_API_KEY="$SMUGMUG_API_KEY" build 2>&1 | tee screen-xcode.log
       - name: Run it on a simulator and take a screenshot
         id: run
         if: steps.xcode.outcome == 'success'
@@ -240,8 +243,9 @@ jobs:
           set -o pipefail
           xcrun simctl bootstatus "$UDID" -b 2>&1 | tee -a screen-run.log
           xcrun simctl install "$UDID" build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app 2>&1 | tee -a screen-run.log
-          xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
-          sleep 12
+          # A public site (the Hub's own featured one), so the screenshot can show real data without exposing anyone's galleries.
+          SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
+          sleep 25
           xcrun simctl io "$UDID" screenshot ios-spike-screen.png 2>&1 | tee -a screen-run.log
           ls -la ios-spike-screen.png | tee -a screen-run.log
       # Why the app is (not) on screen. Never fails the job: the screenshot above is what counts.

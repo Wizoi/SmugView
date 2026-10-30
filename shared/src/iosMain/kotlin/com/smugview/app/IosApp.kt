@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import platform.Foundation.NSBundle
 import platform.Foundation.NSDocumentDirectory
+import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSUserDomainMask
@@ -73,7 +74,14 @@ fun IosAppViewController(): UIViewController = ComposeUIViewController { SmugVie
 
 @Composable
 fun SmugViewIosApp() {
-    val viewModel = remember { IosRoot.viewModel() }
+    val viewModel = remember {
+        IosRoot.viewModel().also { vm ->
+            // CI test hook: `SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch ...` opens that (public) site at start, as if
+            // it had been tapped, so the screenshot shows real data. Unset in every normal launch.
+            val demoSite = NSProcessInfo.processInfo.environment["SMUGVIEW_DEMO_SITE"] as? String
+            if (!demoSite.isNullOrBlank()) vm.selectSite(demoSite)
+        }
+    }
     var banner by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
         Toaster.sink = { message, _ -> banner = message }
