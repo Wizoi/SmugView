@@ -61,7 +61,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
       - name: Shared module tests on the JVM
         id: tests
         continue-on-error: true
@@ -93,7 +93,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
       - name: Cache the Kotlin/Native toolchain
         uses: actions/cache@v5
         with:
@@ -147,7 +147,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
       - name: Cache the Kotlin/Native toolchain
         uses: actions/cache@v5
         with:
@@ -210,7 +210,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
       - name: Cache the Kotlin/Native toolchain
         uses: actions/cache@v5
         with:
@@ -290,7 +290,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
       - name: Cache the Kotlin/Native toolchain
         uses: actions/cache@v5
         with:
