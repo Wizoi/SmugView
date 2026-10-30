@@ -1,7 +1,7 @@
 package com.smugview.app.ui.viewmodel
 
 import com.smugview.app.util.SmugLog
-import android.content.SharedPreferences
+import com.smugview.app.util.KeyValueStore
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -47,8 +47,8 @@ class SearchController(
     private val apiKey: String,
     private val scope: CoroutineScope,
     private val siteScope: () -> CoroutineScope,
-    private val sharedPrefs: SharedPreferences,
-    private val searchStatusPrefs: SharedPreferences,
+    private val sharedPrefs: KeyValueStore,
+    private val searchStatusPrefs: KeyValueStore,
     private val searchScope: StateFlow<SearchScope>,
     private val activeNickname: StateFlow<String?>,
     private val getUnlockedPassword: suspend (String) -> String?
@@ -109,7 +109,7 @@ class SearchController(
 
     fun updateSearchGallerySortOrder(order: String) {
         searchGallerySortOrder = order
-        sharedPrefs.edit().putString("search_gallery_sort_order", order).apply()
+        sharedPrefs.putString("search_gallery_sort_order", order)
         val currentState = _searchState.value
         if (currentState is SearchUiState.Success) {
             val sortedGalleries = sortGalleries(currentState.galleries, order)
@@ -123,7 +123,7 @@ class SearchController(
 
     fun updateSearchPhotosSortOrder(order: String) {
         searchPhotosSortOrder = order
-        sharedPrefs.edit().putString("search_photos_sort_order", order).apply()
+        sharedPrefs.putString("search_photos_sort_order", order)
         val currentState = _searchState.value
         if (currentState is SearchUiState.Success) {
             val sortedPhotos = sortPhotos(currentState.photos, order)
@@ -267,7 +267,7 @@ class SearchController(
                     backgroundSearchJob = siteScope().launch {
                         try {
                             repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey)
-                            searchStatusPrefs.edit().putLong("${scopeKey}_${query}_ts", System.currentTimeMillis()).apply()
+                            searchStatusPrefs.putLong("${scopeKey}_${query}_ts", System.currentTimeMillis())
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e
                         } catch (e: Exception) {

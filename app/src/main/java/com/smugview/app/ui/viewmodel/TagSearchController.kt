@@ -1,7 +1,7 @@
 package com.smugview.app.ui.viewmodel
 
 import com.smugview.app.util.SmugLog
-import android.content.SharedPreferences
+import com.smugview.app.util.KeyValueStore
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -49,7 +49,7 @@ class TagSearchController(
     private val apiKey: String,
     private val viewModelScope: CoroutineScope,
     private val siteScope: () -> CoroutineScope,
-    private val sharedPrefs: SharedPreferences,
+    private val sharedPrefs: KeyValueStore,
     private val searchScope: StateFlow<SearchScope>,
     private val isViewingDetail: StateFlow<Boolean>,
     private val activeNickname: StateFlow<String?>,
@@ -104,7 +104,7 @@ class TagSearchController(
 
     fun updateKeywordPhotosSortOrder(order: String) {
         keywordPhotosSortOrder = order
-        sharedPrefs.edit().putString("keyword_photos_sort_order", order).apply()
+        sharedPrefs.putString("keyword_photos_sort_order", order)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

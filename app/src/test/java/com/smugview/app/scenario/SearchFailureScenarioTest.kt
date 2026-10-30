@@ -53,8 +53,8 @@ class SearchFailureScenarioTest {
 
     private fun controller(nickname: String = "idzifamily"): SearchController = SearchController(
         repository = rig.repository, apiKey = "test-key", scope = scope, siteScope = { scope },
-        sharedPrefs = rig.app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE),
-        searchStatusPrefs = rig.app.getSharedPreferences("smugview_search_status", android.content.Context.MODE_PRIVATE),
+        sharedPrefs = com.smugview.app.data.prefs.SharedPrefsStore(rig.app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE)),
+        searchStatusPrefs = com.smugview.app.data.prefs.SharedPrefsStore(rig.app.getSharedPreferences("smugview_search_status", android.content.Context.MODE_PRIVATE)),
         searchScope = MutableStateFlow(SearchScope("Entire site")), activeNickname = MutableStateFlow(nickname),
         getUnlockedPassword = { null }
     )

@@ -45,7 +45,7 @@ class SearchScopeFallbackTest {
         val prefs = rig.app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE)
         return SearchController(
             repository = rig.repository, apiKey = "test-key", scope = scope, siteScope = { scope },
-            sharedPrefs = prefs, searchStatusPrefs = rig.app.getSharedPreferences("smugview_search_status", android.content.Context.MODE_PRIVATE),
+            sharedPrefs = com.smugview.app.data.prefs.SharedPrefsStore(prefs), searchStatusPrefs = com.smugview.app.data.prefs.SharedPrefsStore(rig.app.getSharedPreferences("smugview_search_status", android.content.Context.MODE_PRIVATE)),
             searchScope = MutableStateFlow(SearchScope("Entire site")), activeNickname = MutableStateFlow(nickname),
             getUnlockedPassword = { null }
         )

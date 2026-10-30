@@ -147,10 +147,12 @@ class SmugViewModel @Inject constructor(
 ) : AndroidViewModel(application) {
 
     private val apiKey = BuildConfig.SMUGMUG_API_KEY
-    private val sharedPrefs = application.getSharedPreferences("smugview_prefs", Context.MODE_PRIVATE)
+    private val sharedPrefs: com.smugview.app.util.KeyValueStore =
+        com.smugview.app.data.prefs.SharedPrefsStore(application.getSharedPreferences("smugview_prefs", Context.MODE_PRIVATE))
     // Encrypted at rest via PasswordStore; the compat adapter keeps existing call sites unchanged.
     private val passwordPrefs = com.smugview.app.data.security.PasswordPrefsCompat(passwordStore)
-    private val searchStatusPrefs = application.getSharedPreferences("smugview_search_status", Context.MODE_PRIVATE)
+    private val searchStatusPrefs: com.smugview.app.util.KeyValueStore =
+        com.smugview.app.data.prefs.SharedPrefsStore(application.getSharedPreferences("smugview_search_status", Context.MODE_PRIVATE))
 
     /**
      * Node IDs that are effectively unlocked — i.e. the node itself, or any ancestor in the
@@ -947,7 +949,7 @@ class SmugViewModel @Inject constructor(
                         val rootId = repository.parseNodeIdFromUri(nodeUri)
 
                         // Save as active site
-                        sharedPrefs.edit().putString("active_nickname", normalizedNickname).apply()
+                        sharedPrefs.putString("active_nickname", normalizedNickname)
                         _activeNickname.value = normalizedNickname
 
                         // Save to history
@@ -955,7 +957,7 @@ class SmugViewModel @Inject constructor(
                         currentList.remove(normalizedNickname) // Remove duplicate if exists
                         currentList.add(0, normalizedNickname) // Add to top
                         val capped = currentList.take(5) // Limit history to top 5
-                        sharedPrefs.edit().putString("recent_sites", capped.joinToString(",")).apply()
+                        sharedPrefs.putString("recent_sites", capped.joinToString(","))
                         _recentSites.value = capped
 
                         // Transition state
@@ -986,7 +988,7 @@ class SmugViewModel @Inject constructor(
     fun disconnectSite() {
         SmugLog.d("SmugViewModel") { "disconnectSite called: activeNickname=${_activeNickname.value}" }
         beginSite("")
-        sharedPrefs.edit().remove("active_nickname").apply()
+        sharedPrefs.remove("active_nickname")
         _activeNickname.value = null
         _activeUserProfile.value = null
         _siteHeaderImageUrl.value = null
