@@ -203,6 +203,13 @@ jobs:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts', 'spikeui/build.gradle.kts') }}
           restore-keys: konan-${{ runner.os }}-
+      # Apple only accepts uploads built with Xcode 26 or later (iOS 26 SDK); the image's default is 16.4. This job is the proof that our
+      # Kotlin/Native + Compose + XcodeGen build works with it, so the device build runs on Xcode 26.
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
       - name: Build the unsigned release IPA for a device
         id: ipa
         continue-on-error: true
