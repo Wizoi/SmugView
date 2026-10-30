@@ -337,7 +337,7 @@ class JourneyTest {
         val cdn = com.smugview.app.data.repository.FakeCdn()
         try {
             val downloader = com.smugview.app.data.offline.OfflineDownloader(
-                screens.rig.offlineStore, screens.rig.repository, cdn.clientOver(okhttp3.OkHttpClient()),
+                screens.rig.offlineStore, screens.rig.repository, com.smugview.app.data.offline.OkHttpOriginalFetcher(cdn.clientOver(okhttp3.OkHttpClient())),
                 apiKey = { "test-key" }, settings = screens.rig.settings
             )
             runBlocking { downloader.runPass(com.smugview.app.data.offline.NetworkClass.ANY) }

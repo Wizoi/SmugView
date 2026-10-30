@@ -1,37 +1,21 @@
 package com.smugview.app.data.offline
 
-import com.smugview.app.data.api.isSyntheticCacheMiss
 import com.smugview.app.data.db.OfflineFile
+import com.smugview.app.data.db.nowMillis
+import com.smugview.app.util.AtomicCounter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.io.IOException
 import com.smugview.app.data.db.OfflineGallery
 import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.data.repository.ImageSource
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.download.Renditions
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.ResponseBody
 import com.smugview.app.data.api.ApiException
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.security.MessageDigest
-import java.util.concurrent.CancellationException
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
 * What the pass runs on. [UNMETERED] (Wi-Fi): every wanted file. [ANY] (any connected network, maybe mobile data): the files a
@@ -60,16 +44,15 @@ data class PassResult(
  *  - [kotlinx.coroutines.CancellationException] always propagates. A cancelled file goes back to PENDING and its
  *    `.part` is deleted (in `NonCancellable`), then it is rethrown.
  *  - A retryable failure never becomes DONE (R-40: the old worker wrote "done, empty path" after 3 tries).
- *  - Fetching goes through the cache-less `@Named("images")` factory ([images]); blocking I/O runs on [io].
+ *  - Fetching goes through the [OriginalFetcher] (Android: the cache-less `@Named("images")` stack; iOS: Ktor).
  */
 class OfflineDownloader(
     private val store: OfflineStore,
     private val repo: SmugMugRepository,
-    private val images: Call.Factory,
+    private val fetcher: OriginalFetcher,
     private val apiKey: () -> String,
-    private val io: CoroutineDispatcher = Dispatchers.IO,
-    private val settings: OfflineSettings,
-    private val clock: () -> Long = System::currentTimeMillis
+        private val settings: OfflineSettings,
+    private val clock: () -> Long = ::nowMillis
 ) {
     private class Fetched(val bytes: Long, val md5: String, val contentType: String?)
 
@@ -236,7 +219,7 @@ class OfflineDownloader(
             }
 
             while (true) {
-                when (val f = fetch(current, java.io.File(write.part), reResolved)) {
+                when (val f = fetch(current, write.part, reResolved)) {
                     is Fetch.Ok -> {
                         val bad = DownloadFailure.verify(
                             current.expectedBytes, f.fetched.bytes, current.md5, f.fetched.md5,
@@ -364,95 +347,29 @@ class OfflineDownloader(
     }
 
     /** One GET of the original into [part]. Returns what arrived, or the classified failure. */
-    private suspend fun fetch(row: OfflineFile, part: File, reResolved: Boolean): Fetch {
-        val url = row.sourceUrl?.toHttpUrlOrNull() ?: return Fetch.Fail(DownloadFailure.noSource())
-        val call = images.newCall(Request.Builder().url(url).get().build())
-        val response = try {
-            call.await()
-        } catch (e: IOException) {
-            return Fetch.Fail(DownloadFailure.classify(null, null, e, wroteBytes = false, nowMs = clock())!!)
+    private suspend fun fetch(row: OfflineFile, part: String, reResolved: Boolean): Fetch {
+        val url = row.sourceUrl ?: return Fetch.Fail(DownloadFailure.noSource())
+        return when (val r = fetcher.fetch(url, part)) {
+            is FetchResult.Ok -> Fetch.Ok(Fetched(r.bytes, r.md5, r.contentType))
+            is FetchResult.HttpError -> Fetch.Fail(
+                DownloadFailure.classify(
+                    r.code, r.retryAfter, null, wroteBytes = false,
+                    syntheticCacheMiss = r.syntheticCacheMiss, reResolved = reResolved, nowMs = clock()
+                ) ?: Failure(FailureReason.UNEXPECTED, retryable = false, httpCode = r.code)
+            )
+            is FetchResult.Broken -> Fetch.Fail(DownloadFailure.classify(null, null, r.error, wroteBytes = r.wroteBytes, nowMs = clock())!!)
+            FetchResult.NoSource -> Fetch.Fail(DownloadFailure.noSource())
         }
-        response.use { r ->
-            if (!r.isSuccessful) {
-                return Fetch.Fail(
-                    DownloadFailure.classify(
-                        r.code, r.header("Retry-After"), null, wroteBytes = false,
-                        syntheticCacheMiss = r.isSyntheticCacheMiss(), reResolved = reResolved, nowMs = clock()
-                    ) ?: Failure(FailureReason.UNEXPECTED, retryable = false, httpCode = r.code)
-                )
-            }
-            val body = r.body ?: return Fetch.Fail(DownloadFailure.noSource())
-            val contentType = r.header("Content-Type")
-            val copied = try {
-                copyBody(body, part, call)
-            } catch (e: IOException) {
-                return Fetch.Fail(DownloadFailure.classify(null, null, e, wroteBytes = part.length() > 0, nowMs = clock())!!)
-            }
-            val declared = body.contentLength()
-            if (declared >= 0 && copied.bytes != declared) {
-                // The connection dropped before the whole body arrived.
-                return Fetch.Fail(
-                    DownloadFailure.classify(null, null, IOException("body ended at ${copied.bytes} of $declared"), wroteBytes = true, nowMs = clock())!!
-                )
-            }
-            return Fetch.Ok(Fetched(copied.bytes, copied.md5, contentType))
-        }
-    }
-
-    /**
-     * Copies [body] into [part] in 64 KB chunks on [io], with a cancellation check between chunks. A cancel while
-     * the read is blocked on the socket cancels [call], which makes the read throw, so the thread is not stuck.
-     */
-    private suspend fun copyBody(body: ResponseBody, part: File, call: Call): Fetched = coroutineScope {
-        val copier = async(io) {
-            val md = MessageDigest.getInstance("MD5")
-            var total = 0L
-            body.byteStream().use { input ->
-                FileOutputStream(part).use { out ->
-                    val buf = ByteArray(CHUNK)
-                    while (true) {
-                        ensureActive()
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        md.update(buf, 0, n)
-                        total += n
-                    }
-                    out.flush()
-                }
-            }
-            Fetched(total, md.digest().joinToString("") { "%02x".format(it) }, null)
-        }
-        try {
-            copier.await()
-        } catch (e: CancellationException) {
-            call.cancel()
-            throw e
-        }
-    }
-
-    private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
-        cont.invokeOnCancellation { runCatching { cancel() } }
-        enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                if (cont.isActive) cont.resumeWithException(e)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                cont.resume(response) { response.close() }
-            }
-        })
     }
 
     companion object {
         /** No new file starts after this (WorkManager stops a worker at 10 minutes). */
         const val DEFAULT_BUDGET_MS = 8 * 60_000L
-        private const val CHUNK = 64 * 1024
 
         /** Two files in a row that found the network gone: the rest would fail the same way. */
         private const val OFFLINE_STOP_AFTER = 2
 
         private val PASS_LOCK = Mutex()
-        private val PASS_COUNTER = AtomicInteger(0)
+        private val PASS_COUNTER = AtomicCounter(0)
     }
 }

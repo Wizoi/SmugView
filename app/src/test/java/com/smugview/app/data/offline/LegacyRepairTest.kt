@@ -135,7 +135,7 @@ class LegacyRepairTest {
         val repository = SmugMugRepository(loopback.api(), db.collectionDao(), FakePasswordStore())
         store = OfflineStore(db, filesDir.path, runId = runId, clock = { now }, freeBytes = { 50L shl 30 })
         val images = RetryingCallFactory(cdn.clientOver(loopback.client).forFileDownloads(), maxAttempts = 0)
-        downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, settings = settings, clock = { now })
+        downloader = OfflineDownloader(store, repository, OkHttpOriginalFetcher(images), apiKey = { "test-key" }, settings = settings, clock = { now })
         scheduler = OfflineScheduler(workManager = { WorkManager.getInstance(app) }, store = store, settings = settings, clock = { now })
     }
 
