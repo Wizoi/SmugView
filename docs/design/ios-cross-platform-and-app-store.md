@@ -855,3 +855,19 @@ kept as it is. Choices to approve:
 
 Risk: moderate; the failure to watch is a retry or cache difference that only shows on a flaky network. The emulator airplane-mode check and the
 phone batch cover it.
+
+## Stage 1 status (2026-10-29, written at the end of the first working session)
+
+| Step | State | Notes |
+|---|---|---|
+| 1a toolchain and empty shared module | done, on `main` | Kotlin 2.3.21, Hilt 2.58, AGP 8.13.2 unchanged. AGP 9 is the blocker for Stage 2 (Compose Multiplatform 1.12 needs compileSdk 37), so Compose screens sit in `:spikeui`. |
+| 1b move Android-free files | partly | only the files that really are free: models, `ApiHttp`, `Pager`, `CastDevice`, `NetworkKind`, `RootResolution`, `Renditions`, `KeyedResultCache`. The design's "51 files" was wrong (same-package references to bound classes). |
+| 1c Gson to kotlinx.serialization | done, on `main` | 54 models `@Serializable`; parity test over 23 recorded real answers; three real fields found absent. |
+| 1d Retrofit to Ktor | done, on `main` | generated `KtorSmugMugApi` in `:shared`; Android keeps OkHttp's cache, retry, cookies and telemetry behind `CallFactoryEngine`, so no cache reset. |
+| 1e Room 2.8 KMP | done (part 2 under CI) | migration tests pass on 2.8.5 with a path-named helper; the database, DAOs, entities and migrations moved to `:shared`; identity hashes equal for 13..18. |
+| 1f Hilt to Koin | not started | |
+| 1g Coil 3, Paging, QR, icons | not started | |
+
+Verified outside the unit tests: shrunk release APK on an emulator with live data (search, browse, gallery, offline restart) and an install-over upgrade that kept user data. Not verified: saved offline photos after upgrade, the Family password folder, video, and everything on a physical phone (batched last).
+
+**What blocks moving `SmugMugRepository` (about 2,000 lines) and the view models to shared code next** (measured): the repository itself imports little that is platform bound (okhttp `toResponseBody`, `ConcurrentHashMap`, `javax.inject`, `Context`), but it has about 45 `android.util.Log` / `BuildConfig` call sites, and its collaborators (`DiagLog`, `HttpTelemetry`, `Redactor`, `SyncStateStore`, the password store, `OfflineStore`) are Android classes. The order that keeps every step green: (1) a `SmugLog` and an `AppConfig.DEBUG` in shared with the calls replaced mechanically; (2) put the collaborators behind small interfaces in shared; (3) take the `@Inject`/`@Singleton` annotations off the moved classes and construct them in `AppModule` (Hilt stays until 1f); (4) move the repository, then the view models (`AndroidViewModel` to `ViewModel`, `Toast` to a message flow). 1f can then replace Hilt with Koin in one step.

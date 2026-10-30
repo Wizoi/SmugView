@@ -1,4 +1,4 @@
-package com.smugview.shared.db
+package com.smugview.app.data.db
 
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver

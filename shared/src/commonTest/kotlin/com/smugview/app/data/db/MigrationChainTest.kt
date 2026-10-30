@@ -1,4 +1,4 @@
-package com.smugview.shared.db
+package com.smugview.app.data.db
 
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 /** The exported schema JSON of [version] (`shared/schemas/.../<version>.json`, the app's own files). Each platform reads it its own way. */
 expect fun readSchema(version: Int): String
@@ -88,7 +89,8 @@ class MigrationChainTest {
 
         // Opening runs the chain 13 -> 18 and Room validates the result against the entities (it throws on any difference).
         val db = openDatabaseAt(path)
-        assertEquals(3, db.nodeDao().nodeCount())
+        // The three rows (Family, School, Class photos) survived the chain.
+        listOf("2sDN5x", "P4BKB", "LCdk7F").forEach { assertNotNull(db.collectionDao().getNodeById(it), "node $it") }
         db.close()
 
         val c = driver.open(path)

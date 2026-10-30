@@ -1,4 +1,4 @@
-package com.smugview.shared.db
+package com.smugview.app.data.db
 
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
@@ -11,7 +11,7 @@ actual fun newInMemoryDatabase(): AppDatabase =
         .setQueryCoroutineContext(Dispatchers.Unconfined)
         .build()
 
-actual fun readSchema(version: Int): String = File("schemas/com.smugview.shared.db.AppDatabase/$version.json").readText()
+actual fun readSchema(version: Int): String = File("schemas/com.smugview.app.data.db.AppDatabase/$version.json").readText()
 
 actual fun tempDbPath(): String = File.createTempFile("smugview-migration", ".db").also { it.delete(); it.deleteOnExit() }.path
 

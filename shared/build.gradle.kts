@@ -38,6 +38,8 @@ kotlin {
             implementation("androidx.room:room-runtime:2.8.5")
             implementation("androidx.sqlite:sqlite-bundled:2.6.2")
             api("io.ktor:ktor-client-core:3.0.3")
+            implementation("androidx.room:room-paging:2.8.5")
+            api("androidx.paging:paging-common:3.3.6")
             implementation("io.ktor:ktor-client-content-negotiation:3.0.3")
             implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.3")
         }

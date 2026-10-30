@@ -63,7 +63,7 @@ jobs:
         env:
           # `simctl spawn` passes SIMCTL_CHILD_* to the test process without the prefix.
           SIMCTL_CHILD_PARITY_DIR: ${{ github.workspace }}/app/src/test/resources/parity
-          SIMCTL_CHILD_SCHEMA_DIR: ${{ github.workspace }}/shared/schemas/com.smugview.shared.db.AppDatabase
+          SIMCTL_CHILD_SCHEMA_DIR: ${{ github.workspace }}/shared/schemas/com.smugview.app.data.db.AppDatabase
         run: |
           set -o pipefail
           start=$(date +%s)

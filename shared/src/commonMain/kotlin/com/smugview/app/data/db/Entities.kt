@@ -1,7 +1,4 @@
-package com.smugview.shared.db
-
-// iOS spike: a faithful copy of app/.../data/db/Entities.kt and NotifyEntities.kt, so Room KMP exports the same schema (same identity hash as
-// app/schemas/.../18.json). Only changes: the package, nowMillis() for System.currentTimeMillis(), and the Gson converter is not copied.
+package com.smugview.app.data.db
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -206,6 +203,27 @@ data class SearchResult(
     val sortIndex: Int = 0
 )
 
+fun SearchResult.toAlbumImageData(): com.smugview.app.data.api.AlbumImageData {
+    return com.smugview.app.data.api.AlbumImageData(
+        imageKey = this.itemKey,
+        title = this.title,
+        caption = this.description,
+        thumbnailUrl = this.thumbnailUrl,
+        archivedUri = this.archivedUri,
+        date = this.date,
+        dateTime = this.date,
+        fileName = this.fileName,
+        keywords = this.keywords,
+        webUri = this.webUri,
+        originalWidth = this.originalWidth,
+        originalHeight = this.originalHeight,
+        originalSize = this.originalSize,
+        format = this.format,
+        uris = this.albumUri?.let { com.smugview.app.data.api.AlbumImageUris(album = it, imageAlbum = it) },
+        videoUrl = this.videoUrl
+    )
+}
+
 // --- Phase 5 (migration 16 -> 17): saved files, kept galleries, what a kept gallery held. See
 // docs/design/phase-5-offline-files.md 2.2. Nothing reads or writes these until step 5-3.
 
@@ -294,19 +312,4 @@ data class OfflineGalleryItem(
     val albumKey: String,
     val imageKey: String,
     val sortIndex: Int
-)
-
-// --- NotifyEntities.kt (migration 17 -> 18)
-/** A site the owner follows for new-gallery notifications. `baselineDone` is false until the first complete listing is recorded. */
-@Entity(tableName = "notify_sites")
-data class NotifySite(
-    @PrimaryKey val nickname: String,
-    val enabled: Boolean,
-    val baselineDone: Boolean
-)
-/** A gallery (NodeID, never AlbumKey) the owner has already been told about, or that existed when the site was followed. */
-@Entity(tableName = "notify_known_albums", primaryKeys = ["nickname", "nodeId"])
-data class NotifyKnownAlbum(
-    val nickname: String,
-    val nodeId: String
 )

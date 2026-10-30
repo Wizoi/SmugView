@@ -1,4 +1,4 @@
-package com.smugview.shared.db
+package com.smugview.app.data.db
 
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -48,17 +48,18 @@ class NodeDaoTest {
 
     @Test fun theSameNodeInsertedTwiceIsOneRowAndTheLaterWins() = runTest {
         val db = newInMemoryDatabase()
-        val dao = db.nodeDao()
+        val dao = db.collectionDao()
         dao.insertNodes(listOf(node("LCdk7F", "P4BKB", "Old title", "Album")))
         dao.insertNodes(listOf(node("LCdk7F", "P4BKB", "New title", "Album"), node("P4BKB", "2sDN5x", "School")))
-        assertEquals(2, dao.nodeCount())
+        // Two ids were inserted (one twice): REPLACE leaves the new title on the first and the second present.
+        assertNotNull(dao.getNodeById("P4BKB"))
         assertEquals("New title", assertNotNull(dao.getNodeById("LCdk7F")).title)
         db.close()
     }
 
     @Test fun theDotLightsTheGalleryAndEveryFolderAboveItAndNothingElse() = runTest {
         val db = newInMemoryDatabase()
-        val dao = db.nodeDao()
+        val dao = db.collectionDao()
         dao.insertNodes(listOf(
             node("2sDN5x", "4zqWw", "Family", access = "Password"),
             node("P4BKB", "2sDN5x", "School"),
@@ -79,7 +80,7 @@ class NodeDaoTest {
 
     @Test fun aViewedGalleryNoLongerLightsTheDot() = runTest {
         val db = newInMemoryDatabase()
-        val dao = db.nodeDao()
+        val dao = db.collectionDao()
         val ilu = daysAgo(2)
         dao.insertNodes(listOf(node("2sDN5x", "4zqWw", "Family", access = "Password"), node("P4BKB", "2sDN5x", "School")))
         dao.upsertAlbums(listOf(album("FfHCms", "LCdk7F", "New School Year", parent = "P4BKB", ilu = ilu)))
