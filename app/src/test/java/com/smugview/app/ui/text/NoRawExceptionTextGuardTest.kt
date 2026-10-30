@@ -14,7 +14,8 @@ import java.io.File
  * and so does a removed one that is still listed, so the list cannot go stale.
  */
 class NoRawExceptionTextGuardTest {
-    private val ui = File("src/main/java/com/smugview/app/ui")
+    // The screens now live in the shared module; what is left in the app (view-model wiring, samplers) is scanned too.
+    private val uis = listOf(File("src/main/java/com/smugview/app/ui"), File("../shared/src/commonMain/kotlin/com/smugview/app/ui"))
 
     /** File name to the number of lines that still read an exception's text or a state's `.message`. */
     private val allowed: Map<String, Int> = emptyMap()
@@ -24,7 +25,7 @@ class NoRawExceptionTextGuardTest {
     private val reads = Regex("""localizedMessage|\.message\b""")
 
     @Test fun noNewRawExceptionText_reachesTheScreen_andTheAllowListOnlyShrinks() {
-        val files = ui.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+        val files = uis.flatMap { it.walkTopDown().toList() }.asSequence().filter { it.isFile && it.extension == "kt" }.toList()
         assertTrue("source tree not found from ${File(".").absolutePath}", files.size > 20)
         val found = files.filter { it.name != "UserMessages.kt" }.associate { f ->
             f.name to f.readLines().count { !isComment(it) && reads.containsMatchIn(it) }

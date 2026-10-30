@@ -11,12 +11,13 @@ import java.io.File
  * the writers explicit; step 3-11 deleted the global. This keeps it from coming back.
  */
 class NoGlobalNicknameGuardTest {
-    private val main = File("src/main/java/com/smugview/app")
+    // The app and the shared module (the UI and the data layer moved there).
+    private val roots = listOf(File("src/main/java/com/smugview/app"), File("../shared/src/commonMain/kotlin/com/smugview/app"))
 
     private fun isComment(line: String) = line.trim().let { it.startsWith("//") || it.startsWith("*") || it.startsWith("/*") }
 
-    private fun hits(dir: File, pattern: Regex): List<String> {
-        val files = dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+    private fun hits(dirs: List<File>, pattern: Regex): List<String> {
+        val files = dirs.flatMap { it.walkTopDown().toList() }.asSequence().filter { it.isFile && it.extension == "kt" }.toList()
         assertTrue("source tree not found from ${File(".").absolutePath}", files.isNotEmpty())
         return files.flatMap { f ->
             f.readLines().withIndex().filter { !isComment(it.value) && pattern.containsMatchIn(it.value) }
@@ -25,12 +26,12 @@ class NoGlobalNicknameGuardTest {
     }
 
     @Test fun theRepositoryHoldsNoActiveNickname() {
-        val found = hits(File(main, "data/repository"), Regex("""\bactiveNickname\b|\bsetActiveNickname\b"""))
+        val found = hits(roots.map { File(it, "data/repository") }, Regex("""\bactiveNickname\b|\bsetActiveNickname\b"""))
         assertEquals("The repository must not keep a global nickname (R-10):\n" + found.joinToString("\n"), emptyList<String>(), found)
     }
 
     @Test fun nothingInMainCallsRepositorySetActiveNickname() {
-        val found = hits(main, Regex("""\brepository\.setActiveNickname\b"""))
+        val found = hits(roots, Regex("""\brepository\.setActiveNickname\b"""))
         assertEquals("No caller may set a global nickname on the repository (R-10):\n" + found.joinToString("\n"), emptyList<String>(), found)
     }
 }

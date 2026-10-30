@@ -1,0 +1,875 @@
+package com.smugview.app.ui.browser
+
+import com.smugview.app.util.Toaster
+import com.smugview.app.ui.icons.AppIcons
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.window.Popup
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import com.smugview.app.ui.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.text.style.TextAlign
+import com.smugview.app.data.db.OfflineCollection
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import com.smugview.app.data.api.isVideo
+import androidx.compose.animation.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.smugview.app.ui.component.ProfilePreviewCard
+import com.smugview.app.ui.component.ProfileAvatar
+import com.smugview.app.ui.component.AddToCollectionsDialog
+import androidx.compose.material3.*
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemContentType
+import androidx.paging.compose.itemKey
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.smugview.app.data.db.CachedNode
+import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.ui.theme.DeepDarkBackground
+import com.smugview.app.ui.theme.GlowBorder
+import com.smugview.app.ui.theme.NeonBlue
+import com.smugview.app.ui.theme.SoftRed
+import com.smugview.app.ui.theme.SurfaceDark
+import com.smugview.app.ui.theme.GlowGreen
+import androidx.compose.foundation.BorderStroke
+import com.smugview.app.ui.viewmodel.BackPolicy
+import com.smugview.app.ui.viewmodel.BrowserUiState
+import com.smugview.app.ui.viewmodel.BrowserTab
+import com.smugview.app.ui.viewmodel.SearchUiState
+import com.smugview.app.ui.viewmodel.SplashUiState
+import com.smugview.app.ui.viewmodel.SmugViewModel
+import com.smugview.app.ui.viewmodel.GlobalSearchUiState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+
+
+@Composable
+fun CollectionsTabView(
+    viewModel: SmugViewModel,
+    onNavigateToAlbum: (albumKey: String, albumTitle: String) -> Unit,
+    onImageClick: (albumKey: String, imageKey: String) -> Unit,
+    onNavigateToCastController: (title: String) -> Unit,
+    onChangeNetworkSetting: () -> Unit
+) {
+    val collections by viewModel.localCollections.collectAsState()
+    val scope = rememberCoroutineScope()
+    val files = com.smugview.app.ui.LocalPhotoFileOps.current
+    val share = com.smugview.app.ui.rememberPlatformShare()
+    val downloadPhoto = com.smugview.app.ui.detail.rememberPhotoDownloadAction(viewModel)
+    var newCollectionName by remember { mutableStateOf("") }
+    var selectedCollectionForShortcuts by remember { mutableStateOf<OfflineCollection?>(null) }
+
+    val activeDevice by viewModel.activeCastDevice.collectAsState()
+    val isCasting by viewModel.isCasting.collectAsState()
+    val discoveredDevices by viewModel.discoveredDevices.collectAsState()
+    var showCastSelector by remember { mutableStateOf(false) }
+    var pendingCastCollectionId by remember { mutableStateOf<Long?>(null) }
+    var pendingCastCollectionName by remember { mutableStateOf("") }
+    
+    // System back closes an open collection (R-14, owner Q2); with none open it falls through.
+    BackHandler(enabled = BackPolicy.enabled(BrowserTab.Collections, 0, false, selectedCollectionForShortcuts != null)) {
+        selectedCollectionForShortcuts = null
+    }
+
+    val neonColors = listOf(
+        Color(0xFF00E5FF),
+        Color(0xFF00E676),
+        Color(0xFFFF8F00),
+        Color(0xFFFFEA00),
+        Color(0xFFF50057),
+        Color(0xFFD500F9)
+    )
+
+    // Q8 (5-9): deleting a collection that holds saved photos asks first, with how many and how much will go.
+    var pendingDelete by remember { mutableStateOf<Pair<Long, String>?>(null) }
+    pendingDelete?.let { (id, text) ->
+        DeleteCollectionDialog(
+            text = text,
+            onConfirm = {
+                viewModel.deleteCollection(id)
+                if (selectedCollectionForShortcuts?.id == id) selectedCollectionForShortcuts = null
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null }
+        )
+    }
+    val requestDelete: (OfflineCollection) -> Unit = { c ->
+        scope.launch {
+            val confirm = viewModel.deleteConfirm(c.id, c.name)
+            if (confirm == null) {
+                viewModel.deleteCollection(c.id)
+                if (selectedCollectionForShortcuts?.id == c.id) selectedCollectionForShortcuts = null
+            } else {
+                pendingDelete = c.id to confirm.text
+            }
+        }
+    }
+
+    // Q10 (6-16): an unsave, a row "Remove" or turning off Keep offline asks first when a saved copy nothing else uses would go.
+    var pendingRemove by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    pendingRemove?.let { (text, action) ->
+        RemoveConfirmDialog(
+            text = text,
+            onConfirm = { pendingRemove = null; action() },
+            onDismiss = { pendingRemove = null }
+        )
+    }
+    val askThenRemove: (suspend () -> com.smugview.app.data.offline.OfflineReader.DeleteConfirm?, () -> Unit) -> Unit = { ask, remove ->
+        scope.launch {
+            val confirm = ask()
+            if (confirm == null) remove() else pendingRemove = confirm.text to remove
+        }
+    }
+
+    // R-44 (6-16): a saved photo with no album key finds its gallery from its picture's address, else says it is gone
+    // from SmugMug; it never opens "photo_detail//key".
+    val openImage: (String, String, String?) -> Unit = { albumKey, imageKey, thumbnailUrl ->
+        if (albumKey.isNotBlank()) {
+            onImageClick(albumKey, imageKey)
+        } else {
+            scope.launch {
+                val key = viewModel.getAlbumKeyFromWebUri(thumbnailUrl)
+                if (key.isNullOrBlank()) {
+                    Toaster.show(com.smugview.app.ui.text.UserMessages.line(com.smugview.app.ui.text.Problem.Gone(com.smugview.app.ui.text.Subject.Photo)))
+                } else {
+                    onImageClick(key, imageKey)
+                }
+            }
+        }
+    }
+
+    if (selectedCollectionForShortcuts != null) {
+        val col = selectedCollectionForShortcuts!!
+        // Reactively lookup active name in case it changed
+        val activeColName = collections.find { it.id == col.id }?.name ?: col.name
+        val bookmarks by viewModel.getBookmarksForCollection(col.id).collectAsState(initial = emptyList())
+        // 5-9: the photos saved by "Save", their saved-copy states, and the kept galleries (one Flow per collection).
+        val savedPhotos by viewModel.getPhotosInCollection(col.id).collectAsState(initial = emptyList())
+        val offlineState by viewModel.offlineOf(col.id).collectAsState(initial = com.smugview.app.data.offline.OfflineReader.CollectionOffline.EMPTY)
+        val savedFiles by viewModel.localFiles.collectAsState()
+        var isRenaming by remember { mutableStateOf(false) }
+        var renameInputText by remember { mutableStateOf(activeColName) }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            // Header Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        isRenaming = false
+                        selectedCollectionForShortcuts = null
+                    }
+                ) {
+                    Icon(AppIcons.ArrowBackMirrored, contentDescription = "Back", tint = Color.White)
+                }
+
+                if (isRenaming) {
+                    TextField(
+                        value = renameInputText,
+                        onValueChange = { renameInputText = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = Color.White.copy(alpha = 0.05f),
+                            unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
+                            focusedIndicatorColor = NeonBlue,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        singleLine = true
+                    )
+                    IconButton(
+                        onClick = {
+                            if (renameInputText.isNotBlank()) {
+                                viewModel.renameCollection(col.id, renameInputText.trim())
+                                isRenaming = false
+                            }
+                        }
+                    ) {
+                        Icon(AppIcons.Check, contentDescription = "Save Name", tint = NeonBlue)
+                    }
+                    IconButton(onClick = { isRenaming = false }) {
+                        Icon(AppIcons.Close, contentDescription = "Cancel", tint = Color.White)
+                    }
+                } else {
+                    Text(
+                        text = activeColName,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    
+                    // Rename Button
+                    IconButton(
+                        onClick = {
+                            renameInputText = activeColName
+                            isRenaming = true
+                        }
+                    ) {
+                        Icon(AppIcons.Edit, contentDescription = "Rename", tint = Color.White.copy(alpha = 0.7f))
+                    }
+                    
+                    // Delete Button
+                    IconButton(
+                        onClick = { requestDelete(col.copy(name = activeColName)) }
+                    ) {
+                        Icon(AppIcons.Delete, contentDescription = "Delete Collection", tint = Color.Red.copy(alpha = 0.8f))
+                    }
+                }
+            }
+
+            Divider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(bottom = 12.dp))
+
+            if (bookmarks.isEmpty() && savedPhotos.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "This collection is empty.\nBookmark items to see them here.",
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                val folders = remember(bookmarks) { bookmarks.filter { it.type == "Folder" } }
+                val albums = remember(bookmarks) { bookmarks.filter { it.type == "Album" } }
+                val images = remember(bookmarks) { bookmarks.filter { it.type == "Image" } }
+                val imagesByAlbum = remember(images) { images.groupBy { it.albumKey } }
+                
+                val expandedGalleries = remember { mutableStateMapOf<String, Boolean>() }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Folders
+                    if (folders.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Folders",
+                                color = NeonBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                        items(folders, key = { com.smugview.app.ui.navigation.CollectionRowKeys.folder(it.itemKey) }) { f ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        viewModel.openFolderShortcut(f.itemKey)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.Folder,
+                                        contentDescription = "Folder",
+                                        tint = NeonBlue.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column {
+                                        Text(f.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                        Text("Folder Shortcut", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { viewModel.removeBookmark(col.id, "Folder", f.itemKey) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.Close,
+                                        contentDescription = "Unsave",
+                                        tint = Color.White.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Albums
+                    if (albums.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Galleries",
+                                color = NeonBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                            )
+                        }
+                        items(albums, key = { com.smugview.app.ui.navigation.CollectionRowKeys.album(it.itemKey) }) { a ->
+                            Column(modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        // a is a CollectionBookmark — use albumKey field directly (already the resolved album key)
+                                        val albumKey = a.albumKey.ifBlank { a.itemKey }
+                                        // Do NOT call selectAlbum here — PhotoGridScreen's LaunchedEffect handles the load.
+                                        onNavigateToAlbum(albumKey, a.title)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.PhotoAlbum,
+                                        contentDescription = "Gallery",
+                                        tint = NeonBlue.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column {
+                                        Text(a.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                        Text("Gallery Shortcut", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { viewModel.removeBookmark(col.id, "Album", a.itemKey) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.Close,
+                                        contentDescription = "Unsave",
+                                        tint = Color.White.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            val galleryKey = a.albumKey.ifBlank { a.itemKey }
+                            GalleryKeepOffline(
+                                kept = offlineState.galleries[galleryKey],
+                                onKeepChange = { keep ->
+                                    if (keep) viewModel.keepGalleryOffline(col.id, galleryKey, a.title)
+                                    else askThenRemove({ viewModel.stopKeepingConfirm(col.id, galleryKey, a.title) }) { viewModel.stopKeepingGalleryOffline(col.id, galleryKey) }
+                                },
+                                onChangeNetworkSetting = onChangeNetworkSetting
+                            )
+                            }
+                        }
+                    }
+
+                    // Photos saved with "Save" (5-9): each row says what became of its saved copy.
+                    if (savedPhotos.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Saved Photos",
+                                color = NeonBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                            )
+                        }
+                        items(savedPhotos, key = { com.smugview.app.ui.navigation.CollectionRowKeys.savedPhoto(it.imageKey) }) { p ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                                    .clickable { openImage(p.albumKey, p.imageKey, p.thumbnailUrl) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    AsyncImage(
+                                        model = savedFiles[p.imageKey] ?: p.thumbnailUrl,
+                                        contentDescription = p.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                    )
+                                    Column {
+                                        Text(
+                                            text = p.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${p.imageKey}",
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        OfflineRowLine(
+                                            state = offlineState.rows[p.imageKey],
+                                            onTryAgain = { viewModel.tryAgain(p.imageKey) },
+                                            onRemove = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), p.imageKey, p.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${p.imageKey}", dropsPhotoRow = true, dropsBookmark = true) }) { viewModel.removeSavedRow(p.imageKey, col.id) } }
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), p.imageKey, p.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${p.imageKey}", dropsPhotoRow = true, dropsBookmark = false) }) { viewModel.removePhotoFromCollection(p.imageKey, col.id) } },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.Close,
+                                        contentDescription = "Unsave",
+                                        tint = Color.White.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Images Grouped Section
+                    if (imagesByAlbum.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Photos By Gallery",
+                                color = NeonBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                            )
+                        }
+                        imagesByAlbum.forEach { (albumKey, albumImages) ->
+                            val groupTitle = albumImages.firstOrNull()?.albumTitle?.takeIf { it.isNotEmpty() } ?: "Gallery Group"
+                            val isExpanded = expandedGalleries[albumKey] ?: false
+
+                            item(key = com.smugview.app.ui.navigation.CollectionRowKeys.photoGroup(albumKey)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { expandedGalleries[albumKey] = !isExpanded }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isExpanded) AppIcons.KeyboardArrowDown else AppIcons.KeyboardArrowRight,
+                                                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                                tint = Color.White.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Text(
+                                                text = groupTitle,
+                                                color = Color.White,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${albumImages.size} item${if (albumImages.size > 1) "s" else ""}",
+                                            color = Color.White.copy(alpha = 0.4f),
+                                            fontSize = 12.sp
+                                        )
+                                    }
+
+                                    if (isExpanded) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 16.dp, end = 12.dp, bottom = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            albumImages.forEach { img ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(6.dp))
+                                                        .clickable {
+                                                            openImage(albumKey, img.itemKey, img.thumbnailUrl)
+                                                        }
+                                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                        modifier = Modifier.weight(1f)
+                                                    ) {
+                                                        if (!img.thumbnailUrl.isNullOrEmpty()) {
+                                                            AsyncImage(
+                                                                model = savedFiles[img.itemKey] ?: img.thumbnailUrl,
+                                                                contentDescription = img.title,
+                                                                contentScale = ContentScale.Crop,
+                                                                modifier = Modifier
+                                                                    .size(36.dp)
+                                                                    .clip(RoundedCornerShape(4.dp))
+                                                            )
+                                                        } else {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(36.dp)
+                                                                    .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(4.dp)),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = AppIcons.Photo,
+                                                                    contentDescription = null,
+                                                                    tint = Color.White.copy(alpha = 0.3f),
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                        Column {
+                                                            Text(
+                                                                text = img.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${img.itemKey}",
+                                                                color = Color.White.copy(alpha = 0.9f),
+                                                                fontSize = 13.sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                            Text("Image Shortcut", color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp)
+                                                            OfflineRowLine(
+                                                                state = offlineState.rows[img.itemKey],
+                                                                onTryAgain = { viewModel.tryAgain(img.itemKey) },
+                                                                onRemove = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), img.itemKey, img.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${img.itemKey}", dropsPhotoRow = true, dropsBookmark = true) }) { viewModel.removeSavedRow(img.itemKey, col.id) } }
+                                                            )
+                                                        }
+                                                    }
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                val detailItem = AlbumImageData(
+                                                                    imageKey = img.itemKey,
+                                                                    title = img.title,
+                                                                    caption = img.title,
+                                                                    thumbnailUrl = img.thumbnailUrl,
+                                                                    archivedUri = null,
+                                                                    date = null,
+                                                                    dateTime = null,
+                                                                    keywords = null,
+                                                                    webUri = null,
+                                                                    originalWidth = null,
+                                                                    originalHeight = null,
+                                                                    format = "JPG",
+                                                                    videoUrl = null
+                                                                )
+                                                                scope.launch {
+                                                                    files?.let { com.smugview.app.ui.detail.sharePhoto(share, it, scope, viewModel, detailItem, viewModel.shareLinkFor(detailItem)) }
+                                                                }
+                                                            },
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = AppIcons.Share,
+                                                                contentDescription = "Share",
+                                                                tint = Color.White.copy(alpha = 0.7f),
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                        IconButton(
+                                                            onClick = {
+                                                                val detailItem = AlbumImageData(
+                                                                    imageKey = img.itemKey,
+                                                                    title = img.title,
+                                                                    caption = img.title,
+                                                                    thumbnailUrl = img.thumbnailUrl,
+                                                                    archivedUri = img.extraData?.takeIf { it.startsWith("https://") },
+                                                                    date = null,
+                                                                    dateTime = null,
+                                                                    keywords = null,
+                                                                    webUri = null,
+                                                                    originalWidth = null,
+                                                                    originalHeight = null,
+                                                                    format = "JPG",
+                                                                    videoUrl = null
+                                                                )
+                                                                downloadPhoto(detailItem)
+                                                            },
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = AppIcons.Download,
+                                                                contentDescription = "Download",
+                                                                tint = Color.White.copy(alpha = 0.7f),
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                        IconButton(
+                                                            onClick = { askThenRemove({ viewModel.removeImageConfirm(listOf(col), img.itemKey, img.title.takeIf { !it.isNullOrBlank() } ?: "Photo ${img.itemKey}", dropsPhotoRow = false, dropsBookmark = true) }) { viewModel.removeBookmark(col.id, "Image", img.itemKey) } },
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = AppIcons.Close,
+                                                                contentDescription = "Unsave",
+                                                                tint = Color.White.copy(alpha = 0.5f),
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Standard Collections Grid View list
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            // Create new collection entry row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = newCollectionName,
+                    onValueChange = { newCollectionName = it },
+                    label = { Text("New Collection Name", color = Color.White.copy(alpha = 0.6f)) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NeonBlue,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                        focusedLabelColor = NeonBlue,
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.6f),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Button(
+                    onClick = {
+                        if (newCollectionName.isNotBlank()) {
+                            viewModel.createCollection(newCollectionName.trim())
+                            newCollectionName = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonBlue),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.height(56.dp)
+                ) {
+                    Text("Create", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (collections.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No saved collections for this site yet.",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 14.sp
+                    )
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(collections, key = { it.id }) { col ->
+                        val glowColor = neonColors[kotlin.math.abs(col.id.hashCode()) % neonColors.size]
+                        Card(
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp)
+                                .border(1.5.dp, glowColor.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                                .clickable {
+                                    selectedCollectionForShortcuts = col
+                                }
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                // Action buttons top-right (Cast & Delete)
+                                Row(
+                                    modifier = Modifier.align(Alignment.TopEnd),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            if (isCasting) {
+                                                viewModel.castCollection(col.id)
+                                                onNavigateToCastController(col.name)
+                                            } else {
+                                                pendingCastCollectionId = col.id
+                                                pendingCastCollectionName = col.name
+                                                viewModel.startCastDiscovery()
+                                                showCastSelector = true
+                                            }
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = AppIcons.Cast,
+                                            contentDescription = "Cast Collection",
+                                            tint = if (isCasting) NeonBlue else Color.White.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { requestDelete(col) },
+                                    ) {
+                                        Icon(
+                                            imageVector = AppIcons.Close,
+                                            contentDescription = "Delete Collection",
+                                            tint = Color.White.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                // Info details column
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.SpaceBetween,
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.PhotoAlbum,
+                                        contentDescription = null,
+                                        tint = glowColor,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = col.name,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Saved Collection",
+                                            fontSize = 11.sp,
+                                            color = Color.White.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showCastSelector) {
+            com.smugview.app.ui.component.CastDeviceSelectorBottomSheet(
+                devices = discoveredDevices,
+                onDeviceSelected = { device ->
+                    viewModel.connectToCastDevice(device)
+                    showCastSelector = false
+                    
+                    pendingCastCollectionId?.let { colId ->
+                        scope.launch {
+                            delay(1200)
+                            viewModel.castCollection(colId)
+                            onNavigateToCastController(pendingCastCollectionName)
+                            pendingCastCollectionId = null
+                        }
+                    }
+                },
+                onGone = { viewModel.stopCastDiscovery() },
+                onDismiss = {
+                    showCastSelector = false
+                    pendingCastCollectionId = null
+                }
+            )
+        }
+    }
+}

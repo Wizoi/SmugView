@@ -75,7 +75,7 @@ class ShareFilesTest {
         try {
             runBlocking { ShareFiles(cache, images).prepare("AbC123", null, thumb) }
             fail("expected an HttpFailure")
-        } catch (e: ShareFiles.HttpFailure) {
+        } catch (e: HttpFailure) {
             assertEquals(503, e.code)
             assertEquals(emptyList<String>(), File(cache, "shared_images").listFiles()!!.map { it.name })
         }
@@ -86,7 +86,7 @@ class ShareFilesTest {
         try {
             runBlocking { ShareFiles(cache, images).prepare("AbC123", null, thumb) }
             fail("expected NotAPictureException")
-        } catch (e: ShareFiles.NotAPictureException) {
+        } catch (e: NotAPictureException) {
             assertEquals(emptyList<String>(), File(cache, "shared_images").listFiles()!!.map { it.name })
         }
     }

@@ -11,11 +11,12 @@ import java.io.File
  * `node/{id}!parents`. This keeps a new parser from creeping back in.
  */
 class NoParentNodeParsersGuardTest {
-    private val main = File("src/main/java/com/smugview/app")
+    // The app and the shared module (the UI and the data layer moved there).
+    private val roots = listOf(File("src/main/java/com/smugview/app"), File("../shared/src/commonMain/kotlin/com/smugview/app"))
 
     private fun isComment(line: String) = line.trim().let { it.startsWith("//") || it.startsWith("*") || it.startsWith("/*") }
 
-    private fun sources() = main.walkTopDown().filter { it.isFile && it.extension == "kt" }
+    private fun sources() = roots.flatMap { it.walkTopDown().toList() }.asSequence().filter { it.isFile && it.extension == "kt" }
         .filter { it.name != "ResponseModels.kt" }.toList()
 
     @Test fun noUrisParentNodeReads_outsideResponseModels() {

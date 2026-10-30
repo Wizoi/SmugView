@@ -173,8 +173,8 @@ dependencies {
 
     // Coil Image Loading
     // Coil 3 (multiplatform); the OkHttp fetcher keeps images on the cache-less call factory (R-37)
-    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
+    implementation("io.coil-kt.coil3:coil-compose:3.4.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.4.0")
 
     // Palette API for dynamic theme color extraction
     implementation("androidx.palette:palette-ktx:1.0.0")
@@ -189,8 +189,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
 
     // QR code generation for the "Share" dialogs (folder/gallery/photo link -> scannable code).
-    // Just the barcode-writing core — no camera/scanning UI is needed for this.
-    implementation("com.google.zxing:core:3.5.3")
+    // Test-only: reads back what the shared encoder (qrModules) draws. The encoder itself is qrcode-kotlin in :shared.
+    testImplementation("com.google.zxing:core:3.5.3")
     // Reads the Orientation of a photo before a share strips its Exif (6-14); also written by the test fixture.
     implementation("androidx.exifinterface:exifinterface:1.3.6")
 

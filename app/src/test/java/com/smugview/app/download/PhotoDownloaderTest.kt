@@ -1,5 +1,6 @@
 package com.smugview.app.download
 
+import com.smugview.app.share.HttpFailure
 import android.content.ContentProvider
 import android.content.ContentUris
 import android.content.ContentValues
@@ -184,7 +185,7 @@ class PhotoDownloaderTest {
 
         offline = false; code = 503
         val serverError = try { runBlocking { downloader().download("AbC123", "Beach.jpg", null, cdn) }; null } catch (e: Exception) { e }
-        assertTrue(serverError is ShareFiles.HttpFailure)
+        assertTrue(serverError is HttpFailure)
         assertFalse(downloadMessage(serverError!!).contains("offline", ignoreCase = true))
         assertTrue(downloadMessage(serverError), downloadMessage(serverError).startsWith("Couldn't save the photo."))
         assertTrue("no row left", FakePhotoStore.rows.isEmpty())
@@ -199,7 +200,7 @@ class PhotoDownloaderTest {
         body = bytes
         val e = try { runBlocking { downloader(sdk = 28, permission = false).download("AbC123", "Beach.jpg", null, cdn) }; null } catch (e: Exception) { e }
 
-        assertTrue(e is PhotoDownloader.PermissionNeededException)
+        assertTrue(e is PermissionNeededException)
         assertEquals(UserMessages.DOWNLOAD_PERMISSION, downloadMessage(e!!))
         assertTrue("nothing requested", requested.isEmpty())
     }
@@ -235,7 +236,7 @@ class PhotoDownloaderTest {
 
     @Test fun `nothing saved and no address is its own failure`() {
         val e = try { runBlocking { downloader().download("AbC123", "Beach.jpg", null, null) }; null } catch (e: Exception) { e }
-        assertTrue(e is PhotoDownloader.NoSourceException)
+        assertTrue(e is NoSourceException)
     }
 
     private val original = cdn

@@ -20,6 +20,10 @@ configurations.matching { it.name in setOf("kspJvm", "kspAndroid", "kspIosArm64"
 
 // iOS spike (Stage 0, step 3): a Kotlin Multiplatform module that `:app` does not depend on yet. The iOS targets are declared here and
 // compiled on a macOS runner; on Windows only the JVM target builds and runs its tests.
+compose.resources {
+    packageOfResClass = "com.smugview.shared.generated"
+}
+
 kotlin {
     jvm()
     // Stage 1: the Android app consumes the shared code through this target. The app is built for Java 17, and inline functions from
@@ -29,6 +33,7 @@ kotlin {
         compileSdk = 37
         minSdk = 26
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+        androidResources { enable = true } // Compose Multiplatform resources (camera logos)
     }
     iosArm64()
     iosSimulatorArm64()
@@ -39,31 +44,46 @@ kotlin {
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
             implementation("androidx.room:room-runtime:2.8.5")
             implementation("androidx.sqlite:sqlite-bundled:2.6.2")
-            api("io.ktor:ktor-client-core:3.0.3")
+            api("io.ktor:ktor-client-core:3.1.0")
             // The Compose runtime only (state holders such as mutableStateOf in the view-model layer); the screens stay in the app.
             implementation(compose.runtime)
+            implementation(compose.components.resources)
+            api("androidx.paging:paging-compose:3.5.3")
+            api("org.jetbrains.androidx.navigation:navigation-compose:2.10.0-beta01") // the navigation graph (SmugViewNavigation)
+            api(compose.material3) // MaterialTheme and the components the screens use
+            api(compose.foundation)
+            implementation(compose.animation) // animateColorAsState (the viewer's background)
+            api("io.coil-kt.coil3:coil-compose:3.4.0") // AsyncImage and ImageRequest in the screens
             api(compose.ui) // ImageVector (the icons) and the other graphics types the shared UI state uses
             // The multiplatform ViewModel and SavedStateHandle (the base of SmugViewModel).
             api("androidx.lifecycle:lifecycle-viewmodel:2.10.0")
             api("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.10.0")
             implementation("androidx.room:room-paging:2.8.5")
             api("androidx.paging:paging-common:3.5.3")
-            implementation("io.ktor:ktor-client-content-negotiation:3.0.3")
-            implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.3")
+            implementation("io.ktor:ktor-client-content-negotiation:3.1.0")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.0")
+            // QR encoding in common code (replaces ZXing, which is Java-only).
+            implementation("io.github.g0dkar:qrcode-kotlin:4.5.0")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
-            implementation("io.ktor:ktor-client-mock:3.0.3")
+            implementation("io.ktor:ktor-client-mock:3.1.0")
         }
         jvmMain.dependencies {
-            implementation("io.ktor:ktor-client-okhttp:3.0.3")
+            implementation("io.ktor:ktor-client-okhttp:3.1.0")
         }
         androidMain.dependencies {
-            implementation("io.ktor:ktor-client-okhttp:3.0.3")
+            implementation("androidx.activity:activity-compose:1.13.0")
+            val media3 = "1.3.0"
+            implementation("androidx.media3:media3-exoplayer:$media3")
+            implementation("androidx.media3:media3-ui:$media3")
+            implementation("androidx.media3:media3-common:$media3")
+            implementation("io.ktor:ktor-client-okhttp:3.1.0")
         }
         iosMain.dependencies {
-            implementation("io.ktor:ktor-client-darwin:3.0.3")
+            implementation("io.ktor:ktor-client-darwin:3.1.0")
+            implementation("io.coil-kt.coil3:coil-network-ktor3:3.4.0") // fetches images over the Darwin engine
         }
     }
 }

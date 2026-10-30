@@ -8,7 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
-import com.smugview.app.share.ShareFiles
+import com.smugview.app.share.HttpFailure
 import com.smugview.app.ui.text.Problem
 import com.smugview.app.ui.text.Subject
 import com.smugview.app.ui.text.UserMessages
@@ -43,7 +43,7 @@ class PhotoDownloader(
         MediaScannerConnection.scanFile(context, arrayOf(path), arrayOf(mime), null)
     }
 ) {
-    /** The name the photo was saved under, and whether it is the original; [fallbackUrls] are tried in order only when the original answers 404. Throws [PermissionNeededException], [ShareFiles.HttpFailure], [IOException] or [NoSourceException]. */
+    /** The name the photo was saved under, and whether it is the original; [fallbackUrls] are tried in order only when the original answers 404. Throws [PermissionNeededException], [HttpFailure], [IOException] or [NoSourceException]. */
     suspend fun download(
         imageKey: String,
         fileName: String?,
@@ -63,14 +63,14 @@ class PhotoDownloader(
             for ((index, url) in candidates.withIndex()) {
                 result = images.newCall(Request.Builder().url(url).build()).execute().use { response ->
                     if (response.code == 404 && index < candidates.lastIndex) return@use null
-                    if (!response.isSuccessful) throw ShareFiles.HttpFailure(response.code)
+                    if (!response.isSuccessful) throw HttpFailure(response.code)
                     val body = response.body ?: throw IOException("empty body")
                     val mime = body.contentType()?.let { "${it.type}/${it.subtype}" }?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
                     Saved(write(body.byteStream(), body.contentLength(), mime, nameFor(imageKey, fileName)), original = index == 0)
                 }
                 if (result != null) break
             }
-            result ?: throw ShareFiles.HttpFailure(404)
+            result ?: throw HttpFailure(404)
         }
     }
 
@@ -134,14 +134,6 @@ class PhotoDownloader(
     /** The name the photo was saved under, and whether it is the original (false: SmugMug had none, so a smaller rendition was saved). */
     data class Saved(val name: String, val original: Boolean)
 
-    class PermissionNeededException : Exception("storage permission needed")
-
-    /** The phone would not take the file (not a network or disk-full problem). */
-    class SaveFailedException(message: String) : Exception(message)
-
-    /** Nothing saved and no address to fetch from. */
-    class NoSourceException : Exception("no source for the picture")
-
     companion object {
         const val FOLDER = "SmugView"
 
@@ -170,29 +162,6 @@ class PhotoDownloader(
                 at(0) == 0x52 && at(1) == 0x49 && at(2) == 0x46 && at(3) == 0x46 && at(8) == 0x57 && at(9) == 0x45 -> "image/webp"
                 else -> "image/jpeg"
             }
-        }
-    }
-}
-
-/** What a failed download says (design 5): its real cause, and a status from SmugMug is never "you went offline". */
-fun downloadMessage(e: Throwable): String {
-    val photo = Subject.Photo
-    return when {
-        e is PhotoDownloader.PermissionNeededException -> UserMessages.DOWNLOAD_PERMISSION
-        e is IOException && (e.message.orEmpty().contains("ENOSPC") || e.message.orEmpty().contains("No space left")) -> UserMessages.DOWNLOAD_NO_SPACE
-        e is ShareFiles.HttpFailure && e.code == 404 -> UserMessages.DOWNLOAD_NO_COPY
-        e is ShareFiles.HttpFailure -> UserMessages.downloadFailed(
-            when (e.code) {
-                429 -> Problem.RateLimited(photo)
-                in 500..599 -> Problem.SmugMugTrouble(photo, e.code)
-                else -> Problem.Unexpected(photo, e.code.toString())
-            }
-        )
-        e is PhotoDownloader.SaveFailedException || e is PhotoDownloader.NoSourceException ->
-            UserMessages.downloadFailed(Problem.Unexpected(photo, "save"))
-        else -> when (val p = Problem.from(e, photo)) {
-            is Problem.OfflineNothingSaved -> UserMessages.DOWNLOAD_OFFLINE
-            else -> UserMessages.downloadFailed(p)
         }
     }
 }

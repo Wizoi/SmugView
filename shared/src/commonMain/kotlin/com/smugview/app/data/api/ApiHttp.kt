@@ -55,12 +55,21 @@ class ApiHttp(
         return ApiException(status.value, status.description, headers[SYNTHETIC_CACHE_MISS_HEADER] != null, headers["Retry-After"])
     }
 
+    /**
+     * SmugMug answers a request without `Accept: application/json` with 200 and an HTML page. Android's OkHttp interceptor adds the header; the
+     * shared code owns it too, so a platform with no interceptor (iOS) works. A caller that sets its own `Accept` keeps it, once.
+     */
+    private fun HttpRequestBuilder.askForJson(callerHeaders: List<Pair<String, String?>>) {
+        if (callerHeaders.none { (k, v) -> v != null && k.equals("Accept", ignoreCase = true) }) header("Accept", "application/json")
+    }
+
     @PublishedApi internal suspend fun fetchText(path: String, query: List<Pair<String, Any?>>, headers: List<Pair<String, String?>>): String {
         val response = client.request {
             method = HttpMethod.Get
             url(urlOf(path))
             onRequest()
             query.forEach { (k, v) -> parameter(k, v) }
+            askForJson(headers)
             headers.forEach { (k, v) -> if (v != null) header(k, v) }
         }
         if (response.status.value !in 200..299) throw response.failure()
@@ -79,6 +88,7 @@ class ApiHttp(
             url(urlOf(path))
             onRequest()
             query.forEach { (k, v) -> parameter(k, v) }
+            askForJson(headers)
             headers.forEach { (k, v) -> if (v != null) header(k, v) }
             setBody(FormDataContent(Parameters.build { fields.forEach { (k, v) -> append(k, v) } }))
         }

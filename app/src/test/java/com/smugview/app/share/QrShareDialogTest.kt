@@ -79,10 +79,10 @@ class QrShareDialogTest {
     }
 
     @Test fun `a status from SmugMug is never reported as offline`() {
-        assertTrue(shareProblem(ShareFiles.HttpFailure(429)) is Problem.RateLimited)
-        assertTrue(shareProblem(ShareFiles.HttpFailure(503)) is Problem.SmugMugTrouble)
-        assertTrue(shareProblem(ShareFiles.HttpFailure(404)) is Problem.Gone)
-        assertTrue(shareProblem(ShareFiles.NotAPictureException()) is Problem.Unexpected)
+        assertTrue(shareProblem(HttpFailure(429)) is Problem.RateLimited)
+        assertTrue(shareProblem(HttpFailure(503)) is Problem.SmugMugTrouble)
+        assertTrue(shareProblem(HttpFailure(404)) is Problem.Gone)
+        assertTrue(shareProblem(NotAPictureException()) is Problem.Unexpected)
         assertTrue(shareProblem(java.net.UnknownHostException("x")) is Problem.OfflineNothingSaved)
     }
 }

@@ -14,7 +14,6 @@ kotlin {
         target.binaries.framework {
             baseName = "Shared"
             isStatic = true
-            export(project(":shared"))
         }
     }
     sourceSets {
