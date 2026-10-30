@@ -28,13 +28,13 @@ on:
         type: boolean
         default: false
       native_heap:
-        description: 'Release link: Kotlin/Native compiler heap, e.g. 6g (empty: the 5g in gradle.properties). The runner has 7.5 GB and no swap.'
+        description: 'Release link: -Pkotlin.native.jvmArgs heap, e.g. 512m (empty: not set). Measured: the compiler runs in the Gradle JVM, so this does not matter; gradle_heap does.'
         type: string
         default: ''
       gradle_heap:
-        description: 'Release link: Gradle JVM heap, e.g. 512m'
+        description: 'Release link: Gradle JVM heap. The Kotlin/Native compiler runs inside it: 4g and 1.5g ran out of memory, 5g links in 22 min on the 7.5 GB runner.'
         type: string
-        default: '1536m'
+        default: '5g'
       release_binary_cache:
         description: 'Release link: try kotlin.native.binary.enableReleaseBinaryCache (faster, changes the binary: a timing check, not a size number)'
         type: boolean
@@ -132,8 +132,8 @@ jobs:
           path: shared/build/reports/tests
 
   # The release framework link (Stage 0, step 5): size and time. Slow (36 minutes on the standard runner), so on demand, weekly, or when a
-  # commit message contains [release-link]. It samples swap use every 30 s: the runner has 7 GB and the build gives the Kotlin/Native
-  # compiler 5 GB, so swapping is the suspect behind the time. The Gradle JVM gets 1.5 GB here so the two do not compete for memory.
+  # commit message contains [release-link]. It samples swap use every 30 s: the runner has 7 GB and the Kotlin/Native
+  # compiler runs inside the Gradle JVM, whose heap decides whether the link finishes (measured: 5g passes, 4g and 1.5g run out).
   ios-release-link:
     if: >-
       github.event_name == 'schedule' ||
@@ -163,7 +163,7 @@ jobs:
           if [ "${{ inputs.release_binary_cache }}" = "true" ]; then cache_flag="-Pkotlin.native.binary.enableReleaseBinaryCache=true"; fi
           heap_flag=""
           if [ -n "${{ inputs.native_heap }}" ]; then heap_flag="-Pkotlin.native.jvmArgs=-Xmx${{ inputs.native_heap }}"; fi
-          gradle_heap="${{ inputs.gradle_heap }}"; gradle_heap="${gradle_heap:-1536m}"
+          gradle_heap="${{ inputs.gradle_heap }}"; gradle_heap="${gradle_heap:-5g}"
           echo "release binary cache flag: '${cache_flag}', native heap flag: '${heap_flag}', gradle heap: ${gradle_heap}" | tee mem.log
           sysctl hw.memsize hw.ncpu 2>&1 | tee -a mem.log
           ( while true; do echo "$(date +%H:%M:%S) $(sysctl -n vm.swapusage)"; sleep 30; done ) >> mem.log 2>&1 &
@@ -338,7 +338,7 @@ jobs:
         run: |
           set -o pipefail
           start=$(date +%s)
-          ./gradlew :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" 2>&1 | tee ipa-framework.log
+          ./gradlew :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8" 2>&1 | tee ipa-framework.log
           mid=$(date +%s)
           brew install xcodegen
           (cd iosApp && xcodegen generate)
