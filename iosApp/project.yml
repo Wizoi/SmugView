@@ -16,7 +16,7 @@ targets:
       - iosApp
     dependencies:
       - package: GoogleCast
-        product: GoogleCastDynamic
+        product: GoogleCastStatic # experiment: the dynamic product double-defined GTMSessionFetcher (run 41141946510)
     # Compose Multiplatform refuses to start without this key (full refresh rate on ProMotion iPhones); found by the CI crash report of 2026-10-30.
     # SmugMugAPIKey is read by IosApp.kt; the build setting SMUGMUG_API_KEY is empty here and set by whoever builds a device test app.
     info:
@@ -42,4 +42,4 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../spikeui/build/bin/iosSimulatorArm64/debugFramework"
         "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]": "$(SRCROOT)/../spikeui/build/bin/iosArm64/releaseFramework"
-        OTHER_LDFLAGS: ["$(inherited)", "-framework", "Shared"]
+        OTHER_LDFLAGS: ["$(inherited)", "-framework", "Shared", "-ObjC"]
