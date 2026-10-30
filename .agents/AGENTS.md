@@ -418,3 +418,14 @@ The short version, as standing rules (proposed in the retro; CLAUDE.md is not ch
 *   Look at every screen in both themes, not only the screen a change touches.
 *   Phone-only means real LAN, real touch/GPU, the real chooser and the owner's account. Everything else runs on the emulator first.
 *   Check per-class test times when the suite passes 5 minutes or a class passes 60 s (`settle()` once cost 162 of 184 s in one class).
+
+## 📈 Apple Port Retro (2026-10-29 Retro v8)
+Full write-up: [docs/review/2026-10-29-retro-apple-port.md](../docs/review/2026-10-29-retro-apple-port.md).
+Proposed standing rules (CLAUDE.md is not changed until the owner agrees):
+*   After moving code to `commonMain` or adding a multiplatform dependency, read the iOS CI job before the next move; "import-clean" is not "movable" (the design's 51 files were 5).
+*   One toolchain component per CI round; check a dependency's klib `compiler_version` and the `compileSdk` a multiplatform library needs before bumping.
+*   Delete stale test results and require `BUILD SUCCESSFUL` before reading counts; stop the emulator before a full suite.
+*   A flake that appears after a change is a finding in the same step, classed as test or product.
+*   Apple lead times (Developer Program enrollment, a tester device, the Xcode 26 upload requirement, UNVERIFIED) go on the owner's list early.
+*   Keep the tested old stack and change what sits on top (the Ktor engine over `Call.Factory`).
+*   An emulator still `offline` after 2 minutes: switch to `-gpu swiftshader_indirect -wipe-data`.
