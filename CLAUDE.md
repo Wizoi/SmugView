@@ -57,7 +57,9 @@ before starting on a bug.
   (retro v8: two of six were real races).
 - **A file is movable to `:shared` only if it compiles in common code and the iOS CI job passes.**
   Import-clean is not enough: same-package references and JVM-only APIs (`@Synchronized`,
-  `LinkedHashMap(16, 0.75f, true)`) hide there. After a move, read the iOS job before the next one.
+  `LinkedHashMap(16, 0.75f, true)`) hide there. `:shared:compileKotlinJvm` does NOT check this (JVM
+  libraries stay visible); run `:shared:compileCommonMainKotlinMetadata`, which works on Windows and found
+  66 real problems in the repository move. Then read the iOS job before the next move.
 - **Look at every screen in both themes**, not only the screen the change touches.
 - **Phone-only means** real LAN (cast), real touch/GPU, the real chooser/Google Photos and the owner's
   account. Everything else runs on the emulator first (`scripts/emulator-checks.sh`).
@@ -103,9 +105,15 @@ before starting on a bug.
   Package names did not change. The app keeps its OkHttp stack (`http_cache`, `RetryingCallFactory`, cookie
   jar, telemetry) behind `CallFactoryEngine`. Errors are `ApiException(code, syntheticCacheMiss,
   retryAfter)`, not `HttpException`; `unlock*` returns `ApiStatus`. Run `:shared:jvmTest` too.
-- **Compose screens stay out of `:shared`** (Compose Multiplatform 1.12 needs compileSdk 37, i.e. AGP 9);
-  `:spikeui` holds the iOS spike screen and the `Shared` framework. The iOS side is only ever built by the
-  macOS CI job (`.github/workflows/ios-spike.yml`); there is no Mac here.
+- **The build is AGP 9.5.0 / Gradle 9.8.2 / compileSdk 37 (targetSdk 36), Hilt 2.60.1 on `com.android.legacy-kapt`,
+  Kotlin built in, Gradle Play Publisher 4.1.1.** `:shared` uses `com.android.kotlin.multiplatform.library`
+  (`androidLibrary { }`), not `com.android.library`. Compose Multiplatform may now go into `:shared`; today
+  `:spikeui` still holds the iOS spike screen and the `Shared` framework. The iOS side is only ever built by
+  the macOS CI job (`.github/workflows/ios-spike.yml`, Xcode 26.2 for the device build); there is no Mac here.
+- **The repository (`SmugMugRepository`, `UnlockManager`, `GalleryCrawl`, `IndexParentResolver`) is common code in
+  `:shared`** with no Hilt annotations; `AppModule.provideSmugMugRepository` builds it. Common code has no
+  `java.*`: use `Iso8601`, `UrlParts`, `ConcurrentMap`, `AtomicCounter`, `CopyOnWriteList`, `ioDispatcher`,
+  `kindName()`, `nowMillis()` (parity-tested in `CommonHelpersParityTest`).
 - **Saved photos are `offline_files` rows plus `filesDir/offline/{imageKey}.orig.{ext}`, owned by
   `OfflineStore`.** Nothing else writes there, and `collection_photos.localFilePath/isDownloaded`
   are dead columns. A file is wanted while a collection photo, an Image bookmark or a kept
