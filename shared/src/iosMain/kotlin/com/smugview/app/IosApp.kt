@@ -49,11 +49,13 @@ import com.smugview.app.util.ioDispatcher
 import com.smugview.shared.api.platformEngine
 import io.ktor.client.HttpClient
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import platform.Foundation.NSBundle
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSProcessInfo
@@ -80,6 +82,18 @@ fun SmugViewIosApp() {
             // it had been tapped, so the screenshot shows real data. Unset in every normal launch.
             val demoSite = NSProcessInfo.processInfo.environment["SMUGVIEW_DEMO_SITE"] as? String
             if (!demoSite.isNullOrBlank()) vm.selectSite(demoSite)
+            // CI trace: `SIMCTL_CHILD_SMUGVIEW_DEBUG=1` prints what the app thinks, to stdout, every 5 s (the key's length, never its value).
+            if (NSProcessInfo.processInfo.environment["SMUGVIEW_DEBUG"] != null) {
+                CoroutineScope(Dispatchers.Default).launch {
+                    repeat(7) { n ->
+                        println(
+                            "smugview-debug t=${n * 5}s keyLength=${IosRoot.apiKeyLength} demoSite=$demoSite active=${vm.activeNickname.value} " +
+                                "tab=${vm.activeTab.value} splash=${vm.splashState.value} profileLoaded=${vm.activeUserProfile.value != null}"
+                        )
+                        delay(5000)
+                    }
+                }
+            }
         }
     }
     var banner by remember { mutableStateOf<String?>(null) }
@@ -121,6 +135,9 @@ private object IosRoot {
 
     /** The SmugMug API key the build put in Info.plist (`SmugMugAPIKey`); empty when the build left it out. */
     private val apiKey: String = (NSBundle.mainBundle.objectForInfoDictionaryKey("SmugMugAPIKey") as? String).orEmpty()
+
+    /** For the CI trace only: how long the key is, never what it is. */
+    val apiKeyLength: Int get() = apiKey.length
 
     private val database: AppDatabase by lazy {
         Room.databaseBuilder<AppDatabase>(name = "$documents/smugview.db")
