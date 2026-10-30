@@ -65,7 +65,7 @@ class OfflineDownloaderTest {
         cdn = FakeCdn()
         db = TestDb.inMemory()
         OfflineFixture.insert(db.openHelper.writableDatabase)
-        val repository = SmugMugRepository(loopback.api(), db.collectionDao(), FakePasswordStore(), app)
+        val repository = SmugMugRepository(loopback.api(), db.collectionDao(), FakePasswordStore())
         store = OfflineStore(db, filesDir, runId = "run0001", clock = { now }, freeBytes = { free })
         val images = RetryingCallFactory(cdn.clientOver(loopback.client).forFileDownloads(), maxAttempts = 0)
         downloader = OfflineDownloader(store, repository, images, apiKey = { "test-key" }, settings = settings, clock = { now })

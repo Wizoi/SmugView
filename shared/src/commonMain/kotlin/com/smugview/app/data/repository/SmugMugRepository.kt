@@ -1,5 +1,12 @@
 package com.smugview.app.data.repository
+import com.smugview.app.data.db.nowMillis
+import com.smugview.app.util.AtomicCounter
+import com.smugview.app.util.ConcurrentMap
+import com.smugview.app.util.Iso8601
 import com.smugview.app.util.SmugLog
+import com.smugview.app.util.UrlParts
+import com.smugview.app.util.ioDispatcher
+import com.smugview.app.util.kindName
 
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.AlbumDetails
@@ -33,7 +40,6 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
@@ -44,18 +50,11 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
-import javax.inject.Singleton
-import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 
-@Singleton
-class SmugMugRepository @Inject constructor(
+class SmugMugRepository(
     private val api: SmugMugApi,
     private val dao: CollectionDao,
     private val passwordStore: com.smugview.app.data.security.PasswordStore,
-    @ApplicationContext private val context: Context,
     private val syncReporter: com.smugview.app.diag.SyncReporter = com.smugview.app.diag.SyncReporter.NOOP,
     private val syncState: SyncStateStore = InMemorySyncStateStore()
 ) : UnlockIo {
@@ -73,11 +72,11 @@ class SmugMugRepository @Inject constructor(
      */
     var maxPagesPerFetch: Int = Int.MAX_VALUE
 
-    private val nodeLocks = ConcurrentHashMap<String, Mutex>()
+    private val nodeLocks = ConcurrentMap<String, Mutex>()
 
     // Root node IDs are stable per site; memoize to avoid re-fetching the user profile
     // on every search / tag-scan that resolves an "Entire Site" scope. Cleared by clearEntireCache().
-    private val rootNodeIdCache = ConcurrentHashMap<String, String>()
+    private val rootNodeIdCache = ConcurrentMap<String, String>()
 
     /** Stamps [nickname], the site of the work that issued the write, onto nodes before persisting them (R-10). */
     private suspend fun insertNodesScoped(nickname: String, nodes: List<CachedNode>) {
@@ -122,7 +121,7 @@ class SmugMugRepository @Inject constructor(
      * background writer to finish instead of racing it and silently caching/showing incomplete
      * results — see the "search reads incomplete data mid-background-sync" fix in AGENTS.md.
      */
-    private val activeSubtreeIndexJobs = java.util.concurrent.atomic.AtomicInteger(0)
+    private val activeSubtreeIndexJobs = AtomicCounter(0)
     private val _isIndexingSubtree = kotlinx.coroutines.flow.MutableStateFlow(false)
     val isIndexingSubtree: kotlinx.coroutines.flow.StateFlow<Boolean> = _isIndexingSubtree
 
@@ -149,7 +148,7 @@ class SmugMugRepository @Inject constructor(
             SmugLog.debugErr("SmugMugRepository", e) { "getUserProfile failed: nickname=$nickname" }
             emit(Result.failure(e))
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 
     // Resolves nickname to root node ID
     fun getUserRootNodeId(nickname: String, apiKey: String): Flow<Result<String>> = flow {
@@ -171,7 +170,7 @@ class SmugMugRepository @Inject constructor(
             SmugLog.debugErr("SmugMugRepository", e) { "getUserRootNodeId failed: nickname=$nickname" }
             emit(Result.failure(e))
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 
     // Fetches children nodes (with offline cache boundary)
     suspend fun clearEntireCache() {
@@ -223,7 +222,7 @@ class SmugMugRepository @Inject constructor(
                 }
             }
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 
     /**
      * Fetches every page of [nodeId]'s children from the API and writes them (replacing the parent's
@@ -540,7 +539,7 @@ class SmugMugRepository @Inject constructor(
     private val crawlMutex = Mutex()
 
     /** The [UnlockManager.sessionEpoch] each site's latest crawl started under: a resync for that epoch or older is redundant. */
-    private val coveredEpoch = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val coveredEpoch = ConcurrentMap<String, Int>()
 
     private suspend fun crawlLocked(
         nickname: String,
@@ -557,7 +556,7 @@ class SmugMugRepository @Inject constructor(
         coveredEpoch[nickname] = startEpoch
         val actionId = com.smugview.app.diag.DiagContext.newActionId("sync")
         return kotlinx.coroutines.withContext(
-            kotlinx.coroutines.Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
+            com.smugview.app.util.ioDispatcher + com.smugview.app.diag.DiagContext.element(actionId)
         ) {
             val run = syncReporter.begin(com.smugview.app.diag.SyncKind.GallerySync, nickname, actionId)
             run?.rootNodeId = rootNodeId
@@ -643,7 +642,7 @@ class SmugMugRepository @Inject constructor(
             } catch (e: Exception) {
                 SmugLog.e("SmugMugRepository", "Failed to sync gallery cache", e)
                 run?.stop = com.smugview.app.diag.StopReason.Error
-                run?.stopDetail = e.javaClass.simpleName +
+                run?.stopDetail = e.kindName() +
                     ((e as? com.smugview.app.data.api.ApiException)?.let { " ${it.code}" } ?: "")
                 emptySet()
             } finally {
@@ -682,7 +681,7 @@ class SmugMugRepository @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            SmugLog.w("sync", "relist skip $id: ${e.javaClass.simpleName}")
+            SmugLog.w("sync", "relist skip $id: ${e.kindName()}")
         }
         if (treeSyncDelayMs > 0) kotlinx.coroutines.delay(treeSyncDelayMs)
         return ok
@@ -703,10 +702,10 @@ class SmugMugRepository @Inject constructor(
     }
 
     /** Wall clock for the crawl gate; tests move it. */
-    internal var clock: () -> Long = System::currentTimeMillis
+    var clock: () -> Long = ::nowMillis
 
     /** Pause between unlock calls in [unlockSavedRoots]; tests set it to 0. */
-    internal var unlockDelayMs: Long = 400L
+    var unlockDelayMs: Long = 400L
 
     /**
      * What [unlockSavedRoots] did. [allSucceeded] is true only when every distinct root unlocked:
@@ -745,7 +744,7 @@ class SmugMugRepository @Inject constructor(
     suspend fun unlockSavedRoots(nickname: String, apiKey: String): UnlockSummary {
         val actionId = com.smugview.app.diag.DiagContext.newActionId("unlock")
         return kotlinx.coroutines.withContext(
-            Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
+            ioDispatcher + com.smugview.app.diag.DiagContext.element(actionId)
         ) {
             val run = syncReporter.begin(com.smugview.app.diag.SyncKind.LaunchUnlock, nickname, actionId)
             var summary = UnlockSummary.NONE
@@ -755,7 +754,7 @@ class SmugMugRepository @Inject constructor(
                 val targets = LinkedHashMap<String, UnlockTarget>()
                 for ((key, password) in saved) {
                     val target = findUnlockTarget(key, password, apiKey)
-                    targets.putIfAbsent(target.dedupeKey, target)
+                    targets.getOrPut(target.dedupeKey) { target }
                 }
                 var ok = 0
                 var rejected = 0
@@ -781,7 +780,7 @@ class SmugMugRepository @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 run?.stop = com.smugview.app.diag.StopReason.Error
-                run?.stopDetail = e.javaClass.simpleName
+                run?.stopDetail = e.kindName()
             } finally {
                 run?.notes = "roots=${summary.roots} ok=${summary.ok} rejected=${summary.rejected} transient=${summary.transient}"
                 run?.let { syncReporter.finish(it) }
@@ -894,7 +893,7 @@ class SmugMugRepository @Inject constructor(
     }
 
     /** Pause between folder listings in [syncFolderTree]; tests set it to 0. */
-    internal var treeSyncDelayMs: Long = 200L
+    var treeSyncDelayMs: Long = 200L
 
     /**
      * Result of one [syncFolderTree] walk. [complete] is true only when every reachable folder was
@@ -927,7 +926,7 @@ class SmugMugRepository @Inject constructor(
         val forced = !syncState.getBoolean(flagKey)
         val actionId = com.smugview.app.diag.DiagContext.newActionId("tree")
         return kotlinx.coroutines.withContext(
-            Dispatchers.IO + com.smugview.app.diag.DiagContext.element(actionId)
+            ioDispatcher + com.smugview.app.diag.DiagContext.element(actionId)
         ) {
             val run = syncReporter.begin(com.smugview.app.diag.SyncKind.FolderTreeSync, nickname, actionId)
             var listed = 0
@@ -961,10 +960,10 @@ class SmugMugRepository @Inject constructor(
                         throw e
                     } catch (e: Exception) {
                         val code = (e as? com.smugview.app.data.api.ApiException)?.code
-                        val label = e.javaClass.simpleName + (code?.let { " $it" } ?: "")
+                        val label = e.kindName() + (code?.let { " $it" } ?: "")
                         when {
                             // Offline (no network, or the synthetic only-if-cached 504) and 429: stop, do not hammer.
-                            com.smugview.app.data.api.SmugMugErrorMapper.isOffline(e) || code == 429 -> { failure = label; aborted = true }
+                            com.smugview.app.data.api.ApiErrors.isOffline(e) || code == 429 -> { failure = label; aborted = true }
                             code == 401 || code == 403 -> skippedLocked++
                             code == 404 -> if (id in passwordish) skippedLocked++ else skippedMissing++
                             code != null && code in 500..599 -> { skippedFailed++; if (failure == null) failure = label }
@@ -1027,14 +1026,14 @@ class SmugMugRepository @Inject constructor(
                             }
                             .onFailure {
                                 skipped++
-                                SmugLog.w("sync", "subtree skip $currentNodeId: ${it.javaClass.simpleName}")
+                                SmugLog.w("sync", "subtree skip $currentNodeId: ${it.kindName()}")
                             }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         // Skip this sub-folder (wrong password / other failure) and keep walking the rest.
                         skipped++
-                        SmugLog.w("sync", "subtree skip $currentNodeId: ${e.javaClass.simpleName}")
+                        SmugLog.w("sync", "subtree skip $currentNodeId: ${e.kindName()}")
                     }
                     kotlinx.coroutines.delay(200)
                 }
@@ -1309,7 +1308,7 @@ class SmugMugRepository @Inject constructor(
         via: String,
         call: suspend () -> Int
     ): UnlockResult {
-        val start = System.nanoTime()
+        val started = kotlin.time.TimeSource.Monotonic.markNow()
         var httpCode: Int? = null
         var result = UnlockResult.Transient
         var exception: String? = null
@@ -1322,15 +1321,15 @@ class SmugMugRepository @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            exception = e.javaClass.simpleName
-            if (e is java.io.IOException) currentCoroutineContext()[TransientNote]?.reason = TransientReason.Offline
-            SmugLog.d("SmugMugRepository") { "unlock exception: via=$via target=$target ${e.javaClass.simpleName}" }
+            exception = e.kindName()
+            if (e is kotlinx.io.IOException) currentCoroutineContext()[TransientNote]?.reason = TransientReason.Offline
+            SmugLog.d("SmugMugRepository") { "unlock exception: via=$via target=$target ${e.kindName()}" }
         }
         syncReporter.recordUnlock(
             com.smugview.app.diag.UnlockAttempt(
                 target = target, via = via, result = result.name,
                 httpCode = httpCode, exception = exception,
-                ms = (System.nanoTime() - start) / 1_000_000,
+                ms = started.elapsedNow().inWholeMilliseconds,
                 actionId = com.smugview.app.diag.DiagContext.currentActionId()
             )
         )
@@ -1347,7 +1346,7 @@ class SmugMugRepository @Inject constructor(
         } catch (e: Exception) {
             emit(Result.failure(e))
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 
     // Fetches single image details
     fun getImage(
@@ -1370,7 +1369,7 @@ class SmugMugRepository @Inject constructor(
         } catch (e: Exception) {
             emit(Result.failure(e))
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 
     /**
      * Where the original of [imageKey] is, for the offline downloader (phase 5, P8): `image/{key}-0` narrowed to the
@@ -1378,7 +1377,7 @@ class SmugMugRepository @Inject constructor(
      * Throws what the call throws (`HttpException` with the status, `IOException` offline); cancellation propagates.
      */
     suspend fun resolveImageSource(imageKey: String, apiKey: String, fresh: Boolean = false): ImageSource =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             val img = api.getImageSource(canonicalImageKey(imageKey), apiKey, cacheControl = if (fresh) "no-cache" else null)
                 .response.image
             ImageSource(
@@ -1405,7 +1404,7 @@ class SmugMugRepository @Inject constructor(
         } catch (e: Exception) {
             emit(Result.failure(e))
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 
     /**
      * Self-first lineage of [idOrKey] (a NodeID or an AlbumKey): the node, each ancestor, then the
@@ -1824,7 +1823,7 @@ class SmugMugRepository @Inject constructor(
             SmugLog.e("SmugMugRepository", "searchNodesRemote error: ", e)
             emit(Result.failure(e))
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 
     suspend fun insertSearchResults(results: List<SearchResult>) {
         dao.insertSearchResults(results)
@@ -1947,7 +1946,7 @@ class SmugMugRepository @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                SmugLog.w("SmugMugRepository", "index ILU raise failed: ${e.javaClass.simpleName}")
+                SmugLog.w("SmugMugRepository", "index ILU raise failed: ${e.kindName()}")
             }
         }
         val row = dao.getAlbumByKey(details.albumKey)
@@ -1960,8 +1959,8 @@ class SmugMugRepository @Inject constructor(
     }
 
     private fun isBefore(a: String, b: String): Boolean = try {
-        java.time.OffsetDateTime.parse(a).toInstant().isBefore(java.time.OffsetDateTime.parse(b).toInstant())
-    } catch (e: java.time.format.DateTimeParseException) {
+        Iso8601.isBefore(a, b)
+    } catch (e: Exception) {
         false
     }
 
@@ -1998,7 +1997,7 @@ class SmugMugRepository @Inject constructor(
         } catch (e: Exception) {
             emit(Result.failure(e))
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(ioDispatcher)
 }
 
 fun SearchResult.toCachedNode(): CachedNode {
@@ -2092,7 +2091,7 @@ data class DiscoveredSite(
 fun extractNicknameFromWebUri(webUri: String?): String? {
     if (webUri == null) return null
     try {
-        val host = java.net.URI(webUri).host ?: return null
+        val host = UrlParts.hostOrNull(webUri) ?: return null
         if (host.endsWith(".smugmug.com")) {
             val sub = host.substringBefore(".smugmug.com")
             if (sub.isNotEmpty() && sub != "www" && sub != "api") {

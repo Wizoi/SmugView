@@ -41,8 +41,7 @@ class SessionUnlockTest {
     @After fun tearDown() = db.close()
 
     private fun repo() = SmugMugRepository(
-        server.api(), dao, store,
-        org.mockito.Mockito.mock(android.content.Context::class.java), reporter, InMemorySyncStateStore()
+        server.api(), dao, store, reporter, InMemorySyncStateStore()
     ).also { it.treeSyncDelayMs = 0; it.unlockDelayMs = 0 }
 
     private fun node(id: String, parent: String?, type: String, access: String, albumKey: String? = null) = CachedNode(
@@ -122,8 +121,7 @@ class SessionUnlockTest {
 
     @Test fun noSavedPasswords_makesNoUnlockCall() {
         val empty = SmugMugRepository(
-            server.api(), dao, FakePasswordStore(),
-            org.mockito.Mockito.mock(android.content.Context::class.java), reporter, InMemorySyncStateStore()
+            server.api(), dao, FakePasswordStore(), reporter, InMemorySyncStateStore()
         )
 
         val summary = runBlocking { empty.unlockSavedRoots(nick, "k") }

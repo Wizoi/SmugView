@@ -49,8 +49,7 @@ class FolderTreeSyncTest {
     @After fun tearDown() = db.close()
 
     private fun repo() = SmugMugRepository(
-        server.api(), dao, FakePasswordStore(),
-        org.mockito.Mockito.mock(android.content.Context::class.java), reporter, state
+        server.api(), dao, FakePasswordStore(), reporter, state
     ).also { it.treeSyncDelayMs = 0 }
 
     private fun status(req: okhttp3.Request, code: Int) =

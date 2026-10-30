@@ -47,13 +47,7 @@ object SmugMugErrorMapper {
      * 504 for an `only-if-cached` miss, or a locked gallery whose saved password could not be tried for that reason.
      * A 429, a 5xx and a 404 are NOT offline: SmugMug answered.
      */
-    fun isOffline(error: Throwable?): Boolean = when (error) {
-        is java.io.IOException -> true
-        is com.smugview.app.data.api.ApiException -> error.syntheticCacheMiss
-        is com.smugview.app.data.repository.AlbumLockedException ->
-            error.pendingReason == com.smugview.app.data.repository.TransientReason.Offline
-        else -> false
-    }
+    fun isOffline(error: Throwable?): Boolean = ApiErrors.isOffline(error)
 
     /** True only when SmugMug explicitly refused the credentials (401/403). Offline, 429, 5xx and
      *  OkHttp's synthetic 504 say nothing about whether a saved password is still correct. */

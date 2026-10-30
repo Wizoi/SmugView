@@ -80,8 +80,7 @@ class ForcedRefreshBypassesCacheTest {
     }
 
     private fun repo(api: SmugMugApi) = SmugMugRepository(
-        api, dao, FakePasswordStore(), org.mockito.Mockito.mock(android.content.Context::class.java)
-    )
+        api, dao, FakePasswordStore())
 
     @Test fun control_withoutTheHeader_theSecondCallIsServedFromTheCache() {
         val api = api()

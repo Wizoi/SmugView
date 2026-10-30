@@ -346,6 +346,18 @@ object AppModule {
         scheduler = scheduler
     )
 
+    /** The repository lives in the shared module and carries no Hilt annotations; this is where the app builds it. */
+    @Provides
+    @Singleton
+    fun provideSmugMugRepository(
+        api: SmugMugApi,
+        dao: CollectionDao,
+        passwordStore: com.smugview.app.data.security.PasswordStore,
+        syncReporter: com.smugview.app.diag.SyncReporter,
+        syncState: com.smugview.app.data.repository.SyncStateStore
+    ): com.smugview.app.data.repository.SmugMugRepository =
+        com.smugview.app.data.repository.SmugMugRepository(api, dao, passwordStore, syncReporter, syncState)
+
     /** The one-time repair of an install that upgraded from the pre-17 offline code (5-8). */
     @Provides
     @Singleton

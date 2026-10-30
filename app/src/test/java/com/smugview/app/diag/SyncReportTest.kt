@@ -89,7 +89,7 @@ class SyncReportTest {
         val client = OkHttpClient.Builder().addInterceptor(interceptor).build()
         val api = smugMugApi(client)
         return SmugMugRepository(
-            api, db.collectionDao(), FakePasswordStore(), ApplicationProvider.getApplicationContext(), reporter
+            api, db.collectionDao(), FakePasswordStore(), reporter
         )
     }
 
