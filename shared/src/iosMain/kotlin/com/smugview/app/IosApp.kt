@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +43,8 @@ import com.smugview.app.util.UserDefaultsStore
 import com.smugview.app.data.security.KeychainPasswordStore
 import com.smugview.app.data.repository.KeyValueSyncStateStore
 import com.smugview.app.data.offline.KeyValueOfflineSettings
+import com.smugview.app.ui.IosPhotoFileOps
+import com.smugview.app.ui.LocalPhotoFileOps
 import com.smugview.app.ui.theme.SmugViewTheme
 import com.smugview.app.ui.viewmodel.SmugViewModel
 import com.smugview.app.util.Toaster
@@ -106,10 +109,13 @@ fun SmugViewIosApp() {
             banner = null
         }
     }
+    val photoFileOps = remember { IosPhotoFileOps() }
     SmugViewTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(modifier = Modifier.fillMaxSize()) {
-                SmugViewNavigation(viewModel = viewModel)
+                CompositionLocalProvider(LocalPhotoFileOps provides photoFileOps) {
+                    SmugViewNavigation(viewModel = viewModel)
+                }
                 banner?.let { message ->
                     Text(
                         text = message,
