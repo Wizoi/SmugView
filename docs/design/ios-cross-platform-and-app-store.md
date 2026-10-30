@@ -889,3 +889,7 @@ The owner's tester has an iPad (A16, the 2025 11-inch model, arm64; ships with i
 ## Apple account (2026-10-29)
 
 The owner paid for the Apple Developer Program on 2026-10-29 (verification pending when written). Team ID: `R28G4S7F77` (not a secret; it is in every signed app). To do after approval: confirm the individual/organization type, create the app record and bundle ID (proposed `com.smugview.app`, name availability to be checked), create an App Store Connect API key (the owner keeps the `.p8` in the App Keys folder and adds Issuer ID, Key ID and the key to GitHub secrets; Claude never needs to see them), and use automatic signing through that key in CI. Verified the same day: Apple requires uploads built with Xcode 26 or later (enforced since 2026-04-28), and GitHub's `macos-15` image has Xcode 26.0.1 to 26.3 installed with 16.4 as the default; the device build job selects Xcode 26.2.
+
+### 2026-10-30: the device build passes on Xcode 26.2 (GitHub Actions run 40996297816)
+
+The `ios-ipa-size` job now selects Xcode 26.2 (Apple's upload requirement) and the unsigned release device build succeeded: **IPA 11,680 KB** (10,336 KB on Xcode 16.4), `.app` 38,888 KB, framework link 768 s, Xcode build 39 s. Kotlin 2.3.21, Compose Multiplatform 1.12.2 and XcodeGen all work with Xcode 26; the open Xcode 26 risk from the retro is closed for the build. Still to check at Stage 4: that an archive signed with automatic signing is accepted by App Store Connect (needs the account).
