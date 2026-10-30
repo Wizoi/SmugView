@@ -12,6 +12,9 @@ before starting on a bug.
   `export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" && ./gradlew.bat testDebugUnitTest`
 - **Don't pipe Gradle into `tail`/`grep` and read success from the output.** The pipe reports
   `tail`'s exit code. Redirect to a file and check `$?`, or grep for `BUILD SUCCESSFUL`.
+- **Delete the old results before a test run, and never quote a test count from a build that failed.**
+  `rm -rf app/build/test-results shared/build/test-results` first: a failed build leaves the last run's
+  XML, which reads as "957 passed" (retro v8: happened twice). Stop the emulator before a full suite.
 - adb is at `$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe`. Use `export MSYS_NO_PATHCONV=1`
   for `adb shell` commands with `/data/` or `/sdcard/` paths, but not in the same command as the
   JBR export.
@@ -49,7 +52,12 @@ before starting on a bug.
 - **A premise about "all" or "none" needs a count over the whole set**, recorded in the findings row
   (retro v7: "only viewers are dark", "originals 404" on too few photos).
 - **A symptom seen on a device is a finding in the same step**, with a row and a premise check. It is
-  never a deferral (#25 was seen on the emulator and parked).
+  never a deferral (#25 was seen on the emulator and parked). **So is a flaky test that appears after a
+  change:** classify it as test or product, and record how often it fails alone and in a full run
+  (retro v8: two of six were real races).
+- **A file is movable to `:shared` only if it compiles in common code and the iOS CI job passes.**
+  Import-clean is not enough: same-package references and JVM-only APIs (`@Synchronized`,
+  `LinkedHashMap(16, 0.75f, true)`) hide there. After a move, read the iOS job before the next one.
 - **Look at every screen in both themes**, not only the screen the change touches.
 - **Phone-only means** real LAN (cast), real touch/GPU, the real chooser/Google Photos and the owner's
   account. Everything else runs on the emulator first (`scripts/emulator-checks.sh`).
@@ -88,6 +96,16 @@ before starting on a bug.
   (R-23). Password-gallery CDN image URLs work with no session at all (R-53).
 - A Gradle exit code of 0 has been seen on a failed build (a concurrent-build collision). Also
   check for `BUILD SUCCESSFUL` (R-69).
+- **The shared module (`:shared`, Kotlin Multiplatform) now holds:** the response models and `ApiJson`
+  (kotlinx.serialization; a missing field with no default throws, where Gson used to leave a null), the
+  annotation-free `SmugMugApi` and its generated `KtorSmugMugApi`, the whole Room database (entities, DAOs,
+  `Migrations`; schemas in `shared/schemas`, KSP-generated), `SmugLog` behind a `LogSink`, `Pager`.
+  Package names did not change. The app keeps its OkHttp stack (`http_cache`, `RetryingCallFactory`, cookie
+  jar, telemetry) behind `CallFactoryEngine`. Errors are `ApiException(code, syntheticCacheMiss,
+  retryAfter)`, not `HttpException`; `unlock*` returns `ApiStatus`. Run `:shared:jvmTest` too.
+- **Compose screens stay out of `:shared`** (Compose Multiplatform 1.12 needs compileSdk 37, i.e. AGP 9);
+  `:spikeui` holds the iOS spike screen and the `Shared` framework. The iOS side is only ever built by the
+  macOS CI job (`.github/workflows/ios-spike.yml`); there is no Mac here.
 - **Saved photos are `offline_files` rows plus `filesDir/offline/{imageKey}.orig.{ext}`, owned by
   `OfflineStore`.** Nothing else writes there, and `collection_photos.localFilePath/isDownloaded`
   are dead columns. A file is wanted while a collection photo, an Image bookmark or a kept
@@ -111,7 +129,8 @@ before starting on a bug.
 
 ## Before committing or shipping
 
-- Run the full unit suite: `./gradlew.bat testDebugUnitTest`.
+- Run the full unit suite: `./gradlew.bat :shared:jvmTest testDebugUnitTest` (results cleared first, see
+  "Running things").
 - Record the finding's row and the commit in `docs/findings.md`.
 - Publishing to Play, `git push`, and destructive git operations each need explicit
   confirmation in the moment. A plan approval doesn't cover them (see AGENTS.md "Silent Mode

@@ -1,5 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.app.util.SmugLog
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import androidx.paging.cachedIn
@@ -405,9 +406,7 @@ class SmugViewModel @Inject constructor(
         override suspend fun needsPassword(node: CachedNode): Boolean = this@SmugViewModel.needsPassword(node)
 
         override fun requestPassword(node: CachedNode) {
-            if (BuildConfig.DEBUG) {
-                android.util.Log.d("SmugViewModel", "navigator: password prompt needed for nodeId=${node.nodeId}")
-            }
+            SmugLog.d("SmugViewModel") { "navigator: password prompt needed for nodeId=${node.nodeId}" }
             this@SmugViewModel.requestPassword(node)
         }
 
@@ -420,9 +419,7 @@ class SmugViewModel @Inject constructor(
         override suspend fun nodeLineage(nodeId: String): List<CachedNode>? = repository.lineageOf(nodeId, apiKey)
 
         override suspend fun onLoadFailure(nodeId: String, password: String?, error: Throwable): LoadFailure {
-            if (BuildConfig.DEBUG) {
-                android.util.Log.e("SmugViewModel", "folder load failed for nodeId=$nodeId", error)
-            }
+            SmugLog.debugErr("SmugViewModel", error) { "folder load failed for nodeId=$nodeId" }
             if (!password.isNullOrEmpty() && com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)) {
                 // SmugMug explicitly rejected the saved password (401/403). The repository's read retry has
                 // already asked UnlockManager, which marked the root Invalid. The password is KEPT: only
@@ -866,9 +863,7 @@ class SmugViewModel @Inject constructor(
     }
 
     fun loadUserProfile(nickname: String) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "loadUserProfile called: nickname=$nickname")
-        }
+        SmugLog.d("SmugViewModel") { "loadUserProfile called: nickname=$nickname" }
         _splashState.value = SplashUiState.Loading
         beginSite(nickname)
         if (apiKey.isEmpty() || apiKey == "YOUR_API_KEY_HERE") {
@@ -882,9 +877,7 @@ class SmugViewModel @Inject constructor(
                 if (!mySession.scope.isActive) return@collect
                 result.fold(
                     onSuccess = { userData ->
-                        if (BuildConfig.DEBUG) {
-                            android.util.Log.d("SmugViewModel", "loadUserProfile success: $nickname")
-                        }
+                        SmugLog.d("SmugViewModel") { "loadUserProfile success: $nickname" }
                         _activeUserProfile.value = userData
                         val nodeUri = userData.rootNodeUri
                         val rootId = repository.parseNodeIdFromUri(nodeUri)
@@ -929,17 +922,13 @@ class SmugViewModel @Inject constructor(
     /** Try again after a failed launch or tap: opens the same site the same way. A saved folder (3-9) is used by it. */
     fun retryActiveSite() {
         val nickname = _siteAttempt.value ?: _activeNickname.value ?: return
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "retryActiveSite called: nickname=$nickname, tap=$attemptWasTap")
-        }
+        SmugLog.d("SmugViewModel") { "retryActiveSite called: nickname=$nickname, tap=$attemptWasTap" }
         if (attemptWasTap) selectSite(nickname) else loadUserProfile(nickname)
     }
 
     // Selects and locks in a SmugMug nickname to browse
     fun selectSite(nickname: String) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "selectSite called: nickname=$nickname")
-        }
+        SmugLog.d("SmugViewModel") { "selectSite called: nickname=$nickname" }
         val normalizedNickname = nickname.trim().lowercase()
         if (normalizedNickname.isEmpty()) return
 
@@ -974,9 +963,7 @@ class SmugViewModel @Inject constructor(
 
                         // Unlock, gallery crawl and tree walk run as one job (startSiteSync, below).
 
-                        if (BuildConfig.DEBUG) {
-                            android.util.Log.d("SmugViewModel", "selectSite success: resolved rootId=$rootId")
-                        }
+                        SmugLog.d("SmugViewModel") { "selectSite success: resolved rootId=$rootId" }
                         navigator.navigate(NavIntent.Root)
                         startSiteSync(normalizedNickname, rootId)
                         loadSiteHeaderImage(normalizedNickname, rootId)
@@ -987,9 +974,7 @@ class SmugViewModel @Inject constructor(
                         _activeTab.value = BrowserTab.Folders
                     },
                     onFailure = { error ->
-                        if (BuildConfig.DEBUG) {
-                            android.util.Log.e("SmugViewModel", "selectSite failed: $error")
-                        }
+                        SmugLog.debugErr("SmugViewModel", null) { "selectSite failed: $error" }
                         failSite(error)
                     }
                 )
@@ -999,9 +984,7 @@ class SmugViewModel @Inject constructor(
 
     // Clear active site and return to explorer
     fun disconnectSite() {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "disconnectSite called: activeNickname=${_activeNickname.value}")
-        }
+        SmugLog.d("SmugViewModel") { "disconnectSite called: activeNickname=${_activeNickname.value}" }
         beginSite("")
         sharedPrefs.edit().remove("active_nickname").apply()
         _activeNickname.value = null
@@ -1040,9 +1023,7 @@ class SmugViewModel @Inject constructor(
 
     /** Relist [nodeId]: the open folder in place, any other folder by its lineage (a shortcut). */
     fun loadFolderContents(nodeId: String, forceRefresh: Boolean = false) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "loadFolderContents called: nodeId=$nodeId, forceRefresh=$forceRefresh")
-        }
+        SmugLog.d("SmugViewModel") { "loadFolderContents called: nodeId=$nodeId, forceRefresh=$forceRefresh" }
         if (nodeId == navigator.currentId) navigator.navigate(NavIntent.Refresh(forceRefresh))
         else navigator.navigate(NavIntent.Shortcut(nodeId))
     }
@@ -1054,25 +1035,19 @@ class SmugViewModel @Inject constructor(
     }
 
     fun navigateToFolderFromSearch(node: CachedNode) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "navigateToFolderFromSearch: folderName=${node.title}, nodeId=${node.nodeId}")
-        }
+        SmugLog.d("SmugViewModel") { "navigateToFolderFromSearch: folderName=${node.title}, nodeId=${node.nodeId}" }
         navigator.navigate(NavIntent.FromSearch(node))
     }
 
     fun navigateBack(): Boolean {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "navigateBack called: savedStateExists=${savedFolderStateBeforeSearch != null}")
-        }
+        SmugLog.d("SmugViewModel") { "navigateBack called: savedStateExists=${savedFolderStateBeforeSearch != null}" }
         if (!navigator.canGoBack(viaSearch = true)) return false
         navigator.navigate(NavIntent.Back(viaSearch = true))
         return true
     }
 
     fun navigateToChildFolder(node: CachedNode) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "navigateToChildFolder: title=${node.title}, nodeId=${node.nodeId}, access=${node.access}")
-        }
+        SmugLog.d("SmugViewModel") { "navigateToChildFolder: title=${node.title}, nodeId=${node.nodeId}, access=${node.access}" }
         navigator.navigate(NavIntent.Child(node))
     }
 
@@ -1081,17 +1056,13 @@ class SmugViewModel @Inject constructor(
             try {
                 repository.markNodeAsViewed(nodeId)
             } catch (e: Exception) {
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.e("SmugViewModel", "Failed to mark node as viewed: $nodeId", e)
-                }
+                SmugLog.debugErr("SmugViewModel", e) { "Failed to mark node as viewed: $nodeId" }
             }
         }
     }
 
     fun navigateBackFolder(): Boolean {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "navigateBackFolder called: stackSize=${folderNavigationStack.size}")
-        }
+        SmugLog.d("SmugViewModel") { "navigateBackFolder called: stackSize=${folderNavigationStack.size}" }
         if (!navigator.canGoBack(viaSearch = false)) return false
         navigator.navigate(NavIntent.Back(viaSearch = false))
         return true
@@ -1112,26 +1083,20 @@ class SmugViewModel @Inject constructor(
 
             // Layer 2: Pre-flight API call if access is still unknown
             if (access == null) {
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "checkAndNavigateToAlbum: access unknown for $albumKey, performing pre-flight API check")
-                }
+                SmugLog.d("SmugViewModel") { "checkAndNavigateToAlbum: access unknown for $albumKey, performing pre-flight API check" }
                 try {
                     val securityInfo = withTimeoutOrNull(3000L) {
                         repository.getAlbumSecurityInfo(albumKey, apiKey)
                     }
                     access = securityInfo?.securityType
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "checkAndNavigateToAlbum: pre-flight result for $albumKey: securityType=$access, hint=${securityInfo?.passwordHint}")
-                    }
+                    SmugLog.d("SmugViewModel") { "checkAndNavigateToAlbum: pre-flight result for $albumKey: securityType=$access, hint=${securityInfo?.passwordHint}" }
                     // Cache the result back into DB if we got data
                     if (securityInfo != null) {
                         // Update existing cached node with resolved security info
                         repository.updateNodeAccess(resolvedNode.nodeId, securityInfo.securityType, securityInfo.passwordHint)
                     }
                 } catch (e: Exception) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.w("SmugViewModel", "checkAndNavigateToAlbum: pre-flight check failed for $albumKey — falling back to navigate", e)
-                    }
+                    SmugLog.debugWarn("SmugViewModel", e) { "checkAndNavigateToAlbum: pre-flight check failed for $albumKey — falling back to navigate" }
                     // Layer 3: Graceful fallback — navigate, handleAlbumLoadError recovers
                 }
             }
@@ -1163,9 +1128,7 @@ class SmugViewModel @Inject constructor(
         error: String? = null,
         onUnlocked: ((albumKey: String) -> Unit)? = null
     ) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "requestPassword: nodeId=${target.nodeId}, title=${target.title}")
-        }
+        SmugLog.d("SmugViewModel") { "requestPassword: nodeId=${target.nodeId}, title=${target.title}" }
         session.scope.launch {
             pendingOpen = PendingOpen(target, onUnlocked)
             passwordPromptNode = try {
@@ -1829,9 +1792,7 @@ class SmugViewModel @Inject constructor(
         try {
             withContext(kotlinx.coroutines.NonCancellable) { repository.markGalleryViewed(details) }
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG) {
-                android.util.Log.e("SmugViewModel", "Failed to mark album as viewed: ${run.albumKey}", e)
-            }
+            SmugLog.debugErr("SmugViewModel", e) { "Failed to mark album as viewed: ${run.albumKey}" }
         }
     }
 
@@ -1997,9 +1958,7 @@ class SmugViewModel @Inject constructor(
                         resolvedKey = getNearestCachedAncestorNode(finalThumbnailUrl)?.nodeId
                     }
 
-                    if (com.smugview.app.BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewRCA", "getImageDetails: resolvedKey=$resolvedKey for imageKey=$imageKey (detailedImage is null=${detailedImage == null})")
-                    }
+                    SmugLog.d("SmugViewRCA") { "getImageDetails: resolvedKey=$resolvedKey for imageKey=$imageKey (detailedImage is null=${detailedImage == null})" }
 
                     if (!resolvedKey.isNullOrEmpty()) {
                         val matchedNode = repository.getNodeByIdOrKey(resolvedKey)

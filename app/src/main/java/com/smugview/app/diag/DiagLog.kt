@@ -76,6 +76,12 @@ class DiagLog(
 
 /** Static holder so `SmugLog` and the crash handler can reach the log without injection. */
 object Diag {
+    // SmugLog (in the shared module) writes through this sink; installed as soon as anything touches Diag, as SmugLog used to reach it.
+    init {
+        com.smugview.app.util.SmugLog.sink = AppLogSink
+        com.smugview.app.util.SmugLog.debugEnabled = com.smugview.app.BuildConfig.DEBUG
+    }
+
     @Volatile var log: DiagLog = DiagLog.NOOP
 
     /** Exceptions that reached a site session's handler (6-6): a job nobody caught. Counted in `report.txt`, never shown. */

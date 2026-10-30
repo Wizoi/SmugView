@@ -871,3 +871,17 @@ phone batch cover it.
 Verified outside the unit tests: shrunk release APK on an emulator with live data (search, browse, gallery, offline restart) and an install-over upgrade that kept user data. Not verified: saved offline photos after upgrade, the Family password folder, video, and everything on a physical phone (batched last).
 
 **What blocks moving `SmugMugRepository` (about 2,000 lines) and the view models to shared code next** (measured): the repository itself imports little that is platform bound (okhttp `toResponseBody`, `ConcurrentHashMap`, `javax.inject`, `Context`), but it has about 45 `android.util.Log` / `BuildConfig` call sites, and its collaborators (`DiagLog`, `HttpTelemetry`, `Redactor`, `SyncStateStore`, the password store, `OfflineStore`) are Android classes. The order that keeps every step green: (1) a `SmugLog` and an `AppConfig.DEBUG` in shared with the calls replaced mechanically; (2) put the collaborators behind small interfaces in shared; (3) take the `@Inject`/`@Singleton` annotations off the moved classes and construct them in `AppModule` (Hilt stays until 1f); (4) move the repository, then the view models (`AndroidViewModel` to `ViewModel`, `Toast` to a message flow). 1f can then replace Hilt with Koin in one step.
+
+## Decision (2026-10-29): no partial first build
+
+The owner decided the first build a tester gets has the whole v1 feature set (Stages 1 to 4 finished: browse, search, tags, collections, the Family password folder, saved photos, kept galleries offline, new-gallery notifications, video, share without EXIF, diagnostics), not a cut-down "browse public sites only" build. Read as: everything in the v1 scope above; Stage 6 items (Cast on iOS, background `URLSession` downloads, iPad layouts, Room 3, the Android `PasswordStore` change) stay out unless the owner adds them. Consequence: no tester build before Stage 4; the whole of Stage 3's list is needed first. The earlier estimate for the full list (10 to 14 working sessions, rough) stands. The owner-side long pole is Apple Developer enrollment, which can start now.
+
+## Test device (2026-10-29): the tester has an iPad (A16)
+
+The owner's tester has an iPad (A16, the 2025 11-inch model, arm64; ships with iPadOS 18, can run 26 — model details from memory, to confirm with the tester). It is the only known test device, which changes the earlier "iPhone-only for v1" recommendation for TEST builds:
+
+- An iPhone-only build installs on an iPad only in compatibility mode (a scaled phone window), so it would not test what the app really does there. Test builds should therefore be **universal** (`TARGETED_DEVICE_FAMILY = 1,2`) and run natively on the iPad.
+- Whether the App Store listing claims iPad support is a separate, later choice: it needs 13-inch iPad screenshots and iPad-appropriate layouts. Keep it open until the first tester round shows how the phone-designed screens look at iPad size (the existing adaptive grids may be enough, or a maximum content width may be needed).
+- Phone-only behaviour (Dynamic Island, one-handed use, phone-sized layouts) stays unchecked on a real device, so say so in the test notes; the simulator covers the iPhone sizes.
+- Casting stays out for v1; Photos saving, the Keychain, notifications and background refresh behave the same on iPadOS but background refresh is at the system's discretion on both.
+- To confirm with the tester before Stage 4: iPadOS version (18.x or 26), whether they can install TestFlight, and an Apple ID to invite.

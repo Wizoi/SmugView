@@ -1,5 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.app.util.SmugLog
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -186,9 +187,7 @@ class SearchController(
     }
 
     fun performSearch(query: String, forceRefresh: Boolean = false) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "performSearch called: query='$query', forceRefresh=$forceRefresh")
-        }
+        SmugLog.d("SmugViewModel") { "performSearch called: query='$query', forceRefresh=$forceRefresh" }
         searchQuery = query
         if (query.isBlank()) {
             searchJob?.cancel()
@@ -225,9 +224,7 @@ class SearchController(
                 val cacheMaxAgeMs = 24 * 60 * 60 * 1000L // 24 hours
                 var isFullySearched = lastSearchedAt > 0L && cacheAgeMs < cacheMaxAgeMs
                 if (isFullySearched && !repository.hasSearchPhotosInDb(query, scopeKey)) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch: cache timestamp exists but database has no photos. Bypassing isFullySearched to fetch from API.")
-                    }
+                    SmugLog.d("SmugViewModel") { "performSearch: cache timestamp exists but database has no photos. Bypassing isFullySearched to fetch from API." }
                     isFullySearched = false
                 }
 
@@ -262,9 +259,7 @@ class SearchController(
                 _isGalleriesFoldersLoading.value = true
 
                 if (isFullySearched && !forceRefresh) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch: photos cache is valid (fully searched in past 24h); skipping background photo fetch")
-                    }
+                    SmugLog.d("SmugViewModel") { "performSearch: photos cache is valid (fully searched in past 24h); skipping background photo fetch" }
                     _isSearchPhotosLoading.value = false
                 } else {
                     _isSearchPhotosLoading.value = true
@@ -289,9 +284,7 @@ class SearchController(
                 // --- Galleries/Folders: DO depend on the local node/album cache being complete,
                 // so this part waits.
                 if (!repository.isAlbumsCacheLoaded.value) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch waiting for gallery cache to finish loading")
-                    }
+                    SmugLog.d("SmugViewModel") { "performSearch waiting for gallery cache to finish loading" }
                     repository.isAlbumsCacheLoaded.first { it }
                 }
 
@@ -304,26 +297,20 @@ class SearchController(
                 // refresh. See the "search reads incomplete data mid-background-sync" fix in
                 // AGENTS.md.
                 if (repository.isIndexingSubtree.value) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch waiting for post-unlock subtree indexing to finish")
-                    }
+                    SmugLog.d("SmugViewModel") { "performSearch waiting for post-unlock subtree indexing to finish" }
                     repository.isIndexingSubtree.first { !it }
                 }
 
                 // 1. Load cached search results from the database (Folders)
                 val cachedFolders = repository.getSearchResultNodes(query, scopeKey, "Folder")
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "performSearch: found ${cachedFolders.size} folders in database cache")
-                }
+                SmugLog.d("SmugViewModel") { "performSearch: found ${cachedFolders.size} folders in database cache" }
 
                 // Fetch galleries from in-memory cache
                 val lowerQuery = query.lowercase()
                 val cachedGalleries = repository.albumsCacheFor(nickname).filter {
                     it.title.lowercase().contains(lowerQuery)
                 }
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugViewModel", "performSearch: matched ${cachedGalleries.size} galleries from in-memory cache")
-                }
+                SmugLog.d("SmugViewModel") { "performSearch: matched ${cachedGalleries.size} galleries from in-memory cache" }
                 val sortedGalleries = sortGalleries(cachedGalleries, searchGallerySortOrder)
 
                 _searchState.value = SearchUiState.Success(
@@ -335,9 +322,7 @@ class SearchController(
                 _isGalleriesFoldersLoading.value = false
 
                 if (isFullySearched && !forceRefresh) {
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "performSearch cache is valid (fully searched in past 24h). Skipping remote gallery/folder refresh.")
-                    }
+                    SmugLog.d("SmugViewModel") { "performSearch cache is valid (fully searched in past 24h). Skipping remote gallery/folder refresh." }
                     return@launch
                 }
 
