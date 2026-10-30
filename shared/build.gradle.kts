@@ -66,6 +66,10 @@ kotlin {
         }
         androidMain.dependencies {
             implementation("androidx.activity:activity-compose:1.13.0")
+            val media3 = "1.3.0"
+            implementation("androidx.media3:media3-exoplayer:$media3")
+            implementation("androidx.media3:media3-ui:$media3")
+            implementation("androidx.media3:media3-common:$media3")
             implementation("io.ktor:ktor-client-okhttp:3.0.3")
         }
         iosMain.dependencies {
