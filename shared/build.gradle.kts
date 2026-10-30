@@ -42,6 +42,9 @@ kotlin {
             api("io.ktor:ktor-client-core:3.0.3")
             // The Compose runtime only (state holders such as mutableStateOf in the view-model layer); the screens stay in the app.
             implementation(compose.runtime)
+            // The multiplatform ViewModel and SavedStateHandle (the base of SmugViewModel).
+            api("androidx.lifecycle:lifecycle-viewmodel:2.10.0")
+            api("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.10.0")
             implementation("androidx.room:room-paging:2.8.5")
             api("androidx.paging:paging-common:3.5.3")
             implementation("io.ktor:ktor-client-content-negotiation:3.0.3")

@@ -126,7 +126,7 @@ fun BrowserScreen(
     onNavigateToPhotoDetail: (albumKey: String, imageKey: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
     onNavigateToCastController: (title: String) -> Unit,
-    viewModel: SmugViewModel = hiltViewModel(),
+    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>(),
     newGalleryFollow: com.smugview.app.data.notify.NewGalleryFollow? = null
 ) {
     val uiState by viewModel.browserState.collectAsState()

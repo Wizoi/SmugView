@@ -127,7 +127,7 @@ fun PhotoDetailScreen(
     onNavigateToGallery: (albumKey: String, albumTitle: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
     onNavigateToCastController: (String) -> Unit,
-    viewModel: SmugViewModel = hiltViewModel()
+    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>()
 ) {
     LaunchedEffect(albumKey, targetImageKey) {
         viewModel.selectAlbum(albumKey, targetImageKey)
@@ -684,7 +684,7 @@ fun sharePhoto(
         try {
             val factory = (context.applicationContext as com.smugview.app.SmugViewApp).callFactory
             val file = com.smugview.app.share.ShareFiles(context.cacheDir, factory)
-                .prepare(photo.imageKey, viewModel.savedFileOf(photo.imageKey), photo.thumbnailUrl)
+                .prepare(photo.imageKey, viewModel.savedFileOf(photo.imageKey)?.let { java.io.File(it) }, photo.thumbnailUrl)
             val fileUri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val description = photo.fileName?.takeIf { it.isNotBlank() }
                 ?: photo.title?.takeIf { it.isNotBlank() }
@@ -731,7 +731,7 @@ internal fun shareProblem(e: Throwable): com.smugview.app.ui.text.Problem {
  * offline), else from the CDN. The toast says what happened, and why when it did not.
  */
 suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, viewModel: SmugViewModel) {
-    val saved = viewModel.savedFileOf(photo.imageKey)
+    val saved = viewModel.savedFileOf(photo.imageKey)?.let { java.io.File(it) }
     var detailedPhoto = photo
     var detailsError: Throwable? = null
     if (saved == null && detailedPhoto.archivedUri == null) {

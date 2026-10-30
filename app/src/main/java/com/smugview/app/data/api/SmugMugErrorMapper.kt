@@ -51,8 +51,7 @@ object SmugMugErrorMapper {
 
     /** True only when SmugMug explicitly refused the credentials (401/403). Offline, 429, 5xx and
      *  OkHttp's synthetic 504 say nothing about whether a saved password is still correct. */
-    fun isPasswordRejection(error: Throwable?): Boolean =
-        error is com.smugview.app.data.api.ApiException && (error.code == 401 || error.code == 403)
+    fun isPasswordRejection(error: Throwable?): Boolean = ApiErrors.isPasswordRejection(error)
 
     /**
      * Extracts and maps a friendly error message from the response code and body content.

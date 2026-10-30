@@ -92,7 +92,7 @@ class ScenarioRig(
 
     private fun newViewModel(repo: SmugMugRepository, handle: SavedStateHandle): SmugViewModel {
         castFactory?.let { make ->
-            return SmugViewModel(app, repo, offline(), reader, make(app), passwords, Dispatchers.Default, reporter, handle)
+            return com.smugview.app.ui.viewmodel.smugViewModelFor(app, repo, offline(), reader, make(app), passwords, Dispatchers.Default, reporter, handle)
         }
         val cast = Mockito.mock(CastManager::class.java)
         Mockito.`when`(cast.discoveredDevices).thenReturn(MutableStateFlow(emptyList()))
@@ -101,8 +101,7 @@ class ScenarioRig(
         Mockito.`when`(cast.currentImageUri).thenReturn(MutableStateFlow(null))
         Mockito.`when`(cast.slideshowInterval).thenReturn(MutableStateFlow(5))
         Mockito.`when`(cast.isSlideshowPlaying).thenReturn(MutableStateFlow(false))
-        return SmugViewModel(
-            app, repo, offline(), reader, cast, passwords,
+        return com.smugview.app.ui.viewmodel.smugViewModelFor(app, repo, offline(), reader, cast, passwords,
             Dispatchers.Default, reporter, handle
         )
     }

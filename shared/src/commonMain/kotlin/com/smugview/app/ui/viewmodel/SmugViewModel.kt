@@ -6,8 +6,6 @@ import kotlinx.coroutines.flow.first
 import androidx.paging.cachedIn
 import androidx.paging.map
 
-import android.app.Application
-import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -15,13 +13,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.filter
-import androidx.work.OneTimeWorkRequestBuilder
-import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.ExifData
 import com.smugview.app.data.api.ImageSizeDetailsPayload
@@ -39,7 +35,6 @@ import com.smugview.app.data.db.toAlbumImageData
 import com.smugview.app.data.cast.CastDevice
 import com.smugview.app.data.cast.CastManager
 import com.smugview.app.data.cast.ConnectionState
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,7 +50,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.collect
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -65,19 +59,26 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.File
-import java.io.FileOutputStream
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import android.widget.Toast
 import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.ui.text.Problem
 import com.smugview.app.ui.text.Subject
-import javax.inject.Inject
+import com.smugview.app.util.ConcurrentMap
+import io.ktor.http.decodeURLQueryComponent
+import com.smugview.app.util.ConcurrentSet
+import com.smugview.app.util.KeyValueStore
+import kotlin.concurrent.Volatile
 
-@HiltViewModel
-class SmugViewModel @Inject constructor(
-    application: Application,
+/**
+ * The state and actions of the whole app. Plain constructor: Android's composition root (Hilt, `AppSmugViewModel`) and iOS's build it
+ * with what each platform provides ([sharedPrefs]/[searchStatusPrefs] stores, [showMessage] for what used to be a Toast, [fileUri] to
+ * turn a saved file's path into a URI the viewer can load, [apiKey]).
+ */
+open class SmugViewModel(
+    private val apiKey: String,
+    private val sharedPrefs: KeyValueStore,
+    private val searchStatusPrefs: KeyValueStore,
+    private val showMessage: (String) -> Unit,
+    private val fileUri: (String) -> String,
     private val repository: SmugMugRepository,
     private val offline: com.smugview.app.data.offline.OfflineCollections,
     private val offlineReader: com.smugview.app.data.offline.OfflineReader,
@@ -97,15 +98,10 @@ class SmugViewModel @Inject constructor(
     private val syncReporter: com.smugview.app.diag.SyncReporter = com.smugview.app.diag.SyncReporter.NOOP,
     /** Hilt supplies the real handle; it holds the navigation state across process death (Phase 3, step 3-9). */
     private val savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle()
-) : AndroidViewModel(application) {
+) : ViewModel() {
 
-    private val apiKey = BuildConfig.SMUGMUG_API_KEY
-    private val sharedPrefs: com.smugview.app.util.KeyValueStore =
-        com.smugview.app.data.prefs.SharedPrefsStore(application.getSharedPreferences("smugview_prefs", Context.MODE_PRIVATE))
     // Encrypted at rest via PasswordStore; the compat adapter keeps existing call sites unchanged.
     private val passwordPrefs = com.smugview.app.data.security.PasswordPrefsCompat(passwordStore)
-    private val searchStatusPrefs: com.smugview.app.util.KeyValueStore =
-        com.smugview.app.data.prefs.SharedPrefsStore(application.getSharedPreferences("smugview_search_status", Context.MODE_PRIVATE))
 
     /**
      * Node IDs that are effectively unlocked — i.e. the node itself, or any ancestor in the
@@ -211,7 +207,7 @@ class SmugViewModel @Inject constructor(
         apiKey = apiKey,
         scope = viewModelScope,
         getUnlockedPassword = { albumKey -> getUnlockedPassword(albumKey) },
-        onMessage = { message -> Toast.makeText(getApplication(), message, Toast.LENGTH_SHORT).show() }
+        onMessage = { message -> showMessage(message) }
     )
 
     val discoveredDevices = cast.discoveredDevices
@@ -375,7 +371,7 @@ class SmugViewModel @Inject constructor(
 
         override suspend fun onLoadFailure(nodeId: String, password: String?, error: Throwable): LoadFailure {
             SmugLog.debugErr("SmugViewModel", error) { "folder load failed for nodeId=$nodeId" }
-            if (!password.isNullOrEmpty() && com.smugview.app.data.api.SmugMugErrorMapper.isPasswordRejection(error)) {
+            if (!password.isNullOrEmpty() && com.smugview.app.data.api.ApiErrors.isPasswordRejection(error)) {
                 // SmugMug explicitly rejected the saved password (401/403). The repository's read retry has
                 // already asked UnlockManager, which marked the root Invalid. The password is KEPT: only
                 // the prompt for that root deletes it (design 3.4, Q5).
@@ -524,8 +520,8 @@ class SmugViewModel @Inject constructor(
     val albumNotice: StateFlow<String?> get() = albums.notice
 
     /** The current album's state, for tests and diagnostics. */
-    internal val albumState: StateFlow<AlbumState?> get() = albums.state
-    internal val albumLoader: AlbumLoader get() = albums
+    val albumState: StateFlow<AlbumState?> get() = albums.state
+    val albumLoader: AlbumLoader get() = albums
 
     private val _filterType = MutableStateFlow(GalleryFilterType.ALL)
     val filterType: StateFlow<GalleryFilterType> = _filterType.asStateFlow()
@@ -954,7 +950,7 @@ class SmugViewModel @Inject constructor(
         galleryCovers[albumKey]?.let { return it }
         return repository.getGalleryCoverUrl(albumKey, apiKey)?.also { galleryCovers[albumKey] = it }
     }
-    private val galleryCovers = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val galleryCovers = ConcurrentMap<String, String>()
 
     suspend fun getNodeByAlbumKey(albumKey: String): CachedNode? {
         // Indexed lookup (nodeId PK, then a bounded albumUri match) instead of loading every
@@ -1019,7 +1015,7 @@ class SmugViewModel @Inject constructor(
     }
 
     /** Gallery taps whose pre-flight is still running, by album key: a second tap on one is dropped. */
-    private val pendingAlbumTaps: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private val pendingAlbumTaps: ConcurrentSet<String> = ConcurrentSet()
 
     fun checkAndNavigateToAlbum(node: CachedNode, onNavigate: (albumKey: String) -> Unit) {
         val tapKey = node.getAlbumKey() // Always use helper — strips !images suffixes
@@ -1482,7 +1478,7 @@ class SmugViewModel @Inject constructor(
     private suspend fun loadTargetImage(run: AlbumRun, targetImageKey: String) {
         try {
             val saved = offlineReader.savedPhoto(targetImageKey)
-            val localUri = saved?.let { android.net.Uri.fromFile(java.io.File(it.path)).toString() }
+            val localUri = saved?.let { fileUri(it.path) }
             val dbPhoto = repository.getCollectionPhotoByKey(targetImageKey)
             val placeholder = if (dbPhoto != null) {
                 AlbumImageData(
@@ -1751,7 +1747,7 @@ class SmugViewModel @Inject constructor(
      * The file is also its own thumbnail. A video's saved copy is a still picture (Q7), so it is shown as one.
      */
     private fun savedImageData(saved: com.smugview.app.data.offline.OfflineReader.SavedPhoto): AlbumImageData {
-        val uri = android.net.Uri.fromFile(java.io.File(saved.path)).toString()
+        val uri = fileUri(saved.path)
         val row = saved.row
         return AlbumImageData(
             imageKey = row.imageKey,
@@ -1789,7 +1785,7 @@ class SmugViewModel @Inject constructor(
         val problem = com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Gallery, underLockedRoot)
         val message = com.smugview.app.ui.text.UserMessages.line(problem)
         var shownOffline = false
-        val applied = if (com.smugview.app.data.api.SmugMugErrorMapper.isOffline(e)) {
+        val applied = if (com.smugview.app.data.api.ApiErrors.isOffline(e)) {
             val keptPhotos = try {
                 offlineReader.savedGallery(run.albumKey).map { savedImageData(it) }
             } catch (c: kotlinx.coroutines.CancellationException) {
@@ -2065,7 +2061,7 @@ class SmugViewModel @Inject constructor(
      */
     val localFiles: StateFlow<Map<String, String>> by lazy {
         offlineReader.localFiles()
-            .map { files -> files.mapValues { (_, file) -> android.net.Uri.fromFile(java.io.File(file)).toString() } }
+            .map { files -> files.mapValues { (_, file) -> fileUri(file) } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     }
 
@@ -2149,7 +2145,7 @@ class SmugViewModel @Inject constructor(
             } else {
                 pathStr
             }
-            java.net.URLDecoder.decode(pathBeforeImage, "UTF-8")
+            pathBeforeImage.decodeURLQueryComponent(plusIsSpace = true)
         } catch (e: Exception) {
             null
         } ?: return null
@@ -2195,7 +2191,7 @@ class SmugViewModel @Inject constructor(
             } else {
                 pathStr
             }
-            java.net.URLDecoder.decode(pathBeforeImage, "UTF-8")
+            pathBeforeImage.decodeURLQueryComponent(plusIsSpace = true)
         } catch (e: Exception) {
             null
         } ?: return null
@@ -2247,7 +2243,7 @@ class SmugViewModel @Inject constructor(
     }
 
     /** The saved copy of [imageKey] (a DONE file on this phone), or null. */
-    suspend fun savedFileOf(imageKey: String): java.io.File? = offlineReader.localFile(imageKey)?.let { java.io.File(it) }
+    suspend fun savedFileOf(imageKey: String): String? = offlineReader.localFile(imageKey)
 
     suspend fun getAlbumName(albumKey: String): String {
         val cachedNode = getCachedNodeById(albumKey)

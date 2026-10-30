@@ -124,7 +124,7 @@ class SmugViewModelTest {
         fakePasswordStore = com.smugview.app.data.security.FakePasswordStore()
         Mockito.`when`(mockRepository.unlocks)
             .thenReturn(com.smugview.app.data.repository.UnlockManager(mockRepository, fakePasswordStore))
-        viewModel = SmugViewModel(mockApp, mockRepository, mockOffline, mockOfflineReader, mockCastManager, fakePasswordStore, testDispatcher)
+        viewModel = com.smugview.app.ui.viewmodel.smugViewModelFor(mockApp, mockRepository, mockOffline, mockOfflineReader, mockCastManager, fakePasswordStore, testDispatcher)
     }
 
     @After
@@ -156,7 +156,7 @@ class SmugViewModelTest {
         val store = com.smugview.app.data.security.FakePasswordStore(
             mapOf("2sDN5x" to "fake-pw-1", "LCdk7F" to "fake-pw-1")
         )
-        SmugViewModel(mockApp, mockRepository, mockOffline, mockOfflineReader, mockCastManager, store, testDispatcher, reporter)
+        com.smugview.app.ui.viewmodel.smugViewModelFor(mockApp, mockRepository, mockOffline, mockOfflineReader, mockCastManager, store, testDispatcher, reporter)
         Thread.sleep(300) // the old init launched the unlock on Dispatchers.IO
 
         assertTrue("no LaunchUnlock run from the ViewModel", reporter.runs.isEmpty())

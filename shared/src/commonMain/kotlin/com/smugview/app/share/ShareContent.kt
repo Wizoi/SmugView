@@ -1,6 +1,6 @@
 package com.smugview.app.share
 
-import java.io.ByteArrayOutputStream
+import com.smugview.app.util.ByteBuilder
 
 /** What a share may hand to another app (design 3.10). Pure: no Android classes. */
 object ShareContent {
@@ -40,7 +40,7 @@ object JpegStrip {
     /** The stripped JPEG, or null when [jpeg] is not a well-formed one (the caller then shares something else). */
     fun strip(jpeg: ByteArray, orientation: Int = 1): ByteArray? {
         if (jpeg.size < 4 || jpeg[0] != 0xFF.toByte() || jpeg[1].toInt() and 0xFF != SOI) return null
-        val out = ByteArrayOutputStream(jpeg.size)
+        val out = ByteBuilder(jpeg.size)
         out.write(0xFF); out.write(SOI)
         val exif = if (orientation in 2..8) exifOrientationSegment(orientation) else null
         var exifWritten = exif == null

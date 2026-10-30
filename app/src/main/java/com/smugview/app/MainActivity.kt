@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SmugViewNavigation(
-    viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel(),
+    viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>(),
     newGalleryFollow: com.smugview.app.data.notify.NewGalleryFollow? = null,
     pendingOpen: PendingOpen? = null,
     onOpenHandled: () -> Unit = {}

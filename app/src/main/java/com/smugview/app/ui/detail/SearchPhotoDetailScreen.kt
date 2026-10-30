@@ -52,7 +52,7 @@ fun SearchPhotoDetailScreen(
     onNavigateToPhotoDetail: (albumKey: String, imageKey: String) -> Unit,
     onNavigateToGallery: (albumKey: String, imageKey: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
-    viewModel: SmugViewModel = hiltViewModel()
+    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>()
 ) {
     val pagingFlow by viewModel.searchPhotosPagingFlow.collectAsState()
     val searchPhotos = pagingFlow.collectAsLazyPagingItems()
