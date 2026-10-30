@@ -199,6 +199,12 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+      # The Cast SDK's static library is built with the iOS 26 SDK (it references UIGlassEffect), so it only links with Xcode 26. Apple will
+      # accept store uploads only from Xcode 26 as well, so this job builds with it, like ios-ipa-size.
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          xcodebuild -version
       # The first boot of a simulator spends about 40 s on "data migration". Start it now so that happens while Gradle builds.
       - name: Start booting a simulator
         run: |
