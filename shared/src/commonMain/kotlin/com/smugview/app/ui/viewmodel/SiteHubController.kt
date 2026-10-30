@@ -1,7 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
 import com.smugview.app.util.SmugLog
-import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.AlbumPreview
 import com.smugview.app.data.api.AlbumDetails
@@ -96,14 +95,14 @@ class SiteHubController(
     // Home's totals come from the gallery index (design 3.6, Q3): every gallery the app can show, updated
     // after each crawl. Until the index has rows (first launch) the page-1 numbers stand in. [totalsLock]
     // keeps a late page-1 answer from overwriting an index total that has already arrived.
-    private val totalsLock = Any()
+    private val totalsLock = com.smugview.shared.platform.SimpleLock()
     private var indexTotals: com.smugview.app.data.db.SiteTotals? = null
     private var totalsJob: Job? = null
 
     private fun watchIndexTotals(nickname: String) {
         totalsJob?.cancel()
         // After the cancel, so a stale collector's write (it checks its own job under the lock) can't land after this reset.
-        synchronized(totalsLock) {
+        totalsLock.withLock {
             indexTotals = null
             _activeSiteTotalGalleries.value = null
             _activeSiteTotalPhotos.value = null
@@ -111,8 +110,8 @@ class SiteHubController(
         totalsJob = siteScope().launch {
             val me = currentCoroutineContext()[Job]
             repository.siteTotals(nickname).collect { totals ->
-                synchronized(totalsLock) {
-                    if (me?.isActive == false) return@synchronized
+                totalsLock.withLock {
+                    if (me?.isActive == false) return@withLock
                     indexTotals = totals
                     if (totals != null) {
                         _activeSiteTotalGalleries.value = totals.galleries
@@ -124,8 +123,8 @@ class SiteHubController(
     }
 
     /** The first page's numbers, used only while the index has no totals. */
-    private fun setPageOneTotals(galleries: Int?, photos: Int?) = synchronized(totalsLock) {
-        if (indexTotals != null) return@synchronized
+    private fun setPageOneTotals(galleries: Int?, photos: Int?) = totalsLock.withLock {
+        if (indexTotals != null) return@withLock
         if (galleries != null) _activeSiteTotalGalleries.value = galleries
         if (photos != null) _activeSiteTotalPhotos.value = photos
     }
@@ -322,7 +321,7 @@ class SiteHubController(
     fun clearActiveSiteData() {
         totalsJob?.cancel()
         totalsJob = null
-        synchronized(totalsLock) { indexTotals = null }
+        totalsLock.withLock { indexTotals = null }
         _activeSiteRecentImages.value = emptyList()
         _activeSiteAlbums.value = emptyList()
         _albumsProblem.value = null

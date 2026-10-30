@@ -28,12 +28,12 @@ class CacheDoctor(
     private val syncRunning: () -> Boolean = { false }
 ) {
     suspend fun run(activeRootId: String?): DoctorReport {
-        val start = System.nanoTime()
+        val start = kotlin.time.TimeSource.Monotonic.markNow()
         val out = ArrayList<CheckResult>()
         val syncAtStart = runCatching { syncRunning() }.getOrDefault(false)
 
         suspend fun check(id: String, label: String, level: Severity, q: suspend () -> Int) {
-            val t0 = System.nanoTime()
+            val t0 = kotlin.time.TimeSource.Monotonic.markNow()
             // One failing query must not hide the other checks; -1 marks "query failed".
             val n = runCatching { q() }.getOrElse { -1 }
             val sev = when {
@@ -41,7 +41,7 @@ class CacheDoctor(
                 n == 0 -> Severity.OK
                 else -> level
             }
-            out.add(CheckResult(id, label, n, sev, (System.nanoTime() - t0) / 1_000_000))
+            out.add(CheckResult(id, label, n, sev, t0.elapsedNow().inWholeMilliseconds))
         }
 
         check("self_parent", "Nodes whose parent is themselves (R-01)", Severity.ERROR, dao::countSelfParent)
@@ -98,13 +98,13 @@ class CacheDoctor(
             Severity.WARN, dao::countOfflineUnreferenced
         )
         run {
-            val t0 = System.nanoTime()
+            val t0 = kotlin.time.TimeSource.Monotonic.markNow()
             val bytes = runCatching { dao.sumOfflineDoneBytes() }.getOrElse { -1L }
             val n = bytes.coerceIn(-1L, Int.MAX_VALUE.toLong()).toInt()
             out.add(
                 CheckResult(
                     "offline_done_bytes", "Bytes of saved files (DONE); equals the size of offline/",
-                    n, if (n < 0) Severity.WARN else Severity.INFO, (System.nanoTime() - t0) / 1_000_000, bytes
+                    n, if (n < 0) Severity.WARN else Severity.INFO, t0.elapsedNow().inWholeMilliseconds, bytes
                 )
             )
         }
@@ -116,6 +116,6 @@ class CacheDoctor(
         }
 
         val syncAtEnd = runCatching { syncRunning() }.getOrDefault(false)
-        return DoctorReport(out, (System.nanoTime() - start) / 1_000_000, syncAtStart || syncAtEnd)
+        return DoctorReport(out, start.elapsedNow().inWholeMilliseconds, syncAtStart || syncAtEnd)
     }
 }

@@ -1,7 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
 import com.smugview.app.util.SmugLog
-import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.db.CollectionBookmark
 import com.smugview.app.data.db.CollectionPhoto

@@ -1,10 +1,12 @@
 package com.smugview.app.ui.text
 
-import com.smugview.app.data.api.isSyntheticCacheMiss
 import com.smugview.app.data.cast.WebCompanionFailure
 import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.data.repository.TransientReason
 import com.smugview.app.data.api.ApiException
+import com.smugview.app.util.isTimeoutError
+import com.smugview.app.util.kindName
+import kotlinx.io.IOException
 
 /** What the failed thing was. Only the noun in the texts changes with it (design 3.1). */
 enum class Subject(val noun: String) {
@@ -50,8 +52,8 @@ sealed interface Problem {
                 error.pendingReason?.let { LockedPending(subject, it) } ?: Locked(subject)
             error is ApiException && error.syntheticCacheMiss ->
                 OfflineNothingSaved(subject)
-            error is java.net.SocketTimeoutException || error is java.io.InterruptedIOException -> Slow(subject)
-            error is java.io.IOException -> OfflineNothingSaved(subject)
+            error != null && isTimeoutError(error) -> Slow(subject)
+            error is IOException -> OfflineNothingSaved(subject)
             error is ApiException -> when (val code = error.code) {
                 429 -> RateLimited(subject)
                 in 500..599 -> SmugMugTrouble(subject, code)
@@ -60,7 +62,7 @@ sealed interface Problem {
                 else -> Unexpected(subject, code.toString())
             }
             error == null -> Unexpected(subject, "unknown")
-            else -> Unexpected(subject, error.javaClass.simpleName.removeSuffix("Exception").ifEmpty { "unknown" })
+            else -> Unexpected(subject, error.kindName().removeSuffix("Exception").ifEmpty { "unknown" })
         }
     }
 }
