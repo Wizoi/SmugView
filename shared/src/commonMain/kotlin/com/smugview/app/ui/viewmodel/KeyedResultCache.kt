@@ -37,10 +37,11 @@ class KeyedResultCache<T>(private val limit: Int = 200) {
     inner class Publisher(private val key: String, private val flow: MutableStateFlow<Result<T>?>) {
         /** Shows [result] to whoever reads this flow now; a failure or null is not kept for the next open. */
         fun publish(result: Result<T>?) {
-            flow.value = result
+            // Forget a failure BEFORE showing it: a reader that sees it and asks again at once must find the key gone, not the old failure.
             if (result == null || result.isFailure) {
                 forget(key, flow)
             }
+            flow.value = result
         }
     }
 }

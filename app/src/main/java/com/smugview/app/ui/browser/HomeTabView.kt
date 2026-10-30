@@ -1086,7 +1086,7 @@ fun HomeTabView(
                                                 .padding(8.dp)
                                         ) {
                                             Text(
-                                                text = photo.title,
+                                                text = photo.title ?: "",
                                                 color = Color.White,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,

@@ -58,24 +58,6 @@ kotlin {
     }
 }
 
-// On a clean machine the iOS KSP tasks started before Gradle had downloaded the iOS libraries ("KLIB resolver: Could not find
-// room-common-iosSimulatorArm64Main-2.7.1.klib", seen on the first three macOS CI runs). Resolving the klib configurations first downloads them.
-val resolveIosKlibs by tasks.registering {
-    doLast {
-        listOf(
-            "iosSimulatorArm64CompileKlibraries", "iosSimulatorArm64TestCompileKlibraries",
-            "iosArm64CompileKlibraries", "iosArm64TestCompileKlibraries"
-        ).forEach { name -> configurations.findByName(name)?.files }
-        // What was resolved and whether each file is really on disk: read by the CI diagnostics step.
-        val lines = listOf("iosSimulatorArm64CompileKlibraries").flatMap { name ->
-            (configurations.findByName(name)?.files ?: emptySet()).filter { "room" in it.name || "sqlite" in it.name }
-                .map { "$name: ${it.path} exists=${it.exists()}" }
-        }
-        layout.buildDirectory.file("resolved-klibs.txt").get().asFile.apply { parentFile.mkdirs() }.writeText(lines.joinToString("\n"))
-    }
-}
-tasks.matching { it.name.startsWith("ksp") && it.name.contains("Ios") }.configureEach { dependsOn(resolveIosKlibs) }
-
 // The shared tests run on the JVM target and on the iOS simulator, with the same sources. The Android target has no test actuals of its own
 // (Room's Android builder needs a Context), and a root `testDebugUnitTest` would otherwise try to compile them.
 tasks.matching { it.name.contains("UnitTest") }.configureEach { enabled = false }

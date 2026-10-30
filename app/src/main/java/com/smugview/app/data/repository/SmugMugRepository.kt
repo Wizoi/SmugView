@@ -1995,7 +1995,8 @@ class SmugMugRepository @Inject constructor(
         val row = dao.getAlbumByKey(details.albumKey)
         // What was shown is behind what the dot knows (an answer served from a week-old cache while offline): the user has
         // not seen the new photos, so the dot stays. Live, the album's date and the index's are the same value.
-        if (details.imagesLastUpdated != null && row?.imagesLastUpdated != null && isBefore(details.imagesLastUpdated, row.imagesLastUpdated)) return
+        val shownAt = details.imagesLastUpdated; val knownAt = row?.imagesLastUpdated
+        if (shownAt != null && knownAt != null && isBefore(shownAt, knownAt)) return
         val nodeId = details.nodeId ?: row?.nodeId ?: return
         dao.markViewedAtOrBelow(nodeId)
     }

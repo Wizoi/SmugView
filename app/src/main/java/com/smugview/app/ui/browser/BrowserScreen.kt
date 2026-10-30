@@ -422,7 +422,7 @@ fun BrowserScreen(
                                 if (!image.caption.isNullOrEmpty() && image.title != image.caption) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = image.caption,
+                                        text = image.caption ?: "",
                                         fontSize = 13.sp,
                                         color = Color.White.copy(alpha = 0.7f),
                                         maxLines = 3,
