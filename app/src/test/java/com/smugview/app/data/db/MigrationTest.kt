@@ -33,7 +33,9 @@ class MigrationTest {
     @get:Rule
     val helper = MigrationTestHelper(
         InstrumentationRegistry.getInstrumentation(),
-        AppDatabase::class.java
+        AppDatabase::class.java,
+        emptyList(),
+        PathNamedOpenHelperFactory(androidx.test.core.app.ApplicationProvider.getApplicationContext())
     )
 
     @Test

@@ -23,7 +23,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody
-import retrofit2.HttpException
+import com.smugview.app.data.api.ApiException
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -182,13 +182,13 @@ class OfflineDownloader(
         } catch (e: AlbumLockedException) {
             store.failGallery(gallery, DownloadFailure.locked(transient = e.pendingReason != null || sessionTransient))
             return ListOutcome.FAILED
-        } catch (e: HttpException) {
-            val code = e.code()
-            val raw = e.response()?.raw()
+        } catch (e: ApiException) {
+            val code = e.code
+            val raw = okhttp3.Headers.Builder().apply { e.retryAfter?.let { add("Retry-After", it) } }.build()
             val failure = if (code == 401 || code == 403) DownloadFailure.locked(transient = false)
             else DownloadFailure.classify(
-                code, raw?.headers, null, wroteBytes = false,
-                syntheticCacheMiss = raw?.isSyntheticCacheMiss() == true, reResolved = true, nowMs = clock()
+                code, raw, null, wroteBytes = false,
+                syntheticCacheMiss = e.syntheticCacheMiss, reResolved = true, nowMs = clock()
             ) ?: Failure(FailureReason.UNEXPECTED, retryable = false, httpCode = code)
             store.failGallery(gallery, failure)
             return if (failure.reason == FailureReason.OFFLINE) ListOutcome.OFFLINE else ListOutcome.FAILED
@@ -326,8 +326,8 @@ class OfflineDownloader(
                 return Resolved.Ok(repo.resolveImageSource(row.imageKey, apiKey(), fresh))
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: HttpException) {
-                val code = e.code()
+            } catch (e: ApiException) {
+                val code = e.code
                 if ((code == 401 || code == 403)) {
                     val album = row.albumKey
                     if (album == null || unlocked) return Resolved.Fail(DownloadFailure.locked(transient = false))
@@ -349,11 +349,11 @@ class OfflineDownloader(
                         SmugMugRepository.UnlockResult.Rejected -> Unit
                     }
                 }
-                val raw = e.response()?.raw()
+                val raw = okhttp3.Headers.Builder().apply { e.retryAfter?.let { add("Retry-After", it) } }.build()
                 return Resolved.Fail(
                     DownloadFailure.classify(
-                        code, raw?.headers, null, wroteBytes = false,
-                        syntheticCacheMiss = raw?.isSyntheticCacheMiss() == true, reResolved = true, nowMs = clock()
+                        code, raw, null, wroteBytes = false,
+                        syntheticCacheMiss = e.syntheticCacheMiss, reResolved = true, nowMs = clock()
                     ) ?: Failure(FailureReason.UNEXPECTED, retryable = false, httpCode = code)
                 )
             } catch (e: IOException) {

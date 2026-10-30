@@ -5,7 +5,7 @@ import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.ensureActive
 
 /** One page as the server answered it: [count] and [total] are the server's own (`Pages.Count`, `Pages.Total`). */
-internal class Page<T>(val items: List<T>, val start: Int, val count: Int, val total: Int?) {
+class Page<T>(val items: List<T>, val start: Int, val count: Int, val total: Int?) {
     /**
      * The start of the page after this one, or null when this was the last: `count == 0`, or
      * `start + count - 1 >= total`, or (with a [window]) the next start lies past it. [Pager.each] stops on
@@ -32,7 +32,7 @@ internal class Page<T>(val items: List<T>, val start: Int, val count: Int, val t
  * retries (`RetryingCallFactory`), cache headers, all-or-nothing writes or per-page side effects, and
  * it never catches: a failure or a cancellation propagates to the caller untouched.
  */
-internal object Pager {
+object Pager {
     /** The search backend answers `start + count - 1 > 10,000` with an empty 500 (P6). */
     const val SEARCH_WINDOW = 10_000
 
@@ -77,14 +77,14 @@ internal object Pager {
  * A response's `Pages` block as [Pager] wants it: the server's own `Count` and `Total` (servers clamp the
  * requested count). No `Pages` block, or a zero `Total`, means this page is everything.
  */
-internal fun <T> pageOf(items: List<T>, pages: PagesData?, start: Int): Page<T> = Page(
+fun <T> pageOf(items: List<T>, pages: PagesData?, start: Int): Page<T> = Page(
     items, start,
     count = pages?.count?.takeIf { it > 0 } ?: items.size,
     total = pages?.total?.takeIf { it > 0 } ?: (start - 1 + items.size)
 )
 
-internal fun NodeListResponse.toPage(start: Int): Page<NodeData> = pageOf(response.nodes ?: emptyList(), response.pages, start)
+fun NodeListResponse.toPage(start: Int): Page<NodeData> = pageOf(response.nodes ?: emptyList(), response.pages, start)
 
-internal fun AlbumImagesResponse.toPage(start: Int): Page<AlbumImageData> = pageOf(response.images ?: emptyList(), response.pages, start)
+fun AlbumImagesResponse.toPage(start: Int): Page<AlbumImageData> = pageOf(response.images ?: emptyList(), response.pages, start)
 
-internal fun ImageSearchResponse.toPage(start: Int): Page<AlbumImageData> = pageOf(response.images ?: emptyList(), response.pages, start)
+fun ImageSearchResponse.toPage(start: Int): Page<AlbumImageData> = pageOf(response.images ?: emptyList(), response.pages, start)

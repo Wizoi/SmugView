@@ -5,6 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.dagger.hilt.android")
     id("com.github.triplet.play")
 }
@@ -122,6 +123,10 @@ kotlin {
 }
 
 dependencies {
+    // Room is left out until Stage 1e: the shared module is on Room 2.8, whose driver wants a database NAME where the app's 24 migration and
+    // legacy-repair tests (and its database builders) pass a path. The app keeps Room 2.7.1 and does not use the shared database yet.
+    implementation(project(":shared")) { exclude(group = "androidx.sqlite", module = "sqlite-bundled") } // its native SQLite makes Robolectric tests flaky; the app uses the framework one
+
     // AndroidX & Core
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
@@ -139,15 +144,14 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Room Database
-    val roomVersion = "2.7.1"
+    val roomVersion = "2.8.5"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.room:room-paging:$roomVersion")
     kapt("androidx.room:room-compiler:$roomVersion")
 
     // Retrofit & Networking
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     // Paging 3
@@ -191,8 +195,11 @@ dependencies {
 
     // Testing
     testImplementation("junit:junit:4.13.2")
+    // Gson is no longer how the app reads SmugMug (Stage 1c); the recorder and a few fixtures still use it to read JSON in tests
+    testImplementation("com.google.code.gson:gson:2.10.1")
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.3.21")
     // Real org.json for unit tests (Android's bundled org.json is stubbed in JVM tests)
     testImplementation("org.json:json:20231013")
     // Robolectric so Room's real SQLite (and the recursive-CTE queries) run in JVM unit tests

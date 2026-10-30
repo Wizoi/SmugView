@@ -438,7 +438,7 @@ class SmugViewModel @Inject constructor(
                     )
                 }
             }
-            val isAccessDenied = error is retrofit2.HttpException && (error.code() == 401 || error.code() == 404)
+            val isAccessDenied = error is com.smugview.app.data.api.ApiException && (error.code == 401 || error.code == 404)
             if (isAccessDenied && !nodeId.startsWith("virtual:")) {
                 val node = repository.getNodeById(nodeId)
                 if (node != null) {
@@ -886,7 +886,7 @@ class SmugViewModel @Inject constructor(
                             android.util.Log.d("SmugViewModel", "loadUserProfile success: $nickname")
                         }
                         _activeUserProfile.value = userData
-                        val nodeUri = userData.uris.node
+                        val nodeUri = userData.rootNodeUri
                         val rootId = repository.parseNodeIdFromUri(nodeUri)
                         _splashState.value = SplashUiState.Success(rootId)
 
@@ -954,7 +954,7 @@ class SmugViewModel @Inject constructor(
                 result.fold(
                     onSuccess = { userData ->
                         _activeUserProfile.value = userData
-                        val nodeUri = userData.uris.node
+                        val nodeUri = userData.rootNodeUri
                         val rootId = repository.parseNodeIdFromUri(nodeUri)
 
                         // Save as active site
@@ -1261,7 +1261,7 @@ class SmugViewModel @Inject constructor(
             // already asked UnlockManager, which marked the root Invalid. Only the prompt deletes.
             // A 404 does not remove a bookmark (Q4): it is also how a locked folder answers (L2), and what the user saved is
             // theirs. The grid says "gone" and offers "Remove from collections".
-            val isAccessDenied = error is retrofit2.HttpException && (error.code() == 401 || error.code() == 404)
+            val isAccessDenied = error is com.smugview.app.data.api.ApiException && (error.code == 401 || error.code == 404)
             if (isAccessDenied) {
                 var node = repository.getNodeById(albumKey)
                 if (node == null) {
@@ -1285,7 +1285,7 @@ class SmugViewModel @Inject constructor(
                     }
                 }
                 if (node != null) {
-                    if ((error as retrofit2.HttpException).code() == 404 && hasLiveSession(node)) {
+                    if ((error as com.smugview.app.data.api.ApiException).code == 404 && hasLiveSession(node)) {
                         // 6-11c: the root's session is live this launch, so this 404 is "gone", not "locked" (the cookie is there):
                         // the grid says so and offers "Remove from collections". A prompt that was already up for it goes away.
                         // A 401 is never read this way, and a session that expired is no longer live, so both still prompt.
@@ -1868,7 +1868,7 @@ class SmugViewModel @Inject constructor(
      */
     private suspend fun failFirstPage(run: AlbumRun, e: Exception) {
         // A 404/401 is "locked" only when the gallery sits under a locked root; otherwise 404 is "gone" (design 3.1).
-        val underLockedRoot = e is retrofit2.HttpException && (e.code() == 404 || e.code() == 401) && try {
+        val underLockedRoot = e is com.smugview.app.data.api.ApiException && (e.code == 404 || e.code == 401) && try {
             repository.getNodeByIdOrKey(run.albumKey)?.let { lockOf(it) == com.smugview.app.data.repository.UnlockManager.RowLock.Locked } == true
         } catch (c: kotlinx.coroutines.CancellationException) {
             throw c

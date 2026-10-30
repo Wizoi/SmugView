@@ -606,7 +606,7 @@ agents get the 45-minute box per step.
    - (d) The recursive-CTE dot query returns the same rows as on Android.
 4. A minimal Compose Multiplatform screen listing one site's folders, run in the simulator (screenshot artifact).
 5. Measurements: framework size, release-link time with cold and warm caches, IPA size.
-6. Email SmugMug (4.1). Owner sends; agent drafts.
+6. ~~Email SmugMug (4.1). Owner sends; agent drafts.~~ Dropped by the owner, 2026-10-29.
 
 **Verification:** a CI run link with all four simulator tests green, a measurements table appended to this doc, and
 the parity count.
@@ -695,11 +695,25 @@ notes mapping, simulator screenshots.
 **Total to the first App Store release: Stages 0–5, about 15–22 FTE-weeks**, with Stage 1 (Android-only refactor) the
 largest.
 
+**Correction (2026-10-29): the FTE-week figures above assume conventional developer effort and do not fit this project.** The team
+is the owner and Claude: Claude writes and tests the code, the owner answers design questions, signs off and does the phone checks.
+Stage 0 was estimated at 1–1.5 weeks and took about a day, most of it waiting on macOS CI runs. Treat the figures as a rough
+ordering of size between stages, not a schedule. What sets the calendar is waiting, not coding:
+
+- CI runs (the Compose-era iOS framework link is about 13 minutes, and every iOS fix needs a full macOS run).
+- Owner gates: sign-off for 1d (one-time HTTP cache reset), a yes for each push to `main`, release and promotion, and soak time on
+  the Play tracks between Stage 1 releases.
+- Phone checks, batched last, and Stage 3 needs a physical iPhone (decision 7.5).
+- Apple's review time in Stage 5.
+
+Stages 1–2 (code) are therefore likely days of work spread over a few weeks of releases; Stages 3–5 are the least predictable. These
+are guesses until Stage 1a is measured.
+
 ---
 
 ## 7. Decisions only the owner can make
 
-1. **Go/no-go on SmugMug's answer** (4.1): a separate iOS API key, the name "SmugView" on iOS, and written permission
+1. **OWNER DECISION 2026-10-29: no email to SmugMug.** The owner does not think it is needed, so Stage 0 step 6 is dropped and the Stage 3 gate on a written yes no longer applies. Risk stays recorded: the API terms (4.1) say one key per application and no SmugMug marks in an app name, so a public iOS release could still be challenged later (iOS only; Android unaffected). Original item: **Go/no-go on SmugMug's answer** (4.1): a separate iOS API key, the name "SmugView" on iOS, and written permission
    for Apple. *Recommend: ask in Stage 0 and do not start Stage 3 without a yes.*
 2. **Budget:**
    - $99/year Apple Developer Program.
@@ -726,3 +740,118 @@ largest.
     internal after three supervised releases; always a click for review and release.*
 12. **Model and agent assignment:** per the owner's rule, Opus plans each stage and Sonnet implements. Stage 1d and 1e
     are the risky ones. *Recommend an Opus review of their diffs before commit.*
+
+---
+
+## Stage 0 results (running log, branch `spike/ios`)
+
+### 2026-10-29: steps 1 and 2, the parity check (VERIFIED, measured)
+
+- **Why the original plan changed.** `app/src/test/resources/snapshots/` (174 files) is git-ignored, 100 of them are tiny unlock replies,
+  50 more are the same album-keywords answer, and nothing in it covers `user!albums`, `!parents`, `!sizedetails` or video search. So it
+  cannot be the parity gate, and a macOS runner could not read it. A new, tracked set was recorded instead.
+- **`ParityRecorder`** (opt-in: `PARITY_RECORD=1`, live, anonymous, read-only) calls every GET of `SmugMugApi` with the app's own request
+  shapes and saves the answers to `app/src/test/resources/parity/<method>__<label>.json` (23 files, 297 KB; the API key is replaced by
+  `TESTKEY`, and a search of the saved files found no key). Nothing from a password folder is in it.
+- **`ModelParityTest`** parses each file with Gson into the model the method returns, then walks the object and counts non-null Kotlin
+  properties that came back null: the ones kotlinx.serialization would throw on (no default) or fill with a default.
+- **Result: 22 of 23 answers are clean (0 THROW, 0 DEFAULT).** The one exception is `searchUsers`: a user such as `mdkahn2` (an account
+  with no gallery) has no `Name` and no `Uris.Node`, so `UserData.name` and `UserUris.node` would throw. The app reads only `nickName` and
+  `webUri` from search users (`searchPublicSites`), so the Stage 1c change is small: make those two nullable (or give search its own
+  model).
+- **Limits.** Only anonymous, public answers (no password-folder data, no error bodies, no unlock replies). A field that is absent in
+  all 23 answers is not reported. Gson's leniency about types (a number in quotes, a string where an object is expected) is not covered;
+  the real kotlinx models in step 3 will show those.
+### 2026-10-29: step 3, the `shared` module on the JVM (VERIFIED, measured on Windows; the iOS targets compile only on macOS)
+
+- **Toolchain: CORRECTED 2026-10-29, an upgrade WAS needed for iOS** (the first version of this bullet said it was not; it was only true for the JVM). `:shared` is a Kotlin Multiplatform module that `:app` does not depend on. See "iOS CI" below for why Kotlin 2.0.x cannot build Room's iOS side.
+- **Models.** The ported kotlinx.serialization models read the real recorded answers (profile, folder listing, user search) with the strict
+  reader. Only `UserData.name` and `UserUris.node` became optional (the parity finding).
+- **HTTP.** A Ktor client with the Retrofit parameter names, order, defaults and headers (including the `!children` path), `ApiException(code)`
+  for non-2xx. Tested through Ktor's MockEngine. Not yet ported: retry (429/5xx, not the synthetic 504), the unlock cookie, the response cache.
+- **Database.** `Entities.kt` and `NotifyEntities.kt` copied unchanged except for the clock call. **Room KMP exports the same schema as the
+  app: identity hash `be14f024797575b6312b5ac9eea79606`, 13 tables, identical `CREATE` statements.** The REPLACE insert (findings #8) and the
+  recursive-CTE dot query give the expected NodeIDs on the bundled SQLite (root, Family, School and the gallery; nothing for a gallery older
+  than 30 days, another site's gallery, or a viewed one).
+- **Migrations.** The six migrations are generated from the app source by a mechanical transform (the SQL is untouched; the app's are pure SQL,
+  no cursors). A version-13 database rebuilt from the app's real `13.json`, with realistic user rows, opens through Room KMP, ends at
+  version 18 and keeps every user row; the 16 to 17 backfill produced the expected file and kept-gallery rows. Checked by breaking a
+  migration: the test fails. 12 to 13 is compiled but not exercised (schema 12 was never exported).
+- **Tests:** 12 in `:shared` (3 + 4 + 3 + 2), all green on the JVM. The iOS actuals (`Fixtures.ios.kt`, `TestDatabase.ios.kt`, the Darwin engine,
+  `Platform.ios.kt`) are written without a Mac and unverified: the first macOS run decides.
+- **CI.** `.github/workflows/ios-spike.yml` runs the JVM tests on Ubuntu and the iOS simulator tests on `macos-15` (push to `spike/ios` or
+  by hand). The repo had no Unix `gradlew`; one was added (executable, LF).
+- **Still open in Stage 0:** the first macOS run (does the iOS side compile and pass?), the Compose Multiplatform screen (step 4), and the
+  measurements (step 5: framework size, release-link time).
+
+### 2026-10-29: the first iOS simulator run (VERIFIED on a macOS runner, GitHub Actions run 40944531185)
+
+- **Result: all 12 shared tests ran and passed on the iOS simulator** (ApiClientTest 4, RealAnswersTest 3, NodeDaoTest 3, MigrationChainTest 2),
+  the same four suites as on the JVM. That includes the REPLACE insert and the recursive-CTE dot query on iOS's bundled SQLite, the 13 -> 18
+  migration chain with the user's rows intact, and the strict JSON models over the real recorded answers. The iOS-specific files written
+  without a Mac (Darwin engine, `nowMillis`, the fixture and schema readers, the temp database path) compiled and worked first time once the
+  toolchain was right.
+- **Measured (simulator arm64, release static framework):** link time 103 s with a warm Gradle and a cold Kotlin/Native link on a GitHub
+  macOS runner; `Shared.framework` 16,188 KB, its binary 15,936 KB. The test step took 198 s (toolchain cached). A cold first run took 6 to 7
+  minutes end to end. Free for this public repo. NOT measured yet: the IPA size (needs the full app), device arm64 (expected similar).
+- **What it took (nine CI rounds, each reading the real error through workflow annotations, since build logs need a login):**
+  1. `KLIB resolver: Could not find ...room-common-iosSimulatorArm64Main-2.7.1.klib`, not a download problem (the file was on disk): **Room
+     2.7.1's iOS libraries are built with Kotlin 2.1.10** (`compiler_version=2.1.10` in the klib manifest) and the 2.0.x Kotlin/Native
+     compiler refuses them, reporting "not found". Wrong guesses first: a missing download, the configuration cache, a Kotlin patch bump.
+  2. On Kotlin 2.1.10 with KSP1: `ClassNotFoundException ...cli.utilities.MainKt`: KSP1 could not start the Kotlin/Native compiler.
+  3. On KSP2 with Kotlin 2.1.21: Room's processor failed with `cannot find required type kotlin.coroutines.Continuation` for the iOS target.
+  4. **Working set: Kotlin 2.2.21 + KSP 2.2.21-2.0.5 + Room 2.8.4, and also Kotlin 2.3.21 + KSP 2.3.12 + Room 2.8.5** (both passed on the Mac).
+- **Versions the spike now uses:** Kotlin 2.3.21, KSP 2.3.12, Room 2.8.5 (shared), sqlite-bundled 2.6.2, Ktor 3.0.3, kotlinx.serialization 1.9.0,
+  Hilt 2.58 (2.59 refuses to run on AGP 8: it needs AGP 9), AGP 8.13.2 and Gradle 8.13 unchanged (AGP 9.5 and Gradle 9.8 exist; moving to
+  them is a separate, larger Android migration). The owner's rule: take the newest set that works together.
+- **What the toolchain bump did to the Android app** (checked locally, full suite): it builds and all 956 tests pass on Kotlin 2.3.21, with
+  three changes: Hilt 2.50 -> 2.58; `kotlinOptions { jvmTarget }` -> the `compilerOptions` DSL (removed in Kotlin 2.3); and the API contract
+  coverage test ignores Kotlin's generated `<name>$default` methods. The app stays on Room 2.7.1: Room 2.8.x makes the driver enforce the
+  database NAME, which broke 24 of the app's migration and legacy-repair tests (they open by path); fixing those belongs to Stage 1e. This is
+  most of Stage 1a, already proven.
+### 2026-10-29: step 4, a Compose Multiplatform screen on the iPhone simulator (VERIFIED, GitHub Actions run 40948801407)
+
+- **Result: the shared Compose screen renders on an iPhone simulator.** `FolderListApp` (commonMain) decodes the recorded `!children` answer of
+  the owner's public site through the shared kotlinx models and lists the folders and galleries in the app's dark style ("idzifamily: 20
+  folders and galleries", Family marked "password"). iOS hosts it with `ComposeUIViewController`; the host app is generated by XcodeGen.
+  The screenshot is published to the `ios-spike-artifacts` branch by the `ios-screen` job. All three jobs were green: JVM (12 tests),
+  iOS simulator (12 tests, 0 failed), and the screen job.
+- **Measured with Compose in the framework (simulator arm64, release static framework):** the link took 808 s (warm Gradle, cold
+  Kotlin/Native link) and `Shared.framework` is 138,720 KB, against 103 s and 16,188 KB before Compose. Other timings: framework build 257 s,
+  Xcode project 42 s, simulator install, launch and screenshot 210 s, the simulator test job 418 s. Free on this public repo, but the
+  Compose-era link is the slow step to plan CI around. 138 MB is a static framework with symbols, not the IPA; the shipped size is step 5.
+- **Not explained:** one JVM job failure on Ubuntu (run 40946623900) that did not reproduce; the next run passed with the log captured.
+### 2026-10-29: step 5, the size of a release build for a device (MEASURED, GitHub Actions run 40954793131)
+
+- **Unsigned release IPA for a real device (arm64): 10,336 KB (about 10 MB).** The `.app` is 35,760 KB and the app binary 35,752 KB. The
+  130,972 KB device framework shrinks to a 35 MB binary once Xcode links it (dead code is stripped), and the IPA compresses it to 10 MB.
+  Timings: device framework link 811 s, Xcode build 49 s. This is the spike screen only (Compose, Room, Ktor, kotlinx.serialization), not
+  the full app, so the real IPA will be larger by the app's own code and images, but the libraries' cost is now known and small.
+- The job needs no signing, so the whole build-and-measure path works on a free runner without an Apple account.
+- **Stage 0 is complete.** Steps 1 to 5 are done: models and strict parity, Room KMP with the real migrations, Ktor client, Compose screen
+  on the simulator, and the device size. Loose end: the `resolveIosKlibs` diagnostic in `shared/build.gradle.kts` is no longer needed.
+
+## Stage 1d plan: Retrofit and OkHttp to Ktor (written 2026-10-29, NOT started; needs the owner's sign-off before any edit)
+
+What the code looks like now (measured): 17 main files and 38 test files import `retrofit2` or `okhttp3`. `SmugMugApi` is one interface of 19 GET
+endpoints. Retry lives in `RetryingCallFactory` (211 lines), a `Call.Factory` that schedules the backoff on a timer instead of blocking an
+OkHttp thread. It reports each logical request once (`CallOutcome`) to `HttpTelemetry`. Besides it there are `CachePolicy` (the HTTP cache and its
+`only-if-cached` rules), the in-memory cookie jar (password-folder unlock), `SyntheticCacheMiss`, and `HttpException` used in 5 main files.
+
+Why it is not a find-and-replace: Ktor's OkHttp engine accepts a pre-built `OkHttpClient`, not a `Call.Factory`, so the retry class cannot be
+kept as it is. Choices to approve:
+
+1. **Retry** becomes Ktor's `HttpRequestRetry` (a suspending `delay`, so no thread is held; same rule: 429 and 5xx, not the synthetic 504,
+   `Retry-After` honoured, 5 attempts, 500 ms doubling) plus one small plugin that reports the finished request to the telemetry. Tests: the existing
+   `RetryingCallFactory` cases ported first and shown failing against an empty plugin.
+2. **Cache.** On Android keep OkHttp's own `Cache` and its interceptors inside the engine (`preconfigured`), so the on-disk cache is NOT reset and
+   offline behaviour is unchanged. On iOS the Darwin engine has no such cache, so offline reading there needs `ApiResponseCache` (a Room table) in common
+   code; that is Stage 3 work, and the one-time cache reset the first design feared only happens if Android moves to that cache too (not proposed now).
+3. **Errors.** `HttpException(code)` becomes `ApiException(code)` (a plain exception, not an `IOException`, so `isOffline` stays correct).
+4. **Order, each step green on its own:** (a) `ApiException` and a Ktor implementation of the same `SmugMugApi` interface next to the Retrofit one,
+   with `ApiContractTest` run against both; (b) switch `AppModule` and the test rigs to the Ktor one; (c) delete Retrofit; (d) move the interface,
+   models and client to `:shared`.
+5. **Not changed:** request shapes (the contract test pins every parameter against the live OPTIONS list), the cookie jar, the 30-day dot logic.
+
+Risk: moderate; the failure to watch is a retry or cache difference that only shows on a flaky network. The emulator airplane-mode check and the
+phone batch cover it.

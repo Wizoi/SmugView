@@ -57,7 +57,7 @@ class LoopbackSmugMugTest {
     }
 
     @Test fun the_cookie_jar_carries_smsess_after_unlock_and_a_new_process_has_none() = runBlocking {
-        loop.api().unlockNode("2sDN5x", "k", "pw", null).also { assertEquals(200, it.code()) }
+        loop.api().unlockNode("2sDN5x", "k", "pw", null).also { assertEquals(200, it.code) }
         assertTrue(fake.hasSession())
         fake.cookieGate = true
         // session cookie present: the gated folder answers

@@ -4,7 +4,7 @@ import com.smugview.app.data.api.isSyntheticCacheMiss
 import com.smugview.app.data.cast.WebCompanionFailure
 import com.smugview.app.data.repository.AlbumLockedException
 import com.smugview.app.data.repository.TransientReason
-import retrofit2.HttpException
+import com.smugview.app.data.api.ApiException
 
 /** What the failed thing was. Only the noun in the texts changes with it (design 3.1). */
 enum class Subject(val noun: String) {
@@ -48,11 +48,11 @@ sealed interface Problem {
         fun from(error: Throwable?, subject: Subject, underLockedRoot: Boolean = false): Problem = when {
             error is AlbumLockedException ->
                 error.pendingReason?.let { LockedPending(subject, it) } ?: Locked(subject)
-            error is HttpException && error.response()?.raw()?.isSyntheticCacheMiss() == true ->
+            error is ApiException && error.syntheticCacheMiss ->
                 OfflineNothingSaved(subject)
             error is java.net.SocketTimeoutException || error is java.io.InterruptedIOException -> Slow(subject)
             error is java.io.IOException -> OfflineNothingSaved(subject)
-            error is HttpException -> when (val code = error.code()) {
+            error is ApiException -> when (val code = error.code) {
                 429 -> RateLimited(subject)
                 in 500..599 -> SmugMugTrouble(subject, code)
                 404 -> if (underLockedRoot) Locked(subject) else Gone(subject)

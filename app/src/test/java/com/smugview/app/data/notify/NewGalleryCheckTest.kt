@@ -76,7 +76,7 @@ class NewGalleryCheckTest {
         follow(); run()
         failure = IOException("offline")
         assertEquals(CheckResult.Skipped, run())
-        failure = retrofit2.HttpException(retrofit2.Response.error<Any>(429, okhttp3.ResponseBody.create(null, "")))
+        failure = com.smugview.app.data.api.ApiException(429)
         assertEquals(CheckResult.Skipped, run())
         failure = null
         listing = listOf(g("n2"), g("n1"))

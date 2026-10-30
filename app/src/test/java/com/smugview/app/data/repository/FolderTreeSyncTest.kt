@@ -207,7 +207,7 @@ class FolderTreeSyncTest {
         assertFalse("the next launch retries", state.getBoolean("treeRepairDone.$nick"))
         val run = reporter.runsOf(SyncKind.FolderTreeSync).single()
         assertEquals(StopReason.Error, run.stop)
-        assertEquals("HttpException 503", run.stopDetail)
+        assertEquals("ApiException 503", run.stopDetail)
         // sNWzhX is locked (404) and 2sDN5x answered 503.
         assertTrue(run.notes!!, run.notes!!.endsWith("skippedLocked=1 skippedMissing=0 skippedFailed=1"))
     }

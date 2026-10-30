@@ -11,7 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import retrofit2.HttpException
+import com.smugview.app.data.api.ApiException
 import java.io.IOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -23,12 +23,8 @@ import java.net.UnknownHostException
  * names the cause and a way out. No text carries an exception's own message.
  */
 class UserMessagesTest {
-    private fun http(code: Int, networkResponse: Boolean = true): HttpException {
-        val req = Request.Builder().url("https://api.smugmug.com/api/v2/node/zz9!children").build()
-        fun raw() = Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(code).message("RAW-MESSAGE")
-        val rawResponse = if (networkResponse) raw().networkResponse(raw().build()).build() else raw().build()
-        return HttpException(retrofit2.Response.error<Any>("".toResponseBody(null), rawResponse))
-    }
+    private fun http(code: Int, networkResponse: Boolean = true): ApiException =
+        ApiException(code, "RAW-MESSAGE", syntheticCacheMiss = code == 504 && !networkResponse)
 
     private class Case(
         val name: String,

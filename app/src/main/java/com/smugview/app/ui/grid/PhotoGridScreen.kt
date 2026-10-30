@@ -851,8 +851,10 @@ fun PhotoGridItem(
     }
 
     val aspectRatio = if (isStaggered) {
-        if (photo.originalWidth != null && photo.originalHeight != null && photo.originalHeight > 0) {
-            photo.originalWidth.toFloat() / photo.originalHeight.toFloat()
+        val originalWidth = photo.originalWidth
+        val originalHeight = photo.originalHeight
+        if (originalWidth != null && originalHeight != null && originalHeight > 0) {
+            originalWidth.toFloat() / originalHeight.toFloat()
         } else {
             when {
                 styleClean.contains("landscape") -> 1.5f

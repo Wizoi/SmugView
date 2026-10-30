@@ -1,5 +1,6 @@
 package com.smugview.app.data.repository
 
+import com.smugview.app.data.api.smugMugApi
 import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.CollectionDao
@@ -20,8 +21,6 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import java.net.ServerSocket
 import kotlin.concurrent.thread
 
@@ -77,8 +76,7 @@ class ForcedRefreshBypassesCacheTest {
             .cache(Cache(tmp.newFolder("http_cache"), 10L * 1024 * 1024))
             .addNetworkInterceptor(smugMugCacheRewriteInterceptor())
             .build()
-        return Retrofit.Builder().baseUrl("http://localhost:${server.localPort}/api/v2/").client(client)
-            .addConverterFactory(GsonConverterFactory.create()).build().create(SmugMugApi::class.java)
+        return smugMugApi(client, "http://localhost:${server.localPort}/api/v2/")
     }
 
     private fun repo(api: SmugMugApi) = SmugMugRepository(

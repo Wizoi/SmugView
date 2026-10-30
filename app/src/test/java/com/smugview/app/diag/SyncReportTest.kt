@@ -1,5 +1,6 @@
 package com.smugview.app.diag
 
+import com.smugview.app.data.api.smugMugApi
 import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.CachedAlbum
@@ -28,8 +29,6 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import java.io.File
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -88,8 +87,7 @@ class SyncReportTest {
 
     private fun repo(interceptor: Interceptor): SmugMugRepository {
         val client = OkHttpClient.Builder().addInterceptor(interceptor).build()
-        val api = Retrofit.Builder().baseUrl("https://api.smugmug.com/api/v2/").client(client)
-            .addConverterFactory(GsonConverterFactory.create()).build().create(SmugMugApi::class.java)
+        val api = smugMugApi(client)
         return SmugMugRepository(
             api, db.collectionDao(), FakePasswordStore(), ApplicationProvider.getApplicationContext(), reporter
         )
@@ -214,7 +212,7 @@ class SyncReportTest {
 
         val run = lastRun()
         assertEquals(StopReason.Error, run.stop)
-        assertEquals("HttpException 429", run.stopDetail)
+        assertEquals("ApiException 429", run.stopDetail)
         assertEquals(1, run.pagesFetched)
         assertEquals(0, run.changedCount) // nothing was persisted: the error swallowed the first page
         assertNotNull(run.endedAt)

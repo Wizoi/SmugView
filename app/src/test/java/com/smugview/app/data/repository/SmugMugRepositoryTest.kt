@@ -1,5 +1,7 @@
 package com.smugview.app.data.repository
 
+import com.smugview.app.data.api.smugMugApi
+import kotlinx.serialization.encodeToString
 import com.smugview.app.data.api.*
 import com.smugview.app.data.db.*
 import com.smugview.app.data.security.FakePasswordStore
@@ -21,8 +23,6 @@ import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], manifest = Config.NONE)
@@ -56,13 +56,7 @@ class SmugMugRepositoryTest {
             .addInterceptor(interceptor)
             .build()
             
-        val retrofit = Retrofit.Builder()
-            .baseUrl("https://api.smugmug.com/api/v2/")
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            
-        return retrofit.create(SmugMugApi::class.java)
+        return smugMugApi(client)
     }
 
     @Test
@@ -735,7 +729,7 @@ class SmugMugRepositoryTest {
             } else if (request.url.encodedPath.endsWith("!parents")) {
                 parentsDoc("testNodeId", "Password")
             } else {
-                com.google.gson.Gson().toJson(com.smugview.app.data.api.SingleNodeResponse(com.smugview.app.data.api.SingleNodePayload(mockNodeData)))
+                com.smugview.app.data.api.ApiJson.encodeToString(com.smugview.app.data.api.SingleNodeResponse(com.smugview.app.data.api.SingleNodePayload(mockNodeData)))
             }
             Response.Builder()
                 .request(chain.request())
@@ -778,7 +772,7 @@ class SmugMugRepositoryTest {
                     .build()
             } else {
                 Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
-                    .body(com.google.gson.Gson().toJson(SingleNodeResponse(SingleNodePayload(folder)))
+                    .body(com.smugview.app.data.api.ApiJson.encodeToString(SingleNodeResponse(SingleNodePayload(folder)))
                         .toResponseBody("application/json".toMediaTypeOrNull()))
                     .build()
             }

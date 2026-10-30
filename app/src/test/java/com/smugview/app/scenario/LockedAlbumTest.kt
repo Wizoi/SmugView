@@ -1,6 +1,7 @@
 package com.smugview.app.scenario
 
-import com.google.gson.Gson
+import com.smugview.app.data.api.ApiJson
+import kotlinx.serialization.decodeFromString
 import com.smugview.app.data.api.AlbumImagesResponse
 import com.smugview.app.data.api.AlbumResponse
 import com.smugview.app.data.cast.CastManager
@@ -58,14 +59,14 @@ class LockedAlbumTest {
 
     /** The real locked `!images` (P7, 4-0 fixture) parses to an EMPTY LIST: the old `== null` check could never fire. */
     @Test fun `the real locked images payload parses to an empty list and Total 0, not null`() {
-        val locked = Gson().fromJson(fixture("album-locked-images.json"), AlbumImagesResponse::class.java)
+        val locked = ApiJson.decodeFromString<AlbumImagesResponse>(fixture("album-locked-images.json"))
 
         assertEquals(emptyList<Any>(), locked.response.images)
         assertEquals(0, locked.response.pages?.total)
     }
 
     @Test fun `the real locked album says ResponseLevel Password`() {
-        val album = Gson().fromJson(fixture("album-locked.json"), AlbumResponse::class.java).response.album
+        val album = ApiJson.decodeFromString<AlbumResponse>(fixture("album-locked.json")).response.album
 
         assertEquals("Password", album.responseLevel)
         assertTrue(album.isLocked)
