@@ -49,6 +49,7 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.components.resources)
             api("androidx.paging:paging-compose:3.5.3")
+            api("org.jetbrains.androidx.navigation:navigation-compose:2.10.0") // the navigation graph (SmugViewNavigation)
             api(compose.material3) // MaterialTheme and the components the screens use
             api(compose.foundation)
             implementation(compose.animation) // animateColorAsState (the viewer's background)
