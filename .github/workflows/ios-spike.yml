@@ -45,7 +45,8 @@ permissions:
 jobs:
   jvm:
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
+    # A dispatch that asks for the release link runs only that job.
+    if: github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.release_link)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
