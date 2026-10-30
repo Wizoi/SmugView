@@ -42,7 +42,7 @@ import com.smugview.app.ui.component.ProfilePreviewCard
 @Composable
 fun SiteExplorerScreen(
     onNavigateToBrowser: () -> Unit,
-    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>()
+    viewModel: SmugViewModel
 ) {
     val uiState by viewModel.splashState.collectAsState()
     val recentSites by viewModel.recentSites.collectAsState()

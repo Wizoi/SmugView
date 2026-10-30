@@ -62,11 +62,6 @@ class ShareFiles(
         1
     }
 
-    /** SmugMug answered, but not with the picture: kept apart from [IOException] so a 429 or 5xx is never shown as "offline". */
-    class HttpFailure(val code: Int) : Exception("HTTP $code")
-
-    class NotAPictureException : Exception("no picture to share")
-
     companion object {
         const val DIR = "shared_images"
         const val MAX_AGE_MS = 24L * 60 * 60 * 1000

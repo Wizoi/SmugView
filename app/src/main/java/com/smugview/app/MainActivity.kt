@@ -87,9 +87,13 @@ class MainActivity : ComponentActivity() {
         prefs.edit().putInt("last_app_version", currentVersion).apply()
         pendingOpen = readPendingOpen(intent)
 
+        val photoFileOps = com.smugview.app.ui.AndroidPhotoFileOps(applicationContext)
         val dominantColorSampler = com.smugview.app.ui.PaletteDominantColorSampler(applicationContext)
         setContent {
-            androidx.compose.runtime.CompositionLocalProvider(com.smugview.app.ui.LocalDominantColorSampler provides dominantColorSampler) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.smugview.app.ui.LocalDominantColorSampler provides dominantColorSampler,
+                com.smugview.app.ui.LocalPhotoFileOps provides photoFileOps
+            ) {
             SmugViewTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

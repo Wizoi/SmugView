@@ -97,7 +97,7 @@ fun CollectionsTabView(
 ) {
     val collections by viewModel.localCollections.collectAsState()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val files = com.smugview.app.ui.LocalPhotoFileOps.current
     val share = com.smugview.app.ui.rememberPlatformShare()
     val downloadPhoto = com.smugview.app.ui.detail.rememberPhotoDownloadAction(viewModel)
     var newCollectionName by remember { mutableStateOf("") }
@@ -636,7 +636,7 @@ fun CollectionsTabView(
                                                                     videoUrl = null
                                                                 )
                                                                 scope.launch {
-                                                                    com.smugview.app.ui.detail.sharePhoto(context, share, scope, viewModel, detailItem, viewModel.shareLinkFor(detailItem))
+                                                                    files?.let { com.smugview.app.ui.detail.sharePhoto(share, it, scope, viewModel, detailItem, viewModel.shareLinkFor(detailItem)) }
                                                                 }
                                                             },
                                                         ) {

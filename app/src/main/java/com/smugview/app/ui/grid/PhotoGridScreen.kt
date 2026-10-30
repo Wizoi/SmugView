@@ -67,7 +67,7 @@ fun PhotoGridScreen(
     onBackClick: () -> Unit,
     onNavigateToFolder: () -> Unit,
     onNavigateToCastController: (String) -> Unit,
-    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>()
+    viewModel: SmugViewModel
 ) {
     LaunchedEffect(albumKey) {
         viewModel.selectAlbum(albumKey)

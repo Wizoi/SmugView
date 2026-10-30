@@ -340,7 +340,7 @@ fun PhotoActionCapsule(
     onShowExif: () -> Unit,
     onRequestAddToCollection: () -> Unit
 ) {
-    val context = LocalContext.current
+    val files = com.smugview.app.ui.LocalPhotoFileOps.current
     val share = com.smugview.app.ui.rememberPlatformShare()
     val downloadPhoto = rememberPhotoDownloadAction(viewModel)
     var showShareDialog by remember { mutableStateOf(false) }
@@ -398,7 +398,7 @@ fun PhotoActionCapsule(
             title = photo.title?.takeIf { it.isNotBlank() } ?: (photo.fileName ?: "Photo"),
             url = shareLink.orEmpty(),
             onDismissRequest = { showShareDialog = false },
-            onSharePicture = { sharePhoto(context, share, scope, viewModel, photo, shareLink) }
+            onSharePicture = { files?.let { sharePhoto(share, it, scope, viewModel, photo, shareLink) } }
         )
     }
 }

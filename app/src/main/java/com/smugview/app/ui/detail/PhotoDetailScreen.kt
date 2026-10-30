@@ -101,7 +101,7 @@ fun PhotoDetailScreen(
     onNavigateToGallery: (albumKey: String, albumTitle: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
     onNavigateToCastController: (String) -> Unit,
-    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>()
+    viewModel: SmugViewModel
 ) {
     LaunchedEffect(albumKey, targetImageKey) {
         viewModel.selectAlbum(albumKey, targetImageKey)
@@ -646,8 +646,8 @@ fun ExifCardItem(
  * when the photo has no page (the picture is still shared, with no text).
  */
 fun sharePhoto(
-    context: Context,
     share: com.smugview.app.ui.PlatformShare,
+    files: com.smugview.app.ui.PhotoFileOps,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     viewModel: SmugViewModel,
     photo: AlbumImageData,
@@ -657,14 +657,12 @@ fun sharePhoto(
 
     coroutineScope.launch {
         try {
-            val factory = (context.applicationContext as com.smugview.app.SmugViewApp).callFactory
-            val file = com.smugview.app.share.ShareFiles(context.cacheDir, factory)
-                .prepare(photo.imageKey, viewModel.savedFileOf(photo.imageKey)?.let { java.io.File(it) }, photo.thumbnailUrl)
+            val path = files.prepareShareFile(photo.imageKey, viewModel.savedFileOf(photo.imageKey), photo.thumbnailUrl)
             val description = photo.fileName?.takeIf { it.isNotBlank() }
                 ?: photo.title?.takeIf { it.isNotBlank() }
                 ?: "Photo ${photo.imageKey}"
 
-            share.shareJpeg(file.absolutePath, link, description, com.smugview.app.ui.text.UserMessages.SHARE_PICTURE)
+            share.shareJpeg(path, link, description, com.smugview.app.ui.text.UserMessages.SHARE_PICTURE)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -677,13 +675,13 @@ fun sharePhoto(
 internal fun shareProblem(e: Throwable): com.smugview.app.ui.text.Problem {
     val photo = com.smugview.app.ui.text.Subject.Photo
     return when {
-        e is com.smugview.app.share.ShareFiles.HttpFailure -> when (e.code) {
+        e is com.smugview.app.share.HttpFailure -> when (e.code) {
             429 -> com.smugview.app.ui.text.Problem.RateLimited(photo)
             in 500..599 -> com.smugview.app.ui.text.Problem.SmugMugTrouble(photo, e.code)
             404 -> com.smugview.app.ui.text.Problem.Gone(photo)
             else -> com.smugview.app.ui.text.Problem.Unexpected(photo, e.code.toString())
         }
-        e is com.smugview.app.share.ShareFiles.NotAPictureException -> com.smugview.app.ui.text.Problem.Unexpected(photo, "unreadable")
+        e is com.smugview.app.share.NotAPictureException -> com.smugview.app.ui.text.Problem.Unexpected(photo, "unreadable")
         else -> com.smugview.app.ui.text.Problem.from(e, photo)
     }
 }
@@ -693,8 +691,8 @@ internal fun shareProblem(e: Throwable): com.smugview.app.ui.text.Problem {
  * "Download photo" (design 3.11): the original into Pictures/SmugView, from the saved copy when there is one (so it works
  * offline), else from the CDN. The toast says what happened, and why when it did not.
  */
-suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, viewModel: SmugViewModel) {
-    val saved = viewModel.savedFileOf(photo.imageKey)?.let { java.io.File(it) }
+suspend fun downloadPhotoToGallery(files: com.smugview.app.ui.PhotoFileOps, photo: AlbumImageData, viewModel: SmugViewModel) {
+    val saved = viewModel.savedFileOf(photo.imageKey)
     var detailedPhoto = photo
     var detailsError: Throwable? = null
     if (saved == null && detailedPhoto.archivedUri == null) {
@@ -710,13 +708,11 @@ suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, view
     }
     val sourceUrl = detailedPhoto.archivedUri ?: detailedPhoto.thumbnailUrl?.replace("/Th/", "/L/")?.replace("/th/", "/l/")
     try {
-        if (saved == null && sourceUrl == null) throw detailsError ?: com.smugview.app.download.PhotoDownloader.NoSourceException()
-        val factory = (context.applicationContext as com.smugview.app.SmugViewApp).callFactory
+        if (saved == null && sourceUrl == null) throw detailsError ?: com.smugview.app.download.NoSourceException()
         val smaller = com.smugview.app.download.Renditions.fromThumbnail(detailedPhoto.thumbnailUrl)
             .ifEmpty { com.smugview.app.download.Renditions.fromOriginal(detailedPhoto.archivedUri) }
-        val result = com.smugview.app.download.PhotoDownloader(context, factory)
-            .download(photo.imageKey, detailedPhoto.fileName ?: photo.fileName, saved, sourceUrl, smaller)
-        val said = if (result.original) com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED else com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED_SMALLER
+        val original = files.saveToPhotoLibrary(photo.imageKey, detailedPhoto.fileName ?: photo.fileName, saved, sourceUrl, smaller)
+        val said = if (original) com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED else com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED_SMALLER
         Toaster.show(said, long = true)
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
@@ -731,14 +727,14 @@ suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, view
  */
 @Composable
 fun rememberPhotoDownloadAction(viewModel: SmugViewModel): (AlbumImageData) -> Unit {
-    val context = LocalContext.current
+    val files = com.smugview.app.ui.LocalPhotoFileOps.current
     val scope = rememberCoroutineScope()
     var waiting by remember { mutableStateOf<AlbumImageData?>(null) }
     val askPermission = com.smugview.app.ui.rememberPermissionRequest(com.smugview.app.ui.AppPermission.SavePhotos) { granted ->
         val photo = waiting
         waiting = null
         if (photo == null) return@rememberPermissionRequest
-        if (granted) scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
+        if (granted) files?.let { ops -> scope.launch { downloadPhotoToGallery(ops, photo, viewModel) } }
         else Toaster.show(com.smugview.app.ui.text.UserMessages.DOWNLOAD_PERMISSION, long = true)
     }
     return { photo ->
@@ -746,7 +742,7 @@ fun rememberPhotoDownloadAction(viewModel: SmugViewModel): (AlbumImageData) -> U
             waiting = photo
             askPermission.launch()
         } else {
-            scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
+            files?.let { ops -> scope.launch { downloadPhotoToGallery(ops, photo, viewModel) } }
         }
     }
 }
