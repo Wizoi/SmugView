@@ -1,6 +1,6 @@
 package com.smugview.app.data.offline
 
-import androidx.room.withTransaction
+import com.smugview.app.data.db.inTransaction
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.CollectionBookmark
 import com.smugview.app.data.db.CollectionPhoto
@@ -25,14 +25,14 @@ import kotlinx.coroutines.CancellationException
 class OfflineCollections(
     private val db: AppDatabase,
     private val store: OfflineStore,
-    private val scheduler: OfflineScheduler,
+    private val scheduler: OfflineScheduling,
     private val settings: OfflineSettings
 ) {
     private val dao get() = db.collectionDao()
 
     /** Saves a photo to a collection (the Favorites path) and wants its file (Q3: any network). */
     suspend fun savePhoto(photo: CollectionPhoto, nickname: String) {
-        db.withTransaction {
+        db.inTransaction {
             // `collection_photos` is REPLACEd (same key, same collection); the file's row is not touched by it (N4).
             dao.addPhotoToCollection(photo)
             store.request(
@@ -55,7 +55,7 @@ class OfflineCollections(
      */
     suspend fun addBookmark(bookmark: CollectionBookmark, nickname: String, sourceUrl: String?) {
         val isImage = bookmark.type == TYPE_IMAGE
-        db.withTransaction {
+        db.inTransaction {
             dao.addBookmark(bookmark)
             if (isImage) {
                 store.request(

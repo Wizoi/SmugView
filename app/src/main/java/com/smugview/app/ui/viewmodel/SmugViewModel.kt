@@ -1534,7 +1534,7 @@ class SmugViewModel @Inject constructor(
     private suspend fun loadTargetImage(run: AlbumRun, targetImageKey: String) {
         try {
             val saved = offlineReader.savedPhoto(targetImageKey)
-            val localUri = saved?.let { android.net.Uri.fromFile(it.file).toString() }
+            val localUri = saved?.let { android.net.Uri.fromFile(java.io.File(it.path)).toString() }
             val dbPhoto = repository.getCollectionPhotoByKey(targetImageKey)
             val placeholder = if (dbPhoto != null) {
                 AlbumImageData(
@@ -1803,7 +1803,7 @@ class SmugViewModel @Inject constructor(
      * The file is also its own thumbnail. A video's saved copy is a still picture (Q7), so it is shown as one.
      */
     private fun savedImageData(saved: com.smugview.app.data.offline.OfflineReader.SavedPhoto): AlbumImageData {
-        val uri = android.net.Uri.fromFile(saved.file).toString()
+        val uri = android.net.Uri.fromFile(java.io.File(saved.path)).toString()
         val row = saved.row
         return AlbumImageData(
             imageKey = row.imageKey,
@@ -2117,7 +2117,7 @@ class SmugViewModel @Inject constructor(
      */
     val localFiles: StateFlow<Map<String, String>> by lazy {
         offlineReader.localFiles()
-            .map { files -> files.mapValues { (_, file) -> android.net.Uri.fromFile(file).toString() } }
+            .map { files -> files.mapValues { (_, file) -> android.net.Uri.fromFile(java.io.File(file)).toString() } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     }
 
@@ -2299,7 +2299,7 @@ class SmugViewModel @Inject constructor(
     }
 
     /** The saved copy of [imageKey] (a DONE file on this phone), or null. */
-    suspend fun savedFileOf(imageKey: String): java.io.File? = offlineReader.localFile(imageKey)
+    suspend fun savedFileOf(imageKey: String): java.io.File? = offlineReader.localFile(imageKey)?.let { java.io.File(it) }
 
     suspend fun getAlbumName(albumKey: String): String {
         val cachedNode = getCachedNodeById(albumKey)

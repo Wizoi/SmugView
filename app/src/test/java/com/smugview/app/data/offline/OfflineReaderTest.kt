@@ -127,7 +127,7 @@ class OfflineReaderTest {
     /** The reader never hands out a file that is not there (cleared storage, a half-written file). */
     @Test fun `a DONE row whose file is gone is not a local file`() = runBlocking {
         val file = saved(keys[1])
-        assertEquals(file, rig.reader.localFile(keys[1]))
+        assertEquals(file, rig.reader.localFile(keys[1])?.let { java.io.File(it) })
         file.delete()
         assertNull(rig.reader.localFile(keys[1]))
         assertNull(rig.reader.savedPhoto(keys[1]))
@@ -140,7 +140,7 @@ class OfflineReaderTest {
 
         val files = rig.reader.localFiles().first()
 
-        assertEquals(mapOf(keys[0] to a, keys[1] to b), files)
+        assertEquals(mapOf(keys[0] to a, keys[1] to b), files.mapValues { (_, path) -> java.io.File(path) })
     }
 
     // ---- Q2: a kept gallery opens offline ----
