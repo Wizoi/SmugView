@@ -51,8 +51,7 @@ class GalleryCrawlTest {
     @After fun tearDown() = db.close()
 
     private fun repo(store: FakePasswordStore = FakePasswordStore()) = SmugMugRepository(
-        server.api(), dao, store,
-        org.mockito.Mockito.mock(android.content.Context::class.java), reporter, state
+        server.api(), dao, store, reporter, state
     ).also { it.treeSyncDelayMs = 0; it.unlockDelayMs = 0; it.clock = { now } }
 
     /** Unlock, then crawl: the first two steps of the site sync, without the tree walk (which would

@@ -123,7 +123,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
 
         // 1. Initially database cache is empty
         val initialAlbums = repository.getAlbumsInScope("folder1")
@@ -182,7 +182,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
 
         // Call performBackgroundSearchImages
         repository.performBackgroundSearchImages(
@@ -230,7 +230,7 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
         
         dao.insertNodes(listOf(
             CachedNode(
@@ -354,7 +354,7 @@ class SmugMugRepositoryTest {
         }
         
         val mockApi = createMockApi(mockInterceptor)
-        val repo = SmugMugRepository(mockApi, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repo = SmugMugRepository(mockApi, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
         
         val result = repo.searchPublicSites("nature", "fakeApiKey").first()
         val sites = result.getOrThrow()
@@ -413,7 +413,7 @@ class SmugMugRepositoryTest {
         }
 
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
 
         // Before unlock: gallery search (which filters repository.albumsCacheFor(nickname) by title) finds nothing.
         assertTrue(repository.albumsCacheFor("testUser").isEmpty())
@@ -513,7 +513,7 @@ class SmugMugRepositoryTest {
         }
 
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
 
         // Sanity: folder1's stale listing is present before the sync.
         assertEquals(1, dao.getAllCachedNodes().count { it.parentNodeId == "folder1" })
@@ -600,7 +600,7 @@ class SmugMugRepositoryTest {
         }
 
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
 
         assertTrue(repository.albumsCacheFor("testUser").isEmpty())
 
@@ -634,7 +634,7 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
 
         assertFalse("Should be idle before any indexing starts", repository.isIndexingSubtree.value)
 
@@ -685,7 +685,7 @@ class SmugMugRepositoryTest {
                 .build()
         }
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
 
         val shortJob = launch { repository.unlockAndIndexSubtree("testUser", "shortFolder", "dummy_key", "pw1") }
         val longJob = launch { repository.unlockAndIndexSubtree("testUser", "longFolder", "dummy_key", "pw2") }
@@ -741,7 +741,7 @@ class SmugMugRepositoryTest {
         }
         
         val api = createMockApi(mockInterceptor)
-        val repository = SmugMugRepository(api, dao, FakePasswordStore(), mockContext()).apply { maxPagesPerFetch = 2 }
+        val repository = SmugMugRepository(api, dao, FakePasswordStore()).apply { maxPagesPerFetch = 2 }
         
         val ok = repository.unlocks.ensureSession("testNodeId", "dummy_key", "password") == SmugMugRepository.UnlockResult.Success
 
@@ -781,7 +781,7 @@ class SmugMugRepositoryTest {
             nodeId = "2sDN5x", parentNodeId = null, type = "Folder", title = "Family", description = null, access = "Password",
             passwordHint = null, uri = "/api/v2/node/2sDN5x", childNodesUri = null, albumUri = null
         )
-        val repository = SmugMugRepository(createMockApi(interceptor), dao, store, mockContext())
+        val repository = SmugMugRepository(createMockApi(interceptor), dao, store)
         // Step 3-11: the background path is ensureSession (never deletes); the prompt path is submit.
         val ok = if (prompt) repository.unlocks.submit(familyRow, "secret", "dummy_key") is UnlockManager.Submit.Opened
         else repository.unlocks.ensureSession("2sDN5x", "dummy_key", "secret") == SmugMugRepository.UnlockResult.Success

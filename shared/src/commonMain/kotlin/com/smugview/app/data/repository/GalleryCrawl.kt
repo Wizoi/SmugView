@@ -15,7 +15,7 @@ import com.smugview.app.data.db.CollectionDao
  * typed call (`start = 1, 101, ...`) and every page carries the same query. Pages accumulate in
  * memory; any failure throws before [write] runs, so a partial listing never reaches the index.
  */
-internal class GalleryCrawl(
+class GalleryCrawl(
     private val api: SmugMugApi,
     private val dao: CollectionDao,
     private val pageDelayMs: Long = 100L
@@ -150,7 +150,7 @@ internal class GalleryCrawl(
         }
 
         fun isoMillis(s: String?): Long? = s?.let {
-            try { java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli() } catch (e: Exception) { null }
+            com.smugview.app.util.Iso8601.epochMillisOrNull(it)
         }
 
         /** The later of two ISO-8601 instants; a value that does not parse loses to one that does. */

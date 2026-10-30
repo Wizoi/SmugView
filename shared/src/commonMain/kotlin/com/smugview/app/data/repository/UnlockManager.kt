@@ -1,5 +1,6 @@
 package com.smugview.app.data.repository
 
+import kotlin.concurrent.Volatile
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.data.repository.SmugMugRepository.UnlockResult
 import com.smugview.app.data.repository.SmugMugRepository.UnlockSummary
@@ -86,7 +87,7 @@ class UnlockManager(
     val sessionEpoch: StateFlow<Int> = _sessionEpoch.asStateFlow()
 
     // The flight outlives a cancelled caller: the callers that joined it still need its answer.
-    private val flights = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val flights = CoroutineScope(SupervisorJob() + com.smugview.app.util.ioDispatcher)
     private val lock = Mutex()
     private val inFlight = HashMap<String, Deferred<UnlockOutcome>>()
 

@@ -85,7 +85,7 @@ class ScenarioRig(
     }
 
     private fun newRepository(retrying: Boolean) =
-        SmugMugRepository(loopback?.api(retrying = retrying) ?: server.api(retrying), daoForRepository, passwords, app, reporter, syncState).also {
+        SmugMugRepository(loopback?.api(retrying = retrying) ?: server.api(retrying), daoForRepository, passwords, reporter, syncState).also {
             it.treeSyncDelayMs = 0
             it.unlockDelayMs = 0
         }

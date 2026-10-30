@@ -139,7 +139,7 @@ class FileSyncReporter(
                     val o = JSONObject(line)
                     when (o.optString("t")) {
                         "start", "end" -> {
-                            val run = SyncRun.fromJson(o.getJSONObject("run"))
+                            val run = syncRunFromJson(o.getJSONObject("run"))
                             synchronized(lock) { history.remove(run.runId); remember(run) }
                         }
                         "amend" -> synchronized(lock) {

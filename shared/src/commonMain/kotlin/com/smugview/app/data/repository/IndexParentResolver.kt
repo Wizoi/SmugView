@@ -18,7 +18,7 @@ import com.smugview.app.data.db.CollectionDao
  *    [relist]) and the match retried, at most [MAX_DEPTH] rounds and within [budget] folders.
  *  - It never calls `folder/...`: the tree sync already lists every reachable folder (V9).
  */
-internal class IndexParentResolver(
+class IndexParentResolver(
     private val dao: CollectionDao,
     private val clock: () -> Long,
     /** Forced relist of one folder; false when it could not be listed (locked, offline). */
@@ -126,7 +126,7 @@ internal class IndexParentResolver(
         fun pathOfWebUri(webUri: String?): String? {
             if (webUri.isNullOrBlank()) return null
             return try {
-                java.net.URI(webUri).path.orEmpty().trimEnd('/')
+                com.smugview.app.util.UrlParts.pathOrNull(webUri).orEmpty().trimEnd('/')
             } catch (e: Exception) {
                 null
             }

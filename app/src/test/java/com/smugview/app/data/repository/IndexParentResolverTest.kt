@@ -49,8 +49,7 @@ class IndexParentResolverTest {
     @After fun tearDown() = db.close()
 
     private fun repo() = SmugMugRepository(
-        server.api(), dao, FakePasswordStore(mapOf("2sDN5x" to "fake-pw-1")),
-        org.mockito.Mockito.mock(android.content.Context::class.java), reporter, state
+        server.api(), dao, FakePasswordStore(mapOf("2sDN5x" to "fake-pw-1")), reporter, state
     ).also { it.treeSyncDelayMs = 0; it.unlockDelayMs = 0 }
 
     private fun folder(id: String, parent: String, name: String, path: String) = CachedNode(

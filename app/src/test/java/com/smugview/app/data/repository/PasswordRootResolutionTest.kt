@@ -43,9 +43,7 @@ class PasswordRootResolutionTest {
     @After fun tearDown() = db.close()
 
     private fun repo() = SmugMugRepository(
-        server.api(), dao, store,
-        org.mockito.Mockito.mock(android.content.Context::class.java)
-    )
+        server.api(), dao, store)
 
     private fun resolve(id: String) = runBlocking { repo().resolvePasswordRootNodeId(id, "k") }
 

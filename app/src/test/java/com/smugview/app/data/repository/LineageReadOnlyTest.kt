@@ -37,8 +37,7 @@ class LineageReadOnlyTest {
     @After fun tearDown() = db.close()
 
     private fun repo() = SmugMugRepository(
-        server.api(), dao, FakePasswordStore(), org.mockito.Mockito.mock(android.content.Context::class.java)
-    )
+        server.api(), dao, FakePasswordStore())
 
     private fun row(id: String, parent: String?, type: String, title: String, albumKey: String? = null, sortIndex: Int = 0) =
         CachedNode(
