@@ -1,5 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.app.util.SmugLog
 import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.db.CollectionBookmark
@@ -58,9 +59,7 @@ class CollectionsController(
      * and is not kept (the pass resolves the real source with `image/{key}-0` instead).
      */
     fun addBookmark(collectionId: Long, type: String, itemKey: String, title: String, albumKey: String = "", albumTitle: String = "", thumbnailUrl: String? = null, imageUrl: String? = null) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "addBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey, title='$title'")
-        }
+        SmugLog.d("SmugViewModel") { "addBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey, title='$title'" }
         scope.launch {
             val bookmark = CollectionBookmark(
                 collectionId = collectionId,
@@ -78,9 +77,7 @@ class CollectionsController(
 
     /** Unbookmarks; what only this bookmark kept on the phone is deleted, what another reference needs stays (N5). */
     fun removeBookmark(collectionId: Long, type: String, itemKey: String) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "removeBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey")
-        }
+        SmugLog.d("SmugViewModel") { "removeBookmark: collectionId=$collectionId, type=$type, itemKey=$itemKey" }
         scope.launch {
             offline.removeBookmark(collectionId, type, itemKey)
         }
@@ -125,9 +122,7 @@ class CollectionsController(
     }
 
     fun addPhotoToCollection(photo: AlbumImageData, collectionId: Long) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "addPhotoToCollection: imageKey=${photo.imageKey}, collectionId=$collectionId")
-        }
+        SmugLog.d("SmugViewModel") { "addPhotoToCollection: imageKey=${photo.imageKey}, collectionId=$collectionId" }
         scope.launch {
             val dbPhoto = CollectionPhoto(
                 imageKey = photo.imageKey,

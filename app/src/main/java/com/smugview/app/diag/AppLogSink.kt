@@ -13,6 +13,14 @@ object AppLogSink : LogSink {
         if (BuildConfig.DEBUG) Log.d(tag, message)
     }
 
+    override fun debugWarn(tag: String, message: String, throwable: Throwable?) {
+        if (BuildConfig.DEBUG) Log.w(tag, message, throwable)
+    }
+
+    override fun debugError(tag: String, message: String, throwable: Throwable?) {
+        if (BuildConfig.DEBUG) Log.e(tag, message, throwable)
+    }
+
     override fun info(tag: String, message: String) {
         if (BuildConfig.DEBUG) Log.i(tag, message)
         Diag.log.i(tag, message)

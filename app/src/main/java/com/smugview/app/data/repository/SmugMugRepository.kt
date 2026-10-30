@@ -132,9 +132,7 @@ class SmugMugRepository @Inject constructor(
     }
 
     fun getUserProfile(nickname: String, apiKey: String, ignoreErrors: String? = null): Flow<Result<com.smugview.app.data.api.UserData>> = flow {
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "getUserProfile called: nickname=$nickname, ignoreErrors=$ignoreErrors")
-        }
+        SmugLog.d("SmugMugRepository") { "getUserProfile called: nickname=$nickname, ignoreErrors=$ignoreErrors" }
         try {
             val userResponse = api.getUserProfile(nickname, apiKey, ignoreErrors = ignoreErrors)
             val bioImage = userResponse.expansions?.values?.firstOrNull { it.bioImage != null }?.bioImage
@@ -143,25 +141,19 @@ class SmugMugRepository @Inject constructor(
                 bioImageKey = bioImage?.imageKey,
                 bioImageThumbnailUrl = bioImage?.thumbnailUrl
             )
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "getUserProfile success: nickname=$nickname")
-            }
+            SmugLog.d("SmugMugRepository") { "getUserProfile success: nickname=$nickname" }
             emit(Result.success(enrichedUser))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.e("SmugMugRepository", "getUserProfile failed: nickname=$nickname", e)
-            }
+            SmugLog.debugErr("SmugMugRepository", e) { "getUserProfile failed: nickname=$nickname" }
             emit(Result.failure(e))
         }
     }.flowOn(Dispatchers.IO)
 
     // Resolves nickname to root node ID
     fun getUserRootNodeId(nickname: String, apiKey: String): Flow<Result<String>> = flow {
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "getUserRootNodeId called: nickname=$nickname")
-        }
+        SmugLog.d("SmugMugRepository") { "getUserRootNodeId called: nickname=$nickname" }
         rootNodeIdCache[nickname]?.let {
             emit(Result.success(it))
             return@flow
@@ -171,16 +163,12 @@ class SmugMugRepository @Inject constructor(
             val nodeUri = response.response.user.rootNodeUri
             val nodeId = parseNodeIdFromUri(nodeUri)
             rootNodeIdCache[nickname] = nodeId
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "getUserRootNodeId success: nickname=$nickname, nodeId=$nodeId")
-            }
+            SmugLog.d("SmugMugRepository") { "getUserRootNodeId success: nickname=$nickname, nodeId=$nodeId" }
             emit(Result.success(nodeId))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.e("SmugMugRepository", "getUserRootNodeId failed: nickname=$nickname", e)
-            }
+            SmugLog.debugErr("SmugMugRepository", e) { "getUserRootNodeId failed: nickname=$nickname" }
             emit(Result.failure(e))
         }
     }.flowOn(Dispatchers.IO)
@@ -200,15 +188,11 @@ class SmugMugRepository @Inject constructor(
         password: String? = null,
         ignoreErrors: String? = null
     ): Flow<Result<List<CachedNode>>> = flow<Result<List<CachedNode>>> {
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "getNodeChildren started: nodeId=$nodeId, forceRefresh=$forceRefresh, hasPassword=${!password.isNullOrEmpty()}")
-        }
+        SmugLog.d("SmugMugRepository") { "getNodeChildren started: nodeId=$nodeId, forceRefresh=$forceRefresh, hasPassword=${!password.isNullOrEmpty()}" }
         // First emit Room cached value
         val cached = dao.getCachedNodesByParent(nodeId).first()
         if (cached.isNotEmpty() && !forceRefresh) {
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "getNodeChildren cached hit: found ${cached.size} children for nodeId=$nodeId")
-            }
+            SmugLog.d("SmugMugRepository") { "getNodeChildren cached hit: found ${cached.size} children for nodeId=$nodeId" }
             emit(Result.success(cached))
             return@flow
         }
@@ -218,15 +202,11 @@ class SmugMugRepository @Inject constructor(
             // Re-check cache after acquiring the lock in case another coroutine populated it
             val cachedPostLock = dao.getCachedNodesByParent(nodeId).first()
             if (cachedPostLock.isNotEmpty() && !forceRefresh) {
-                if (com.smugview.app.BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugMugRepository", "getNodeChildren cached hit post-lock: found ${cachedPostLock.size} children for nodeId=$nodeId")
-                }
+                SmugLog.d("SmugMugRepository") { "getNodeChildren cached hit post-lock: found ${cachedPostLock.size} children for nodeId=$nodeId" }
                 emit(Result.success(cachedPostLock))
                 return@withLock
             }
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "getNodeChildren cache miss: fetching from remote API for nodeId=$nodeId")
-            }
+            SmugLog.d("SmugMugRepository") { "getNodeChildren cache miss: fetching from remote API for nodeId=$nodeId" }
 
             try {
                 val dbNodes = fetchAndStoreChildren(nickname, nodeId, apiKey, forceRefresh, password, ignoreErrors)
@@ -287,9 +267,7 @@ class SmugMugRepository @Inject constructor(
                             }
                         }
                     } else {
-                        if (com.smugview.app.BuildConfig.DEBUG) {
-                            android.util.Log.d("SmugMugRepository", "getNodeChildren: fetching start=$start for nodeId=$nodeId")
-                        }
+                        SmugLog.d("SmugMugRepository") { "getNodeChildren: fetching start=$start for nodeId=$nodeId" }
                         api.getNodeChildren(nodeId, apiKey, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                     }
                     response.expansions?.let { allExpansions.putAll(it) }
@@ -299,9 +277,7 @@ class SmugMugRepository @Inject constructor(
             )
         }
 
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "getNodeChildren: completed fetching all pages for nodeId=$nodeId. Total children fetched = ${allApiNodes.size}")
-        }
+        SmugLog.d("SmugMugRepository") { "getNodeChildren: completed fetching all pages for nodeId=$nodeId. Total children fetched = ${allApiNodes.size}" }
         
         val dbNodes = allApiNodes.mapIndexed { index, node ->
             val highlightUri = node.uris.highlightImage
@@ -573,9 +549,7 @@ class SmugMugRepository @Inject constructor(
         rootNodeId: String?,
         ignoreGate: Boolean
     ): Set<String> {
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "buildInMemoryGalleryCache starting for user=$nickname")
-        }
+        SmugLog.d("SmugMugRepository") { "buildInMemoryGalleryCache starting for user=$nickname" }
         // The session state this crawl starts under (design 3.6). A root that becomes Session while the
         // crawl is in flight is invisible to the pages it already fetched, so its galleries would look
         // deleted: such a crawl may not prune (below), and the resync that follows the unlock redoes it.
@@ -635,9 +609,7 @@ class SmugMugRepository @Inject constructor(
                 run?.stop = com.smugview.app.diag.StopReason.NoNextPage
                 run?.changedCount = written.changed.size
                 _albumIndex.value = AlbumIndexSnapshot(nickname, dao.getAlbumIndex(nickname).map { it.toCachedNode() })
-                if (com.smugview.app.BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugMugRepository", "album index crawled: ${written.changed.size} new/changed, total=${_albumIndex.value.nodes.size}")
-                }
+                SmugLog.d("SmugMugRepository") { "album index crawled: ${written.changed.size} new/changed, total=${_albumIndex.value.nodes.size}" }
 
                 // 4. Parents from the folder paths (relisting the nearest cached ancestor of a recent
                 // gallery whose folder is new).
@@ -1126,17 +1098,13 @@ class SmugMugRepository @Inject constructor(
         query: String,
         apiKey: String
     ) {
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages starting: user=$nickname, scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query")
-        }
+        SmugLog.d("SmugMugRepository") { "performBackgroundSearchImages starting: user=$nickname, scopeUri=$scopeUri, scopeKey=$scopeKey, query=$query" }
         try {
             dao.deleteSearchResultsForQueryAndType(query = query, scope = scopeKey, type = "Photo")
 
             // No node scope: the site's own user, which needs no lookup and is never another site's root (R-33).
             val targetScope = scopeUri ?: "/api/v2/user/$nickname"
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages calling searchImages with scope=$targetScope")
-            }
+            SmugLog.d("SmugMugRepository") { "performBackgroundSearchImages calling searchImages with scope=$targetScope" }
 
             var insertedCount = 0
             val insertedKeys = mutableSetOf<String>()
@@ -1150,9 +1118,7 @@ class SmugMugRepository @Inject constructor(
                 fetch = { start, count ->
                     val response = api.searchImages(apiKey = apiKey, scope = targetScope, text = query, start = start, count = count)
                     val pageImages = response.response.images ?: emptyList()
-                    if (com.smugview.app.BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages page ${fetched + 1} returned ${pageImages.size} images")
-                    }
+                    SmugLog.d("SmugMugRepository") { "performBackgroundSearchImages page ${fetched + 1} returned ${pageImages.size} images" }
                     applyVideoUrls(pageImages, response.expansions)
                     response.toPage(start)
                 },
@@ -1169,11 +1135,9 @@ class SmugMugRepository @Inject constructor(
                     ++fetched < maxPagesPerFetch
                 }
             )
-            if (com.smugview.app.BuildConfig.DEBUG) {
-                android.util.Log.d("SmugMugRepository", "performBackgroundSearchImages completed: total inserted = $insertedCount")
-            }
+            SmugLog.d("SmugMugRepository") { "performBackgroundSearchImages completed: total inserted = $insertedCount" }
         } catch (e: Exception) {
-            android.util.Log.e("SmugMugRepository", "Failed performBackgroundSearchImages", e)
+            SmugLog.e("SmugMugRepository", "Failed performBackgroundSearchImages", e)
             throw e
         }
     }
@@ -1230,9 +1194,7 @@ class SmugMugRepository @Inject constructor(
             val isLocked = cachedNode != null && unlocks.needsPassword(cachedNode)
             val hasPw = !effectivePassword.isNullOrEmpty()
             if (isLocked && !hasPw) {
-                if (com.smugview.app.BuildConfig.DEBUG) {
-                    android.util.Log.d("SmugMugRepository", "fetchAlbumsInScopeRemote: skipping locked node $currentNodeId without password")
-                }
+                SmugLog.d("SmugMugRepository") { "fetchAlbumsInScopeRemote: skipping locked node $currentNodeId without password" }
                 continue
             }
             
@@ -1498,13 +1460,9 @@ class SmugMugRepository @Inject constructor(
      * is anonymous-readable.
      */
     suspend fun resolveAndCacheAlbumLineage(albumKey: String, apiKey: String, password: String? = null): List<CachedNode> {
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "resolveAndCacheAlbumLineage called: albumKey=$albumKey, hasPassword=${password != null}")
-        }
+        SmugLog.d("SmugMugRepository") { "resolveAndCacheAlbumLineage called: albumKey=$albumKey, hasPassword=${password != null}" }
         val parents = lineageOf(albumKey, apiKey).drop(1).dropLast(1).reversed()
-        if (com.smugview.app.BuildConfig.DEBUG) {
-            android.util.Log.d("SmugMugRepository", "resolveAndCacheAlbumLineage success: albumKey=$albumKey, resolvedLineageSize=${parents.size}")
-        }
+        SmugLog.d("SmugMugRepository") { "resolveAndCacheAlbumLineage success: albumKey=$albumKey, resolvedLineageSize=${parents.size}" }
         return parents
     }
 
@@ -1621,7 +1579,7 @@ class SmugMugRepository @Inject constructor(
                 passwordHint = response.response.album.passwordHint
             )
         } catch (e: Exception) {
-            android.util.Log.w("SmugMugRepository", "getAlbumSecurityInfo failed for albumKey=$albumKey", e)
+            SmugLog.w("SmugMugRepository", "getAlbumSecurityInfo failed for albumKey=$albumKey", e)
             null
         }
     }
@@ -1863,7 +1821,7 @@ class SmugMugRepository @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            android.util.Log.e("SmugMugRepository", "searchNodesRemote error: ", e)
+            SmugLog.e("SmugMugRepository", "searchNodesRemote error: ", e)
             emit(Result.failure(e))
         }
     }.flowOn(Dispatchers.IO)

@@ -1,5 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.app.util.SmugLog
 import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.AlbumPreview
@@ -138,39 +139,27 @@ class SiteHubController(
         watchIndexTotals(nickname) // also resets the totals
 
         val rootNodeId = getRootNodeId()
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: starting for $nickname, rootNodeId=$rootNodeId")
-        }
+        SmugLog.d("SmugViewModel") { "loadActiveSiteDetails: starting for $nickname, rootNodeId=$rootNodeId" }
 
         siteScope().launch {
             try {
                 coroutineScope {
                     val recentImagesDeferred = async {
                         try {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching recent images")
-                            }
+                            SmugLog.d("SmugViewModel") { "loadActiveSiteDetails: fetching recent images" }
                             val res = repository.getUserRecentImagesResponse(nickname, apiKey, count = 10)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: recent images response: ${res.response.images?.size} items")
-                            }
+                            SmugLog.d("SmugViewModel") { "loadActiveSiteDetails: recent images response: ${res.response.images?.size} items" }
                             res.response.images ?: emptyList()
                         } catch (e: Exception) {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("SmugViewModel", "loadActiveSiteDetails recent images failed", e)
-                            }
+                            SmugLog.debugErr("SmugViewModel", e) { "loadActiveSiteDetails recent images failed" }
                             emptyList()
                         }
                     }
                     val albumsDeferred = async {
                         try {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching albums")
-                            }
+                            SmugLog.d("SmugViewModel") { "loadActiveSiteDetails: fetching albums" }
                             val res = repository.getUserAlbumsResponse(nickname, apiKey)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: albums response: ${res.response.albums?.size} items")
-                            }
+                            SmugLog.d("SmugViewModel") { "loadActiveSiteDetails: albums response: ${res.response.albums?.size} items" }
                             setPageOneTotals(galleries = res.response.pages?.total, photos = null)
                             val albums = res.response.albums ?: emptyList()
                             _albumsProblem.value = null
@@ -198,9 +187,7 @@ class SiteHubController(
                             throw e // the site changed: the new site's load owns the state now
                         } catch (e: Exception) {
                             _albumsProblem.value = com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Site)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("SmugViewModel", "loadActiveSiteDetails albums failed, falling back to persisted gallery index", e)
-                            }
+                            SmugLog.debugErr("SmugViewModel", e) { "loadActiveSiteDetails albums failed, falling back to persisted gallery index" }
                             // Offline (or any other failure): fall back to the persisted gallery
                             // index built by buildInMemoryGalleryCache, so the Home tab still shows
                             // whatever galleries were already synced instead of going blank.
@@ -222,27 +209,19 @@ class SiteHubController(
                     }
                     val topKeywordsDeferred = async {
                         try {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: fetching top keywords")
-                            }
+                            SmugLog.d("SmugViewModel") { "loadActiveSiteDetails: fetching top keywords" }
                             val res = repository.getUserTopKeywords(nickname, apiKey, nodeId = rootNodeId)
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: top keywords response: ${res.response.userTopKeywords?.keywords?.size} items")
-                            }
+                            SmugLog.d("SmugViewModel") { "loadActiveSiteDetails: top keywords response: ${res.response.userTopKeywords?.keywords?.size} items" }
                             res.response.userTopKeywords?.keywords ?: emptyList()
                         } catch (e: Exception) {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("SmugViewModel", "loadActiveSiteDetails top keywords failed", e)
-                            }
+                            SmugLog.debugErr("SmugViewModel", e) { "loadActiveSiteDetails top keywords failed" }
                             emptyList()
                         }
                     }
                     val recentImages = recentImagesDeferred.await()
                     val albums = albumsDeferred.await()
                     val topKeywords = topKeywordsDeferred.await()
-                    if (BuildConfig.DEBUG) {
-                        android.util.Log.d("SmugViewModel", "loadActiveSiteDetails: completed. albums=${albums.size}, recent=${recentImages.size}, keywords=${topKeywords.size}")
-                    }
+                    SmugLog.d("SmugViewModel") { "loadActiveSiteDetails: completed. albums=${albums.size}, recent=${recentImages.size}, keywords=${topKeywords.size}" }
 
                     // Resolve missing albumKeys for recentImages
                     val resolvedRecentImages = recentImages.map { img ->
@@ -276,9 +255,7 @@ class SiteHubController(
                     _activeSiteTopKeywords.value = topKeywords.take(12)
                 }
             } catch (e: Exception) {
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.e("SmugViewModel", "loadActiveSiteDetails failed outer", e)
-                }
+                SmugLog.debugErr("SmugViewModel", e) { "loadActiveSiteDetails failed outer" }
             } finally {
                 // A cancelled load (the site changed) must not switch off the loading flag of the load
                 // that replaced it.
@@ -315,9 +292,7 @@ class SiteHubController(
     }
 
     fun searchPublicSites(query: String) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "searchPublicSites called: query='$query'")
-        }
+        SmugLog.d("SmugViewModel") { "searchPublicSites called: query='$query'" }
         globalSearchJob?.cancel()
         if (query.isBlank()) {
             _globalSearchState.value = GlobalSearchUiState.Idle

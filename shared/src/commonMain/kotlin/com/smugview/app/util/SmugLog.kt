@@ -5,6 +5,9 @@ import kotlin.concurrent.Volatile
 /** Where [SmugLog] writes. The app installs one (Android: logcat in debug builds plus the redacted diagnostics log; iOS: its own). */
 interface LogSink {
     fun debug(tag: String, message: String)
+    /** Debug-build-only warning/error lines (what `if (BuildConfig.DEBUG) Log.w/e(...)` used to do): not persisted, not in release. */
+    fun debugWarn(tag: String, message: String, throwable: Throwable?)
+    fun debugError(tag: String, message: String, throwable: Throwable?)
     fun info(tag: String, message: String)
     fun warn(tag: String, message: String, throwable: Throwable?)
     fun error(tag: String, message: String, throwable: Throwable?)
@@ -26,6 +29,14 @@ object SmugLog {
         if (debugEnabled) sink.debug(tag, message())
     }
 
+    inline fun debugWarn(tag: String, throwable: Throwable?, message: () -> String) {
+        if (debugEnabled) sink.debugWarn(tag, message(), throwable)
+    }
+
+    inline fun debugErr(tag: String, throwable: Throwable?, message: () -> String) {
+        if (debugEnabled) sink.debugError(tag, message(), throwable)
+    }
+
     inline fun i(tag: String, message: () -> String) {
         sink.info(tag, message())
     }
@@ -40,6 +51,8 @@ object SmugLog {
 
     private object Silent : LogSink {
         override fun debug(tag: String, message: String) {}
+        override fun debugWarn(tag: String, message: String, throwable: Throwable?) {}
+        override fun debugError(tag: String, message: String, throwable: Throwable?) {}
         override fun info(tag: String, message: String) {}
         override fun warn(tag: String, message: String, throwable: Throwable?) {}
         override fun error(tag: String, message: String, throwable: Throwable?) {}

@@ -1,5 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.app.util.SmugLog
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -162,16 +163,12 @@ class TagSearchController(
     }
 
     fun clearSelectedTags() {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "clearSelectedTags called")
-        }
+        SmugLog.d("SmugViewModel") { "clearSelectedTags called" }
         _selectedTags.value = emptyMap()
     }
 
     fun selectTag(tag: String, state: SmugViewModel.TagFilterState = SmugViewModel.TagFilterState.INCLUDED) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.d("SmugViewModel", "selectTag called: tag=$tag, state=$state")
-        }
+        SmugLog.d("SmugViewModel") { "selectTag called: tag=$tag, state=$state" }
         val current = _selectedTags.value.toMutableMap()
         if (current.isEmpty()) {
             current[tag.lowercase()] = SmugViewModel.TagFilterState.INCLUDED
@@ -388,7 +385,7 @@ class TagSearchController(
                             _keywordPhotosTotal.value = _allScopePhotos.value.size
                         }
                     } catch (e: Exception) {
-                        android.util.Log.e("SmugViewModel", "Failed to load/resume photos for keywords: $keywordsQuery", e)
+                        SmugLog.e("SmugViewModel", "Failed to load/resume photos for keywords: $keywordsQuery", e)
                     } finally {
                         _isLoadingPhotos.value = false
                     }
@@ -417,7 +414,7 @@ class TagSearchController(
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SmugViewModel", "Failed to add keyword to image", e)
+                SmugLog.e("SmugViewModel", "Failed to add keyword to image", e)
                 withContext(Dispatchers.Main) {
                     onComplete(false)
                 }
