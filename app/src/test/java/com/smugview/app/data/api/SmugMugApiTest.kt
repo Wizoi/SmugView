@@ -3,8 +3,6 @@ package com.smugview.app.data.api
 import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.*
-import retrofit2.Retrofit
-import com.smugview.app.data.api.apiConverterFactory
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import okhttp3.ResponseBody
@@ -430,13 +428,9 @@ class SmugMugApiTest {
 
         val okHttpClient = okHttpClientBuilder.build()
 
-        val retrofit = Retrofit.Builder()
-            .baseUrl("https://api.smugmug.com/api/v2/")
-            .client(okHttpClient)
-            .addConverterFactory(apiConverterFactory())
-            .build()
+        val retrofit = smugMugApi(okHttpClient)
 
-        return Pair(retrofit.create(SmugMugApi::class.java), apiKey)
+        return Pair(retrofit, apiKey)
     }
 
     @Test
@@ -622,8 +616,8 @@ class SmugMugApiTest {
             val albumResponse = runBlocking {
                 ctx.api.unlockAlbum(ctx.albumKey, ctx.apiKey, "dummypassword", "true")
             }
-            val nodeCode = nodeResponse.code()
-            val albumCode = albumResponse.code()
+            val nodeCode = nodeResponse.code
+            val albumCode = albumResponse.code
             actual = "• 🔐 POST unlockNode on '${ctx.nodeId}': HTTP $nodeCode<br/>• 🔐 POST unlockAlbum on '${ctx.albumKey}': HTTP $albumCode<br/>• 📂 Total user albums fetched: ${albumsList.size} entries"
             success = true
         } catch (e: Exception) {
@@ -646,7 +640,7 @@ class SmugMugApiTest {
             val response = runBlocking {
                 ctx.api.updateImageMetadata(ctx.imageKey, ctx.apiKey, requestBody)
             }
-            actual = "Update image metadata response code: ${response.code()}"
+            actual = "Update image metadata response code: ${response.code}"
             success = true
         } catch (e: Exception) {
             actual = "Error: ${e.message}"

@@ -227,9 +227,7 @@ class GoneBookmarkScenarioTest {
             Thread.sleep(20) // the prompt is raised from a background launch: give it real time to arrive
         }
     }
-    private fun http(code: Int) = retrofit2.HttpException(
-        retrofit2.Response.error<Any>(code, okhttp3.ResponseBody.create(null, "{}"))
-    )
+    private fun http(code: Int) = com.smugview.app.data.api.ApiException(code)
 
     /** Fixture F as cached rows: Family (password) -> School -> gallery (NodeID LCdk7F, AlbumKey FfHCms), so the gallery's root is known. */
     private fun cacheTopology() {

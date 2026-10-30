@@ -49,7 +49,7 @@ class CachePolicyLoopbackTest {
         val t = thread { inFlight = get(albumsPath) }
         assertTrue("the anonymous listing reached the server", held.awaitArrived())
 
-        runBlocking { loop.api().unlockNode("2sDN5x", "k", "family-pw", null) }.also { assertEquals(200, it.code()) }
+        runBlocking { loop.api().unlockNode("2sDN5x", "k", "family-pw", null) }.also { assertEquals(200, it.code) }
         held.release()
         t.join(5_000)
         assertFalse("the anonymous listing hides Family's gallery", inFlight!!.contains("FfHCms"))
@@ -71,7 +71,7 @@ class CachePolicyLoopbackTest {
     /** Green pin: a response fetched AFTER the session changed is reused (the epoch is not a blanket no-cache). */
     @Test fun `a listing fetched after an unlock is reused`() {
         fake.cookieGate = true
-        runBlocking { loop.api().unlockNode("2sDN5x", "k", "family-pw", null) }.also { assertEquals(200, it.code()) }
+        runBlocking { loop.api().unlockNode("2sDN5x", "k", "family-pw", null) }.also { assertEquals(200, it.code) }
         Thread.sleep(1_100)
         get(albumsPath)
         get(albumsPath)
@@ -107,7 +107,7 @@ class CachePolicyLoopbackTest {
     /** Green pin: the offline rule beats the epoch, after an unlock too. */
     @Test fun `offline after an unlock still serves the cache`() {
         val online = get(albumsPath)
-        runBlocking { loop.api().unlockNode("2sDN5x", "k", "family-pw", null) }.also { assertEquals(200, it.code()) }
+        runBlocking { loop.api().unlockNode("2sDN5x", "k", "family-pw", null) }.also { assertEquals(200, it.code) }
         loop.online = false
 
         assertEquals(online, get(albumsPath))
@@ -128,7 +128,7 @@ class CachePolicyLoopbackTest {
 
         val failure = runCatching { runBlocking { api.getNodeChildren("4zqWw", "k") } }.exceptionOrNull()
 
-        assertTrue("a 504 reached the caller: $failure", failure is retrofit2.HttpException && failure.code() == 504)
+        assertTrue("a 504 reached the caller: $failure", failure is com.smugview.app.data.api.ApiException && failure.code == 504)
         assertEquals("nothing reached the server", 0, fake.requestsTo("node/4zqWw!children").size)
     }
 }

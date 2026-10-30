@@ -311,13 +311,8 @@ class RetryingCallFactoryTest {
         assertEquals("tree#9", outcomes.single().actionId)
     }
 
-    private interface PingApi {
-        @retrofit2.http.GET("ping")
-        suspend fun ping(): ResponseBody
-    }
-
     @Test
-    fun realRetrofitSuspendCall_insideDiagContext_reportsTheActionId() {
+    fun realApiSuspendCall_insideDiagContext_reportsTheActionId() {
         val delegate = Call.Factory { req -> FakeCall(req) { jsonResponse(req, 200, "OK", "pong") } }
         val outcomes = outcomeCollector()
         val factory = RetryingCallFactory(
@@ -325,15 +320,12 @@ class RetryingCallFactoryTest {
             actionIdProvider = com.smugview.app.diag.DiagContext::currentActionId,
             onComplete = { outcomes.add(it) }
         )
-        val api = retrofit2.Retrofit.Builder()
-            .baseUrl("https://api.smugmug.com/api/v2/")
-            .callFactory(factory)
-            .build()
-            .create(PingApi::class.java)
+        // "pong" is not a user: the call fails to parse, which is beside the point; the request still settled through the factory.
+        val api = smugMugApi(factory)
 
         kotlinx.coroutines.runBlocking {
-            kotlinx.coroutines.withContext(com.smugview.app.diag.DiagContext.element("t#1")) { api.ping().close() }
-            api.ping().close()
+            kotlinx.coroutines.withContext(com.smugview.app.diag.DiagContext.element("t#1")) { runCatching { api.getUserBioImage("n", "k") } }
+            runCatching { api.getUserBioImage("n", "k") }
         }
 
         assertEquals(listOf<String?>("t#1", null), outcomes.map { it.actionId })

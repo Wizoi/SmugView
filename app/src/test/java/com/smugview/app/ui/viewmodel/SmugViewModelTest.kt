@@ -679,12 +679,7 @@ class SmugViewModelTest {
         viewModel.setActiveNicknameForTest("testUser")
         val childNode = createTestNode(nodeId = "folder1", parentNodeId = "root", type = "Folder", title = "Subfolder 1")
         // What Retrofit throws for OkHttp's synthetic 504: no network response, no cache response.
-        val req = okhttp3.Request.Builder().url("https://api.smugmug.com/api/v2/node/folder1!children").build()
-        val raw = okhttp3.Response.Builder().request(req).protocol(okhttp3.Protocol.HTTP_1_1)
-            .code(504).message("Unsatisfiable Request (only-if-cached)").build()
-        val synthetic = retrofit2.HttpException(
-            retrofit2.Response.error<Any>(okhttp3.ResponseBody.create(null, ""), raw)
-        )
+        val synthetic = com.smugview.app.data.api.ApiException(504, "Unsatisfiable Request (only-if-cached)", syntheticCacheMiss = true)
         Mockito.`when`(mockRepository.getNodeChildren("testUser", "folder1", BuildConfig.SMUGMUG_API_KEY, false, null))
             .thenReturn(flowOf(Result.failure(synthetic)))
 
@@ -1242,7 +1237,7 @@ class SmugViewModelTest {
                     Mockito.nullable(String::class.java),
                     Mockito.nullable(String::class.java)
                 )
-            ).thenThrow(retrofit2.HttpException(retrofit2.Response.error<Any>(401, okhttp3.ResponseBody.create(null, ""))))
+            ).thenThrow(com.smugview.app.data.api.ApiException(401))
 
             Mockito.`when`(mockRepository.isGalleryLit(Mockito.anyString(), Mockito.anyString())).thenReturn(false)
 
@@ -1254,7 +1249,7 @@ class SmugViewModelTest {
                     Mockito.anyInt(),
                     Mockito.nullable(String::class.java)
                 )
-            ).thenThrow(retrofit2.HttpException(retrofit2.Response.error<Any>(401, okhttp3.ResponseBody.create(null, ""))))
+            ).thenThrow(com.smugview.app.data.api.ApiException(401))
         }
         
         viewModel.selectAlbum(lockedAlbumKey)

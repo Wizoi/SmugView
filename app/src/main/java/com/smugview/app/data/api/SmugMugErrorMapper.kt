@@ -49,7 +49,7 @@ object SmugMugErrorMapper {
      */
     fun isOffline(error: Throwable?): Boolean = when (error) {
         is java.io.IOException -> true
-        is retrofit2.HttpException -> error.response()?.raw()?.isSyntheticCacheMiss() == true
+        is com.smugview.app.data.api.ApiException -> error.syntheticCacheMiss
         is com.smugview.app.data.repository.AlbumLockedException ->
             error.pendingReason == com.smugview.app.data.repository.TransientReason.Offline
         else -> false
@@ -58,7 +58,7 @@ object SmugMugErrorMapper {
     /** True only when SmugMug explicitly refused the credentials (401/403). Offline, 429, 5xx and
      *  OkHttp's synthetic 504 say nothing about whether a saved password is still correct. */
     fun isPasswordRejection(error: Throwable?): Boolean =
-        error is retrofit2.HttpException && (error.code() == 401 || error.code() == 403)
+        error is com.smugview.app.data.api.ApiException && (error.code == 401 || error.code == 403)
 
     /**
      * Extracts and maps a friendly error message from the response code and body content.

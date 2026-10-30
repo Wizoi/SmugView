@@ -120,9 +120,7 @@ class SmugMugErrorMapperTest {
 
     @Test
     fun isPasswordRejection_onlyFor401And403() {
-        fun http(code: Int) = retrofit2.HttpException(
-            retrofit2.Response.error<Any>(code, okhttp3.ResponseBody.create(null, "{}"))
-        )
+        fun http(code: Int) = com.smugview.app.data.api.ApiException(code)
         assertTrue(SmugMugErrorMapper.isPasswordRejection(http(401)))
         assertTrue(SmugMugErrorMapper.isPasswordRejection(http(403)))
         for (code in listOf(404, 429, 500, 503, 504)) {
@@ -134,14 +132,8 @@ class SmugMugErrorMapperTest {
 
     // --- findings #6: the offline message ---
 
-    private fun httpException(code: Int, withNetworkResponse: Boolean): retrofit2.HttpException {
-        val req = okhttp3.Request.Builder().url("https://api.smugmug.com/api/v2/node/zz9!children").build()
-        fun raw(c: Int) = okhttp3.Response.Builder().request(req).protocol(okhttp3.Protocol.HTTP_1_1)
-            .code(c).message("m")
-        val rawResponse = if (withNetworkResponse) raw(code).networkResponse(raw(code).build()).build() else raw(code).build()
-        val body = "".toResponseBody(null)
-        return retrofit2.HttpException(retrofit2.Response.error<Any>(body, rawResponse))
-    }
+    private fun httpException(code: Int, withNetworkResponse: Boolean): com.smugview.app.data.api.ApiException =
+        com.smugview.app.data.api.ApiException(code, "m", syntheticCacheMiss = code == 504 && !withNetworkResponse)
 
 
     @Test

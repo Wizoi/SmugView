@@ -1,5 +1,6 @@
 package com.smugview.app.data.repository
 
+import com.smugview.app.data.api.smugMugApi
 import kotlinx.serialization.encodeToString
 import com.smugview.app.data.api.*
 import com.smugview.app.data.db.*
@@ -22,8 +23,6 @@ import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.Retrofit
-import com.smugview.app.data.api.apiConverterFactory
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], manifest = Config.NONE)
@@ -57,13 +56,7 @@ class SmugMugRepositoryTest {
             .addInterceptor(interceptor)
             .build()
             
-        val retrofit = Retrofit.Builder()
-            .baseUrl("https://api.smugmug.com/api/v2/")
-            .client(client)
-            .addConverterFactory(apiConverterFactory())
-            .build()
-            
-        return retrofit.create(SmugMugApi::class.java)
+        return smugMugApi(client)
     }
 
     @Test

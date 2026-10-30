@@ -48,7 +48,7 @@ class ScenarioRigSanityTest {
         val api = rig.server.api()
         val codes = (1..3).map {
             try { kotlinx.coroutines.runBlocking { api.getNodeChildren("4zqWw", "k") }; 200 }
-            catch (e: retrofit2.HttpException) { assertEquals("0", e.response()?.headers()?.get("Retry-After")); e.code() }
+            catch (e: com.smugview.app.data.api.ApiException) { assertEquals("0", e.retryAfter); e.code }
         }
         assertEquals(listOf(429, 429, 200), codes)
     }

@@ -22,8 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import com.smugview.app.data.api.apiConverterFactory
 import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -193,12 +191,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSmugMugApi(callFactory: okhttp3.Call.Factory): SmugMugApi {
-        return Retrofit.Builder()
-            .baseUrl("https://api.smugmug.com/api/v2/")
-            .callFactory(callFactory)
-            .addConverterFactory(apiConverterFactory())
-            .build()
-            .create(SmugMugApi::class.java)
+        return com.smugview.app.data.api.smugMugApi(callFactory)
     }
 
     /** What Coil loads images through (R-37): no HTTP cache, same retry and telemetry. See [buildImageCallFactory]. */

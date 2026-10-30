@@ -273,7 +273,7 @@ class SmugMugRepository @Inject constructor(
                         try {
                             api.getNodeChildren(nodeId, apiKey, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
                         } catch (e: Exception) {
-                            if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
+                            if (!password.isNullOrEmpty() && (e is com.smugview.app.data.api.ApiException && (e.code == 401 || e.code == 404))) {
                                 val unlocked = unlocks.reauthorize(nodeId, apiKey, password) == UnlockResult.Success
                                 if (unlocked) {
                                     api.getNodeChildren(nodeId, apiKey, count = count, start = start, ignoreErrors = ignoreErrors, cacheControl = cacheControl)
@@ -351,7 +351,7 @@ class SmugMugRepository @Inject constructor(
             try {
                 api.getAlbum(albumKey, apiKey, ignoreErrors = "true", cacheControl = cacheControl).response.album
             } catch (e: Exception) {
-                if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
+                if (!password.isNullOrEmpty() && (e is com.smugview.app.data.api.ApiException && (e.code == 401 || e.code == 404))) {
                     val unlocked = unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success
                     if (unlocked) {
                         api.getAlbum(albumKey, apiKey, ignoreErrors = "true", cacheControl = cacheControl).response.album
@@ -404,7 +404,7 @@ class SmugMugRepository @Inject constructor(
         var first = try {
             api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true", cacheControl = cacheControl)
         } catch (e: Exception) {
-            if (!password.isNullOrEmpty() && (e is retrofit2.HttpException && (e.code() == 401 || e.code() == 404))) {
+            if (!password.isNullOrEmpty() && (e is com.smugview.app.data.api.ApiException && (e.code == 401 || e.code == 404))) {
                 if (unlocks.reauthorize(albumKey, apiKey, password) == UnlockResult.Success) {
                     api.getAlbumImages(albumKey, apiKey, start = 1, ignoreErrors = "true", cacheControl = cacheControl)
                 } else {
@@ -672,7 +672,7 @@ class SmugMugRepository @Inject constructor(
                 SmugLog.e("SmugMugRepository", "Failed to sync gallery cache", e)
                 run?.stop = com.smugview.app.diag.StopReason.Error
                 run?.stopDetail = e.javaClass.simpleName +
-                    ((e as? retrofit2.HttpException)?.let { " ${it.code()}" } ?: "")
+                    ((e as? com.smugview.app.data.api.ApiException)?.let { " ${it.code}" } ?: "")
                 emptySet()
             } finally {
                 _isAlbumsCacheLoaded.value = true
@@ -988,7 +988,7 @@ class SmugMugRepository @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        val code = (e as? retrofit2.HttpException)?.code()
+                        val code = (e as? com.smugview.app.data.api.ApiException)?.code
                         val label = e.javaClass.simpleName + (code?.let { " $it" } ?: "")
                         when {
                             // Offline (no network, or the synthetic only-if-cached 504) and 429: stop, do not hammer.
@@ -1331,10 +1331,10 @@ class SmugMugRepository @Inject constructor(
     }
 
     override suspend fun unlockNodeResult(nodeId: String, apiKey: String, password: String): UnlockResult =
-        timedUnlock(nodeId, "node") { api.unlockNode(nodeId, apiKey, password, "true").code() }
+        timedUnlock(nodeId, "node") { api.unlockNode(nodeId, apiKey, password, "true").code }
 
     override suspend fun unlockAlbumResult(albumKey: String, apiKey: String, password: String): UnlockResult =
-        timedUnlock(albumKey, "album") { api.unlockAlbum(albumKey, apiKey, password, "true").code() }
+        timedUnlock(albumKey, "album") { api.unlockAlbum(albumKey, apiKey, password, "true").code }
 
     /**
      * Runs one unlock call and reports it to the [syncReporter] (target, route, outcome, HTTP code or
@@ -1764,8 +1764,8 @@ class SmugMugRepository @Inject constructor(
             api.getNodeParents(id, apiKey, ignoreErrors = "true").response.nodes
         return try {
             parentsOf(mappedId)
-        } catch (e: retrofit2.HttpException) {
-            if (e.code() != 404) throw e
+        } catch (e: com.smugview.app.data.api.ApiException) {
+            if (e.code != 404) throw e
             val realId = api.getAlbum(mappedId, apiKey, ignoreErrors = "true").response.album.nodeId
             if (realId.isNullOrEmpty() || realId == mappedId) null else parentsOf(realId)
         }

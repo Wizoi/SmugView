@@ -10,8 +10,6 @@ import okhttp3.OkHttpClient
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assume
 import org.junit.Test
-import retrofit2.Retrofit
-import com.smugview.app.data.api.apiConverterFactory
 import java.io.File
 import java.util.Properties
 
@@ -45,8 +43,7 @@ class ParityRecorder {
                 response.newBuilder().body(text.toResponseBody("application/json".toMediaTypeOrNull())).build()
             })
             .build()
-        val api = Retrofit.Builder().baseUrl("https://api.smugmug.com/api/v2/").client(client)
-            .addConverterFactory(apiConverterFactory()).build().create(SmugMugApi::class.java)
+        val api = smugMugApi(client)
 
         fun <T> rec(method: String, label: String, call: suspend () -> T): JsonObject? {
             current = "${method}__$label"

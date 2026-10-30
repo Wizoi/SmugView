@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import retrofit2.HttpException
+import com.smugview.app.data.api.ApiException
 
 /**
  * Step 4-7 (Q2 (a), R-23, R-54): password-gallery JSON now enters the HTTP cache, because `Password=` no
@@ -30,7 +30,7 @@ class PasswordGalleryCacheTest {
 
     private fun imagesRequests() = synchronized(fake.requestLog) { fake.requestLog.count { it.url.encodedPath.endsWith("album/FfHCms!images") } }
 
-    private fun unlock() = runBlocking { loop.api().unlockNode("2sDN5x", "k", "family-pw", null) }.also { assertEquals(200, it.code()) }
+    private fun unlock() = runBlocking { loop.api().unlockNode("2sDN5x", "k", "family-pw", null) }.also { assertEquals(200, it.code) }
 
     private fun images(api: com.smugview.app.data.api.SmugMugApi = loop.api()) =
         runBlocking { api.getAlbumImages("FfHCms", "k", ignoreErrors = "true") }
@@ -70,7 +70,7 @@ class PasswordGalleryCacheTest {
         loop.client.cache!!.close()
 
         val fresh = loop.newClient(cacheDir)
-        val code = try { runBlocking { loop.api(fresh).getNodeChildren("2sDN5x", "k") }; 200 } catch (e: HttpException) { e.code() }
+        val code = try { runBlocking { loop.api(fresh).getNodeChildren("2sDN5x", "k") }; 200 } catch (e: ApiException) { e.code }
 
         assertEquals(404, code)
     }

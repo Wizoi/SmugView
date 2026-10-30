@@ -11,8 +11,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import retrofit2.Retrofit
-import com.smugview.app.data.api.apiConverterFactory
 
 /**
  * Step 4-9 (design 3.5, 3.1, R-29, P4): the fields the app reads must be asked for. `Uris.ImageSizeDetails`
@@ -29,8 +27,7 @@ class ApiFieldsTest {
             .addInterceptor(Interceptor { chain -> sent = chain.request(); chain.proceed(chain.request()) })
             .addInterceptor(server.interceptor)
             .build()
-        Retrofit.Builder().baseUrl("https://api.smugmug.com/api/v2/")
-            .addConverterFactory(apiConverterFactory()).client(client).build().create(SmugMugApi::class.java)
+        smugMugApi(client)
     }
 
     private fun requested(name: String): Set<String> =
