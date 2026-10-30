@@ -1,5 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.shared.platform.SimpleLock
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.diag.DiagContext
 import com.smugview.app.ui.text.Problem
@@ -97,6 +98,7 @@ class BrowserNavigator(
     private val scope: CoroutineScope,
     private val host: BrowserHost
 ) {
+    private val monitor = SimpleLock()
     private val _state = MutableStateFlow(BrowserState())
     val state: StateFlow<BrowserState> = _state.asStateFlow()
 
@@ -114,7 +116,7 @@ class BrowserNavigator(
     }
 
     fun navigate(intent: NavIntent) {
-        synchronized(this) {
+        monitor.withLock {
             if (intent is NavIntent.Refresh && intent.background && job?.isActive == true && pending !is NavIntent.Refresh) {
                 return // a sync relisted the folder while the owner is moving: the move will list fresh rows anyway
             }
@@ -130,7 +132,7 @@ class BrowserNavigator(
                     handle(intent)
                 } finally {
                     val me = kotlinx.coroutines.currentCoroutineContext()[Job]
-                    synchronized(this@BrowserNavigator) { if (job === me) pending = null }
+                    monitor.withLock { if (job === me) pending = null }
                 }
             }
             job = mine

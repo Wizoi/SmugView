@@ -390,13 +390,13 @@ fun TagSearchTabView(
                                 val isFirst = firstTag == tag
                                 val containerColor = if (isFirst) {
                                     NeonBlue.copy(alpha = 0.2f)
-                                } else if (state == com.smugview.app.ui.viewmodel.SmugViewModel.TagFilterState.INCLUDED) {
+                                } else if (state == com.smugview.app.ui.viewmodel.TagFilterState.INCLUDED) {
                                     NeonBlue.copy(alpha = 0.15f)
                                 } else {
                                     SoftRed.copy(alpha = 0.2f)
                                 }
-                                val textColor = if (isFirst || state == com.smugview.app.ui.viewmodel.SmugViewModel.TagFilterState.INCLUDED) NeonBlue else SoftRed
-                                val prefix = if (isFirst) "[+] " else if (state == com.smugview.app.ui.viewmodel.SmugViewModel.TagFilterState.INCLUDED) "+ " else "- "
+                                val textColor = if (isFirst || state == com.smugview.app.ui.viewmodel.TagFilterState.INCLUDED) NeonBlue else SoftRed
+                                val prefix = if (isFirst) "[+] " else if (state == com.smugview.app.ui.viewmodel.TagFilterState.INCLUDED) "+ " else "- "
                                 
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),

@@ -1,8 +1,10 @@
 package com.smugview.app.ui.viewmodel
 
-import com.smugview.app.diag.Diag
+import com.smugview.app.diag.SiteErrors
 import com.smugview.app.diag.DiagContext
 import com.smugview.app.util.SmugLog
+import com.smugview.app.util.kindName
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,8 +32,8 @@ class SiteSession(val nickname: String, parent: Job?) {
      * app. Each screen has its own failure state; this only catches what none of them did.
      */
     private val handler = CoroutineExceptionHandler { _, e ->
-        Diag.uncaughtSiteErrors.incrementAndGet()
-        SmugLog.e("site", "uncaught error in a site job: ${e.javaClass.simpleName}", e)
+        SiteErrors.uncaught.incrementAndGet()
+        SmugLog.e("site", "uncaught error in a site job: ${e.kindName()}", e)
     }
 
     val scope: CoroutineScope = CoroutineScope(

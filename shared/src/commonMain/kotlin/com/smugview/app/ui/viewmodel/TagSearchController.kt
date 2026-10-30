@@ -6,7 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.Pager
 import com.smugview.app.data.api.toPage
@@ -26,7 +25,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
+import com.smugview.app.util.ConcurrentMap
+import com.smugview.app.util.ioDispatcher
+import com.smugview.app.util.kindName
+import kotlin.concurrent.Volatile
 
 /**
  * Owns the keyword-search ("Tags" tab) feature: the scope tag scan, the selected-tag
@@ -85,11 +87,11 @@ class TagSearchController(
     val keywordPhotosTotal: StateFlow<Int> = _keywordPhotosTotal.asStateFlow()
 
     // Tag Search Optimizations Caching
-    private val loadedAlbumImages = ConcurrentHashMap<String, List<AlbumImageData>>()
+    private val loadedAlbumImages = ConcurrentMap<String, List<AlbumImageData>>()
     private var scopeAlbums = emptyList<CachedNode>()
 
-    private val _selectedTags = MutableStateFlow<Map<String, SmugViewModel.TagFilterState>>(emptyMap())
-    val selectedTags: StateFlow<Map<String, SmugViewModel.TagFilterState>> = _selectedTags.asStateFlow()
+    private val _selectedTags = MutableStateFlow<Map<String, TagFilterState>>(emptyMap())
+    val selectedTags: StateFlow<Map<String, TagFilterState>> = _selectedTags.asStateFlow()
 
     // Bumped to re-fire the image-loading observe when scope loading is resumed.
     private val _scopeReloadTrigger = MutableStateFlow(0)
@@ -128,8 +130,8 @@ class TagSearchController(
         if (selected.isEmpty()) {
             emptyList()
         } else {
-            val included = selected.filter { it.value == SmugViewModel.TagFilterState.INCLUDED }.keys
-            val excluded = selected.filter { it.value == SmugViewModel.TagFilterState.EXCLUDED }.keys
+            val included = selected.filter { it.value == TagFilterState.INCLUDED }.keys
+            val excluded = selected.filter { it.value == TagFilterState.EXCLUDED }.keys
             val filtered = photos.filter { photo ->
                 val titleTokens = photo.title?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
                 val captionTokens = photo.caption?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
@@ -157,8 +159,8 @@ class TagSearchController(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun selectSingleTag(tag: String) {
-        val current = mutableMapOf<String, SmugViewModel.TagFilterState>()
-        current[tag.lowercase().trim()] = SmugViewModel.TagFilterState.INCLUDED
+        val current = mutableMapOf<String, TagFilterState>()
+        current[tag.lowercase().trim()] = TagFilterState.INCLUDED
         _selectedTags.value = current
     }
 
@@ -167,11 +169,11 @@ class TagSearchController(
         _selectedTags.value = emptyMap()
     }
 
-    fun selectTag(tag: String, state: SmugViewModel.TagFilterState = SmugViewModel.TagFilterState.INCLUDED) {
+    fun selectTag(tag: String, state: TagFilterState = TagFilterState.INCLUDED) {
         SmugLog.d("SmugViewModel") { "selectTag called: tag=$tag, state=$state" }
         val current = _selectedTags.value.toMutableMap()
         if (current.isEmpty()) {
-            current[tag.lowercase()] = SmugViewModel.TagFilterState.INCLUDED
+            current[tag.lowercase()] = TagFilterState.INCLUDED
         } else {
             current[tag.lowercase()] = state
         }
@@ -190,7 +192,7 @@ class TagSearchController(
         if (currentState != null) {
             val keys = current.keys.toList()
             if (keys.firstOrNull() != tag.lowercase()) {
-                current[tag.lowercase()] = if (currentState == SmugViewModel.TagFilterState.INCLUDED) SmugViewModel.TagFilterState.EXCLUDED else SmugViewModel.TagFilterState.INCLUDED
+                current[tag.lowercase()] = if (currentState == TagFilterState.INCLUDED) TagFilterState.EXCLUDED else TagFilterState.INCLUDED
             }
             _selectedTags.value = current
         }
@@ -276,7 +278,7 @@ class TagSearchController(
                     _isLoadingPhotos.value = false
                     return@collect
                 }
-                val included = selected.filter { it.value == SmugViewModel.TagFilterState.INCLUDED }.keys
+                val included = selected.filter { it.value == TagFilterState.INCLUDED }.keys
                 if (included.isEmpty()) {
                     imageLoadJob?.cancel()
                     _allScopePhotos.value = emptyList()
@@ -320,7 +322,7 @@ class TagSearchController(
                 // Start or resume loading
                 _isLoadingPhotos.value = true
                 _scanProgress.value = "Loading photos for selected tags..."
-                imageLoadJob = siteScope().launch(context = Dispatchers.IO) imageSearchLaunch@{
+                imageLoadJob = siteScope().launch(context = ioDispatcher) imageSearchLaunch@{
                     try {
                         val targetScopeId = scope.nodeId ?: resolvedRootId
                         if (targetScopeId != null) {
@@ -395,7 +397,7 @@ class TagSearchController(
     }
 
     fun addKeywordToImage(imageKey: String, newKeyword: String, onComplete: (Boolean) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             try {
                 val imageResponse = repository.getImage(imageKey, apiKey).first().getOrNull()
                 val currentKeywordsStr = imageResponse?.keywords ?: ""
@@ -486,7 +488,7 @@ class TagSearchController(
                     keywords.forEach { keyword ->
                         val clean = keyword.trim().lowercase()
                         if (clean.isNotEmpty()) {
-                            tagCounts[clean] = tagCounts.getOrDefault(clean, 0) + 1
+                            tagCounts[clean] = (tagCounts[clean] ?: 0) + 1
                         }
                     }
                     _allScopeTags.value = tagCounts
@@ -494,7 +496,7 @@ class TagSearchController(
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    com.smugview.app.util.SmugLog.w("tags", "top keywords failed: ${e.javaClass.simpleName}", e)
+                    com.smugview.app.util.SmugLog.w("tags", "top keywords failed: ${e.kindName()}", e)
                     _scanProblem.value = com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Tags)
                     _scanProgress.value = ""
                 }
@@ -503,7 +505,7 @@ class TagSearchController(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                com.smugview.app.util.SmugLog.w("tags", "tag scan failed: ${e.javaClass.simpleName}", e)
+                com.smugview.app.util.SmugLog.w("tags", "tag scan failed: ${e.kindName()}", e)
                 _scanProblem.value = com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Tags)
                 _scanProgress.value = ""
                 _isScanningTags.value = false

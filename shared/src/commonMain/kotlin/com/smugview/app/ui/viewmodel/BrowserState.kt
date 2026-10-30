@@ -90,3 +90,9 @@ data class HubAlbumItem(
         albumUri = "/api/v2/album/$albumKey"
     )
 }
+
+/** A tag the tag search includes or excludes. */
+enum class TagFilterState {
+    INCLUDED,
+    EXCLUDED
+}

@@ -4,6 +4,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
     id("androidx.room")
+    id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 room {
@@ -38,8 +40,10 @@ kotlin {
             implementation("androidx.room:room-runtime:2.8.5")
             implementation("androidx.sqlite:sqlite-bundled:2.6.2")
             api("io.ktor:ktor-client-core:3.0.3")
+            // The Compose runtime only (state holders such as mutableStateOf in the view-model layer); the screens stay in the app.
+            implementation(compose.runtime)
             implementation("androidx.room:room-paging:2.8.5")
-            api("androidx.paging:paging-common:3.3.6")
+            api("androidx.paging:paging-common:3.5.3")
             implementation("io.ktor:ktor-client-content-negotiation:3.0.3")
             implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.3")
         }

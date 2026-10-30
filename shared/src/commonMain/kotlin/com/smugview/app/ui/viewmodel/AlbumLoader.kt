@@ -1,5 +1,6 @@
 package com.smugview.app.ui.viewmodel
 
+import com.smugview.shared.platform.SimpleLock
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.ui.text.Problem
 import com.smugview.app.ui.text.Subject
@@ -79,7 +80,7 @@ class AlbumLoader(
     private val onChange: (AlbumState?) -> Unit = {},
     private val keepComplete: Int = 3
 ) {
-    private val lock = Any()
+    private val lock = SimpleLock()
     private var token = 0L
     private var job: Job? = null
     private val kept = LinkedHashMap<String, AlbumState>()
@@ -111,19 +112,19 @@ class AlbumLoader(
     val currentKey: String? get() = _state.value?.albumKey
 
     /** Keys of the finished albums held for a quick return, oldest first. */
-    val keptKeys: List<String> get() = synchronized(lock) { kept.keys.toList() }
+    val keptKeys: List<String> get() = lock.withLock { kept.keys.toList() }
 
-    internal fun isCurrentRun(albumKey: String, run: Long): Boolean = synchronized(lock) {
+    internal fun isCurrentRun(albumKey: String, run: Long): Boolean = lock.withLock {
         run == token && _state.value?.albumKey == albumKey
     }
 
-    internal fun write(albumKey: String, run: Long, block: (AlbumState) -> AlbumState): Boolean = synchronized(lock) {
+    internal fun write(albumKey: String, run: Long, block: (AlbumState) -> AlbumState): Boolean = lock.withLock {
         if (run != token) return false
         applyLocked(albumKey, block)
     }
 
     /** Applies [block] to [albumKey]'s state if it is the current album; otherwise drops the write. */
-    fun update(albumKey: String, block: (AlbumState) -> AlbumState): Boolean = synchronized(lock) {
+    fun update(albumKey: String, block: (AlbumState) -> AlbumState): Boolean = lock.withLock {
         applyLocked(albumKey, block)
     }
 
@@ -167,7 +168,7 @@ class AlbumLoader(
         context: CoroutineContext = EmptyCoroutineContext,
         initialStatus: String? = null,
         load: suspend (AlbumRun) -> Unit
-    ): AlbumSelection = synchronized(lock) {
+    ): AlbumSelection = lock.withLock {
         val cur = _state.value
         if (!force && cur != null && cur.albumKey == albumKey && reusable(cur, target)) return AlbumSelection.Same
 
@@ -206,7 +207,7 @@ class AlbumLoader(
 
     /** A site switch: cancel the stream and forget everything, including the kept albums. */
     fun reset() {
-        synchronized(lock) {
+        lock.withLock {
             token++
             job?.cancel()
             job = null

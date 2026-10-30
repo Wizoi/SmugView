@@ -768,11 +768,6 @@ class SmugViewModel @Inject constructor(
 
     private var _userAlbums: List<com.smugview.app.data.api.AlbumDetails>? = null
 
-    enum class TagFilterState {
-        INCLUDED,
-        EXCLUDED
-    }
-
     val selectedTags: StateFlow<Map<String, TagFilterState>> get() = tag.selectedTags
 
     var tagCloudLimit: Int

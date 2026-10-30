@@ -1,14 +1,15 @@
 package com.smugview.app.ui.viewmodel
 
 import com.smugview.app.util.SmugLog
+import com.smugview.app.data.db.nowMillis
 import com.smugview.app.util.KeyValueStore
+import com.smugview.app.util.kindName
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
-import com.smugview.app.BuildConfig
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.data.db.SearchHistory
@@ -220,7 +221,7 @@ class SearchController(
                 val apiScopeUri = scopeUri ?: "/api/v2/user/$nickname"
 
                 val lastSearchedAt = searchStatusPrefs.getLong("${scopeKey}_${query}_ts", 0L)
-                val cacheAgeMs = System.currentTimeMillis() - lastSearchedAt
+                val cacheAgeMs = nowMillis() - lastSearchedAt
                 val cacheMaxAgeMs = 24 * 60 * 60 * 1000L // 24 hours
                 var isFullySearched = lastSearchedAt > 0L && cacheAgeMs < cacheMaxAgeMs
                 if (isFullySearched && !repository.hasSearchPhotosInDb(query, scopeKey)) {
@@ -267,13 +268,13 @@ class SearchController(
                     backgroundSearchJob = siteScope().launch {
                         try {
                             repository.performBackgroundSearchImages(nickname, apiScopeUri, scopeKey, query, apiKey)
-                            searchStatusPrefs.putLong("${scopeKey}_${query}_ts", System.currentTimeMillis())
+                            searchStatusPrefs.putLong("${scopeKey}_${query}_ts", nowMillis())
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e
                         } catch (e: Exception) {
                             // N1: this used to escape into a scope with no handler and close the app. The search is
                             // not marked "fully searched" (no timestamp), so the next search asks again.
-                            com.smugview.app.util.SmugLog.w("search", "photo search failed: ${e.javaClass.simpleName}", e)
+                            com.smugview.app.util.SmugLog.w("search", "photo search failed: ${e.kindName()}", e)
                             publishPhotosProblem(com.smugview.app.ui.text.Problem.from(e, com.smugview.app.ui.text.Subject.Search))
                         } finally {
                             _isSearchPhotosLoading.value = false

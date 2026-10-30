@@ -1,6 +1,6 @@
 package com.smugview.shared.platform
 
-/** A re-entrant lock (`synchronized` is JVM only). */
+/** A re-entrant lock (`synchronized` is JVM only). [withLock] is inline, so a `return` inside it leaves the caller, as inside `synchronized`. */
 expect class SimpleLock() {
-    fun <T> withLock(block: () -> T): T
+    inline fun <T> withLock(block: () -> T): T
 }

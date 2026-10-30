@@ -44,7 +44,7 @@ import com.smugview.app.ui.theme.DeepDarkBackground
 import com.smugview.app.ui.theme.NeonBlue
 import com.smugview.app.ui.theme.SurfaceDark
 import com.smugview.app.ui.viewmodel.SmugViewModel
-import com.smugview.app.ui.viewmodel.SmugViewModel.TagFilterState
+import com.smugview.app.ui.viewmodel.TagFilterState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable

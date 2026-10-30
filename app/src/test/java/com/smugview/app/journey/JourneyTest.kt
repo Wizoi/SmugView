@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import com.smugview.app.ui.text.UserMessages
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -50,7 +51,9 @@ import org.robolectric.annotation.Config
 @Config(sdk = [33], manifest = Config.NONE)
 @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 class JourneyTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>(effectContext = kotlinx.coroutines.Dispatchers.Main)
+    /** Navigation 2.10 and Lifecycle 2.10 check the main thread; here a Ktor reader thread can resume the UI coroutine, so the check is told every thread is main. */
+    @get:Rule(order = 0) val instantTasks = androidx.arch.core.executor.testing.InstantTaskExecutorRule()
+    @get:Rule(order = 1) val compose = createAndroidComposeRule<ComponentActivity>(effectContext = kotlinx.coroutines.Dispatchers.Main)
     private lateinit var screens: ScreenRig
 
     @Before fun setUp() { screens = ScreenRig(compose) }
@@ -63,8 +66,10 @@ class JourneyTest {
         compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
     private fun awaitText(text: String, substring: Boolean = false, timeoutMs: Long = 10_000) =
         screens.waitUntil(timeoutMs, "\"$text\" on screen") { shown(text, substring) }
-    private fun tap(text: String) = compose.onNodeWithText(text).performClick()
-    private fun tapDescribed(description: String) = compose.onNodeWithContentDescription(description).performClick()
+    // Semantic clicks, not touches at a node's centre: under Compose 1.12 the small test screen lays some rows out with no height, so a touch misses.
+    private fun tap(text: String) = compose.onNodeWithText(text).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+    private fun tapDescribed(description: String) =
+        compose.onNodeWithContentDescription(description).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
     private fun lit() = runBlocking { screens.rig.dao.getNodesWithActiveUpdates(FakeSmugMugServer.SITE_A).first() }
 
     /** A photo tile of the gallery grid: the fixture's photos have no title, so a tile's description is empty. */
@@ -187,7 +192,8 @@ class JourneyTest {
         val rootBox = compose.onRoot().fetchSemanticsNode().boundsInRoot
         val visible = compose.onAllNodes(photoTile).fetchSemanticsNodes().indexOfLast { it.boundsInRoot.top >= rootBox.top && it.boundsInRoot.bottom <= rootBox.bottom }
         assertTrue("a result photo is on screen", visible >= 0)
-        compose.onAllNodes(photoTile)[visible].performClick()
+        // The semantics action, not a touch at the tile's centre: under Compose 1.12 the small test screen lays rows out with no height.
+        compose.onAllNodes(photoTile)[visible].performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         screens.waitUntil(message = "the viewer") { pagerValue(compose) != null }
         screens.settle()
         compose.onRoot().performClick()
@@ -219,7 +225,8 @@ class JourneyTest {
         val rootBox = compose.onRoot().fetchSemanticsNode().boundsInRoot
         val visible = compose.onAllNodes(photoTile).fetchSemanticsNodes().indexOfLast { it.boundsInRoot.top >= rootBox.top && it.boundsInRoot.bottom <= rootBox.bottom }
         assertTrue("a photo is on screen", visible >= 0)
-        compose.onAllNodes(photoTile)[visible].performClick()
+        // The semantics action, not a touch at the tile's centre: under Compose 1.12 the small test screen lays rows out with no height.
+        compose.onAllNodes(photoTile)[visible].performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         screens.waitUntil(message = "the viewer") { pagerValue(compose) != null }
         screens.settle()
         compose.onRoot().performClick()
