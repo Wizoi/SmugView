@@ -52,9 +52,9 @@ fun QrShareDialog(
     url: String,
     onDismissRequest: () -> Unit,
     // A photo also offers its picture (stripped of camera data) next to the link.
-    onSharePicture: ((android.content.Context) -> Unit)? = null
+    onSharePicture: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current
+    val share = com.smugview.app.ui.rememberPlatformShare()
     val clipboardManager = LocalClipboardManager.current
     val hasLink = ShareContent.isShareable(url)
 
@@ -146,11 +146,7 @@ fun QrShareDialog(
                     Button(
                         enabled = hasLink,
                         onClick = {
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "Checkout '$title': $url")
-                            }
-                            context.startActivity(Intent.createChooser(intent, UserMessages.SHARE_LINK))
+                            share.shareText("Checkout '$title': $url", UserMessages.SHARE_LINK)
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = NeonBlue, contentColor = Color.Black)
@@ -163,7 +159,7 @@ fun QrShareDialog(
 
                 if (onSharePicture != null) {
                     OutlinedButton(
-                        onClick = { onSharePicture(context) },
+                        onClick = { onSharePicture() },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                     ) {

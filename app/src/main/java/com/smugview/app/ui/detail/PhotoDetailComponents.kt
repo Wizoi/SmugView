@@ -378,6 +378,7 @@ fun PhotoActionCapsule(
     onRequestAddToCollection: () -> Unit
 ) {
     val context = LocalContext.current
+    val share = com.smugview.app.ui.rememberPlatformShare()
     val downloadPhoto = rememberPhotoDownloadAction(viewModel)
     var showShareDialog by remember { mutableStateOf(false) }
     // The web page of this photo (6-14): its own, or its gallery's from the index. Null once resolved = no link to share.
@@ -434,7 +435,7 @@ fun PhotoActionCapsule(
             title = photo.title?.takeIf { it.isNotBlank() } ?: (photo.fileName ?: "Photo"),
             url = shareLink.orEmpty(),
             onDismissRequest = { showShareDialog = false },
-            onSharePicture = { ctx -> sharePhoto(ctx, scope, viewModel, photo, shareLink) }
+            onSharePicture = { sharePhoto(context, share, scope, viewModel, photo, shareLink) }
         )
     }
 }

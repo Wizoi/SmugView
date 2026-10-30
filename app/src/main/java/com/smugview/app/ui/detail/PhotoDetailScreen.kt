@@ -646,6 +646,7 @@ fun ExifCardItem(
  */
 fun sharePhoto(
     context: Context,
+    share: com.smugview.app.ui.PlatformShare,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     viewModel: SmugViewModel,
     photo: AlbumImageData,
@@ -658,23 +659,11 @@ fun sharePhoto(
             val factory = (context.applicationContext as com.smugview.app.SmugViewApp).callFactory
             val file = com.smugview.app.share.ShareFiles(context.cacheDir, factory)
                 .prepare(photo.imageKey, viewModel.savedFileOf(photo.imageKey)?.let { java.io.File(it) }, photo.thumbnailUrl)
-            val fileUri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val description = photo.fileName?.takeIf { it.isNotBlank() }
                 ?: photo.title?.takeIf { it.isNotBlank() }
                 ?: "Photo ${photo.imageKey}"
 
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "image/jpeg"
-                putExtra(Intent.EXTRA_STREAM, fileUri)
-                if (link != null) putExtra(Intent.EXTRA_TEXT, link)
-                putExtra(Intent.EXTRA_SUBJECT, description)
-                clipData = ClipData.newRawUri("", fileUri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            val chooser = Intent.createChooser(intent, com.smugview.app.ui.text.UserMessages.SHARE_PICTURE).apply {
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(chooser)
+            share.shareJpeg(file.absolutePath, link, description, com.smugview.app.ui.text.UserMessages.SHARE_PICTURE)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -744,22 +733,17 @@ fun rememberPhotoDownloadAction(viewModel: SmugViewModel): (AlbumImageData) -> U
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var waiting by remember { mutableStateOf<AlbumImageData?>(null) }
-    val askPermission = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    val askPermission = com.smugview.app.ui.rememberPermissionRequest(com.smugview.app.ui.AppPermission.SavePhotos) { granted ->
         val photo = waiting
         waiting = null
-        if (photo == null) return@rememberLauncherForActivityResult
+        if (photo == null) return@rememberPermissionRequest
         if (granted) scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
         else Toaster.show(com.smugview.app.ui.text.UserMessages.DOWNLOAD_PERMISSION, long = true)
     }
     return { photo ->
-        val needsPermission = android.os.Build.VERSION.SDK_INT < 29 &&
-            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (needsPermission) {
+        if (!askPermission.granted) {
             waiting = photo
-            askPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            askPermission.launch()
         } else {
             scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
         }
