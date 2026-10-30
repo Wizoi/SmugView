@@ -16,6 +16,7 @@ targets:
       properties:
         CADisableMinimumFrameDurationOnPhone: true
         SmugMugAPIKey: $(SMUGMUG_API_KEY)
+        NSPhotoLibraryAddUsageDescription: SmugView saves the photos you download to your photo library.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.smugview.spike
