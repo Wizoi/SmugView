@@ -87,7 +87,9 @@ class MainActivity : ComponentActivity() {
         prefs.edit().putInt("last_app_version", currentVersion).apply()
         pendingOpen = readPendingOpen(intent)
 
+        val dominantColorSampler = com.smugview.app.ui.PaletteDominantColorSampler(applicationContext)
         setContent {
+            androidx.compose.runtime.CompositionLocalProvider(com.smugview.app.ui.LocalDominantColorSampler provides dominantColorSampler) {
             SmugViewTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -102,6 +104,7 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+            }
             }
         }
     }

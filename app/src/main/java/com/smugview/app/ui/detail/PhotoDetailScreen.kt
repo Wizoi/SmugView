@@ -1,5 +1,6 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.ui.rememberDominantBackgroundColor
 import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import android.content.ClipData
@@ -933,40 +934,8 @@ fun VideoPlayerView(
 fun formatToLocalTime(dateStr: String?): String {
     if (dateStr.isNullOrEmpty()) return "Unknown Date"
     val trimmed = dateStr.trim()
-    
-    // 1. Try parsing EXIF standard format "yyyy:MM:dd HH:mm:ss"
-    if (trimmed.matches(Regex("^\\d{4}:\\d{2}:\\d{2} \\d{2}:\\d{2}:\\d{2}$"))) {
-        try {
-            val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss")
-            val localDateTime = java.time.LocalDateTime.parse(trimmed, formatter)
-            val outFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy\nhh:mm a")
-            return localDateTime.format(outFormatter)
-        } catch (e: Exception) {
-            // fall through
-        }
-    }
-    
-    // 2. Try parsing ISO-8601 offset date-time (e.g. 2026-07-06T00:18:44Z)
-    try {
-        val zonedDateTime = java.time.ZonedDateTime.parse(trimmed)
-        val localDateTime = zonedDateTime.withZoneSameInstant(java.time.ZoneId.systemDefault())
-        val formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy\nhh:mm a")
-        return localDateTime.format(formatter)
-    } catch (e: Exception) {
-        // fall through
-    }
-    
-    // 3. Try parsing simple ISO Local Date Time (e.g. 2026-07-06T00:18:44)
-    try {
-        val localDateTime = java.time.LocalDateTime.parse(trimmed)
-        val formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy\nhh:mm a")
-        return localDateTime.format(formatter)
-    } catch (e: Exception) {
-        // fall through
-    }
-    
-    // Fallback: clean up date string slightly and put on two lines
-    return trimmed.replace("T", "\n").replace("Z", "")
+    // Fallback when it is no date we know: clean up the string slightly and put it on two lines
+    return com.smugview.app.ui.formatDateTimeForDisplay(trimmed) ?: trimmed.replace("T", "\n").replace("Z", "")
 }
 
 /**
@@ -978,14 +947,7 @@ fun getAuthenticatedMediaUrl(url: String?): String {
     if (url.isNullOrEmpty()) return ""
     val apiKey = com.smugview.app.BuildConfig.SMUGMUG_API_KEY
 
-    val uri = android.net.Uri.parse(url)
-    val builder = uri.buildUpon()
-    
-    if (uri.getQueryParameter("APIKey") == null) {
-        builder.appendQueryParameter("APIKey", apiKey)
-    }
-
-    return builder.build().toString()
+    return com.smugview.app.util.UrlParts.withQueryParameter(url, "APIKey", apiKey)
 }
 
 

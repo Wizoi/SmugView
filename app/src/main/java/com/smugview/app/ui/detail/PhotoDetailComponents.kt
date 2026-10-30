@@ -42,6 +42,7 @@ import coil3.request.crossfade
 import coil3.toBitmap
 import coil3.request.SuccessResult
 import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.ui.rememberDominantBackgroundColor
 import com.smugview.app.data.api.ImageSizeDetailsPayload
 import com.smugview.app.data.db.OfflineCollection
 import com.smugview.app.data.api.isVideo
@@ -63,44 +64,6 @@ import kotlinx.coroutines.withContext
  * Behavior is preserved; the only intentional change is unifying the EXIF sheet's slightly-drifted
  * labels into one canonical layout.
  */
-
-/** Palette-derived, animated radial-gradient background color for the current photo. */
-@Composable
-fun rememberDominantBackgroundColor(
-    imageUrl: String?,
-    defaultColor: Color = Color.Black,
-    targetAlpha: Float = 0.85f,
-    durationMs: Int = 500
-): Color {
-    val context = LocalContext.current
-    var dominantColor by remember { mutableStateOf(defaultColor) }
-    LaunchedEffect(imageUrl) {
-        imageUrl?.let { url ->
-            withContext(Dispatchers.IO) {
-                try {
-                    val req = ImageRequest.Builder(context)
-                        .data(url)
-                        .allowHardware(false) // required for pixel reading
-                        .build()
-                    val result = SingletonImageLoader.get(context).execute(req)
-                    if (result is SuccessResult) {
-                        result.image.toBitmap().let { bmp ->
-                            dominantColor = Color(Palette.from(bmp).generate().getDominantColor(defaultColor.toArgb()))
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
-    }
-    val animated by animateColorAsState(
-        targetValue = dominantColor.copy(alpha = targetAlpha),
-        animationSpec = tween(durationMillis = durationMs),
-        label = "bgColor"
-    )
-    return animated
-}
 
 /** Zoom limit used until the photo's real pixel size is known. */
 internal const val UNKNOWN_SIZE_MAX_ZOOM = 10f

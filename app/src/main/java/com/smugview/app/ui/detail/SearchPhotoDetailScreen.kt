@@ -1,5 +1,6 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.ui.rememberDominantBackgroundColor
 import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import android.content.res.Configuration

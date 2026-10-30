@@ -1,9 +1,9 @@
 package com.smugview.app.ui.navigation
 
-import android.net.Uri
+import com.smugview.app.util.UrlParts
 
 object Routes {
-    fun castController(title: String): String = "cast_controller/${Uri.encode(title)}"
+    fun castController(title: String): String = "cast_controller/${UrlParts.encode(title)}"
 
     /** The photo viewer's route, or null when a key is blank: "photo_detail//x" matches no route (R-44). */
     fun photoDetail(albumKey: String, imageKey: String): String? =
