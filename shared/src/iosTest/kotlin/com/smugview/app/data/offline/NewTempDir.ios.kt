@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.BetaInteropApi::class)
+@file:OptIn(kotlinx.cinterop.BetaInteropApi::class, kotlinx.cinterop.ExperimentalForeignApi::class)
 
 package com.smugview.app.data.offline
 
