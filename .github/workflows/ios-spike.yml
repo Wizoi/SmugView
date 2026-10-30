@@ -232,12 +232,18 @@ jobs:
           sleep 12
           xcrun simctl io "$UDID" screenshot ios-spike-screen.png 2>&1 | tee -a screen-run.log
           ls -la ios-spike-screen.png | tee -a screen-run.log
-          # When the app is not running it crashed or quit: say why (its process log and any crash report).
-          if ! xcrun simctl spawn "$UDID" launchctl list | grep -qi "UIKitApplication:com.smugview"; then
-            echo '--- APP NOT RUNNING after 12 s' | tee -a screen-run.log
-            { echo '--- app log (last 3 min)'; xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "iosApp"' | tail -150; } 2>&1 | tee -a screen-run.log
-            { echo '--- crash reports'; for f in ~/Library/Logs/DiagnosticReports/iosApp* "$HOME"/Library/Logs/DiagnosticReports/Retired/iosApp*; do [ -f "$f" ] && { echo "== $f"; head -c 6000 "$f"; }; done; } 2>&1 | tee -a screen-run.log
+      # Why the app is (not) on screen. Never fails the job: the screenshot above is what counts.
+      - name: What the app did after launch
+        if: always() && steps.xcode.outcome == 'success'
+        continue-on-error: true
+        run: |
+          running=$(xcrun simctl spawn "$UDID" launchctl list | grep -ci "UIKitApplication:com.smugview" || true)
+          echo "--- app processes running after launch: $running" | tee -a screen-run.log
+          if [ "$running" = "0" ]; then
+            { echo '--- app log (last 3 min)'; xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "iosApp"' | tail -150; } 2>&1 | tee -a screen-run.log || true
+            { echo '--- crash reports'; ls ~/Library/Logs/DiagnosticReports/ 2>&1; for f in ~/Library/Logs/DiagnosticReports/iosApp*; do if [ -f "$f" ]; then echo "== $f"; head -c 6000 "$f"; fi; done; } 2>&1 | tee -a screen-run.log || true
           fi
+          exit 0
       - name: Put the first errors in the annotations
         if: always()
         run: |
