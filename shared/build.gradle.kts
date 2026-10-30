@@ -60,6 +60,7 @@ kotlin {
             implementation("io.ktor:ktor-client-okhttp:3.0.3")
         }
         androidMain.dependencies {
+            implementation("androidx.activity:activity-compose:1.13.0")
             implementation("io.ktor:ktor-client-okhttp:3.0.3")
         }
         iosMain.dependencies {

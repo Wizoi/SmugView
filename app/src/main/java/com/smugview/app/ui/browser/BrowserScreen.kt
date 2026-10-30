@@ -12,7 +12,7 @@ import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
-import androidx.activity.compose.BackHandler
+import com.smugview.app.ui.BackHandler
 import com.smugview.app.data.repository.UnlockManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
