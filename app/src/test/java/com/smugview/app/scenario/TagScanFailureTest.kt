@@ -33,7 +33,7 @@ class TagScanFailureTest {
     /** Opens the site and waits until the hub's own topkeywords call is done, so a planned failure meets the scan's call. */
     private fun openSite() {
         rig.viewModel.selectSite(FakeSmugMugServer.SITE_A)
-        awaitUntil("the hub asked for the top keywords") { rig.server.requests.any { it.contains("!topkeywords") } }
+        awaitUntil("the hub asked for the top keywords") { rig.server.requestsTo("!topkeywords").isNotEmpty() }
         Thread.sleep(300)
     }
 
