@@ -173,10 +173,10 @@ fun FoldersTabView(
                 }
             }
 
-            val configuration = LocalConfiguration.current
-            val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val configuration = com.smugview.app.ui.rememberScreenInfo()
+            val isLandscape = configuration.isLandscape
             val folderColumns = if (isLandscape) 4 else 2
-            val headerHeight = if (isLandscape) (configuration.screenHeightDp.dp / 4) else (configuration.screenHeightDp.dp / 6)
+            val headerHeight = if (isLandscape) (configuration.heightDp / 4) else (configuration.heightDp / 6)
             val density = LocalDensity.current
             val headerHeightPx = remember(headerHeight) { with(density) { headerHeight.toPx() } }
 

@@ -190,7 +190,7 @@ fun SearchPhotoDetailScreen(
         }
 
         // Bottom block: title + action capsule + footer
-        val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isLandscape = com.smugview.app.ui.rememberScreenInfo().isLandscape
         if (!isLandscape && currentPhoto != null) {
             val nickname by viewModel.activeNickname.collectAsState()
             val cameraDetails = rememberCameraDetails(currentPhoto.imageKey, viewModel)

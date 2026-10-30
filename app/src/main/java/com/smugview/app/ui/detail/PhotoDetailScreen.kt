@@ -414,7 +414,7 @@ fun PhotoDetailScreen(
         }
 
         // Floating Action Capsule & Text Details Block (Redesigned matching photo_viewer_rework)
-        val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isLandscape = com.smugview.app.ui.rememberScreenInfo().isLandscape
 
         if (!isLandscape && currentPhoto != null) {
             val nickname by viewModel.activeNickname.collectAsState()
@@ -757,19 +757,6 @@ fun formatToLocalTime(dateStr: String?): String {
     // Fallback when it is no date we know: clean up the string slightly and put it on two lines
     return com.smugview.app.ui.formatDateTimeForDisplay(trimmed) ?: trimmed.replace("T", "\n").replace("Z", "")
 }
-
-/**
- * A media URL with the API key added. It never carries the gallery password: no endpoint honours a
- * `Password=` query parameter, and a password in a URL leaks into logs and caches (Phase 4 step 4-7,
- * R-23). Password galleries' CDN media URLs need no session at all (R-53).
- */
-fun getAuthenticatedMediaUrl(url: String?): String {
-    if (url.isNullOrEmpty()) return ""
-    val apiKey = com.smugview.app.BuildConfig.SMUGMUG_API_KEY
-
-    return com.smugview.app.util.UrlParts.withQueryParameter(url, "APIKey", apiKey)
-}
-
 
 /**
  * What the viewer shows while its album has no photo for it (6-7, R-45, design 3.5): a spinner while loading, the real cause

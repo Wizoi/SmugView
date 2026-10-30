@@ -99,6 +99,13 @@ open class SmugViewModel(
     /** Hilt supplies the real handle; it holds the navigation state across process death (Phase 3, step 3-9). */
     private val savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle()
 ) : ViewModel() {
+    /**
+     * A media URL with the API key added. It never carries the gallery password: no endpoint honours a `Password=` query parameter,
+     * and a password in a URL leaks into logs and caches (R-23). Password galleries' CDN media URLs need no session at all (R-53).
+     */
+    fun authenticatedMediaUrl(url: String?): String =
+        if (url.isNullOrEmpty()) "" else com.smugview.app.util.UrlParts.withQueryParameter(url, "APIKey", apiKey)
+
 
     // Encrypted at rest via PasswordStore; the compat adapter keeps existing call sites unchanged.
     private val passwordPrefs = com.smugview.app.data.security.PasswordPrefsCompat(passwordStore)

@@ -130,7 +130,7 @@ fun ImmersivePhotoPage(
         if (photo.isVideo) {
             val rawUrl = photo.videoUrl ?: photo.archivedUri ?: photo.thumbnailUrl ?: ""
             val pageDetailed by viewModel.getImageDetails(photo.imageKey).collectAsState()
-            val videoUrl = remember(rawUrl) { getAuthenticatedMediaUrl(rawUrl) }
+            val videoUrl = remember(rawUrl) { viewModel.authenticatedMediaUrl(rawUrl) }
             VideoPlayerView(
                 videoUrl = videoUrl,
                 isActive = isActive,

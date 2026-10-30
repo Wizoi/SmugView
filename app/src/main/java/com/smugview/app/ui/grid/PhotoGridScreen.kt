@@ -44,7 +44,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
-import com.smugview.app.BuildConfig
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import com.smugview.app.ui.component.AddToCollectionsDialog
@@ -191,11 +190,11 @@ fun PhotoGridScreen(
             }
         }
 
-        val configuration = LocalConfiguration.current
-        val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val configuration = com.smugview.app.ui.rememberScreenInfo()
+        val isLandscape = configuration.isLandscape
         val staggeredColumns = if (isLandscape) 4 else 2
         val gridColumns = if (isLandscape) 6 else 3
-        val headerHeight = if (isLandscape) (configuration.screenHeightDp.dp / 4) else (configuration.screenHeightDp.dp / 6)
+        val headerHeight = if (isLandscape) (configuration.heightDp / 4) else (configuration.heightDp / 6)
         val density = LocalDensity.current
         val headerHeightPx = remember(headerHeight) { with(density) { headerHeight.toPx() } }
 
@@ -934,8 +933,8 @@ fun AlbumHeaderBanner(
     coverUrl: String?,
     modifier: Modifier = Modifier
 ) {
-    val configuration = LocalConfiguration.current
-    val headerHeight = configuration.screenHeightDp.dp / 6
+    val configuration = com.smugview.app.ui.rememberScreenInfo()
+    val headerHeight = configuration.heightDp / 6
 
     Box(
         modifier = modifier

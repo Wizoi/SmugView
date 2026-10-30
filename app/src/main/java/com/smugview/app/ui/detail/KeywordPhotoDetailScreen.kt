@@ -187,7 +187,7 @@ fun KeywordPhotoDetailScreen(
         }
 
         // Bottom block: title + action capsule + camera caption
-        val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isLandscape = com.smugview.app.ui.rememberScreenInfo().isLandscape
         if (!isLandscape && currentPhoto != null) {
             val cameraDetails = rememberCameraDetails(currentPhoto.imageKey, viewModel)
             AnimatedVisibility(

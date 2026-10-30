@@ -775,19 +775,19 @@ fun HomeTabView(
                     val totalPhotosCount = totalPhotosOpt
                     
                     val galleriesVal = remember(totalGalleriesCount) {
-                        java.text.NumberFormat.getIntegerInstance().format(totalGalleriesCount)
+                        com.smugview.app.ui.formatCount(totalGalleriesCount.toLong())
                     }
                     
                     val photosVal = remember(totalPhotosCount, albums) {
                         if (totalPhotosCount != null) {
-                            java.text.NumberFormat.getIntegerInstance().format(totalPhotosCount)
+                            com.smugview.app.ui.formatCount(totalPhotosCount.toLong())
                         } else {
                             var computed = 0
                             for (album in albums) {
                                 computed += album.imageCount
                             }
                             if (computed > 0) {
-                                java.text.NumberFormat.getIntegerInstance().format(computed)
+                                com.smugview.app.ui.formatCount(computed.toLong())
                             } else {
                                 "--"
                             }
@@ -1025,11 +1025,8 @@ fun HomeTabView(
                                     .height(120.dp)
                                     .border(1.dp, NeonBlue.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
                                     .clickable {
-                                        if (com.smugview.app.BuildConfig.DEBUG) {
-                                            android.util.Log.d(
-                                                "BrowserScreen",
-                                                "Recent masterpiece clicked: imageKey=${photo.imageKey}, imageAlbum=${photo.uris?.imageAlbum}, album=${photo.uris?.album}, albumKey=$albumKey"
-                                            )
+                                        com.smugview.app.util.SmugLog.d("BrowserScreen") {
+                                            "Recent masterpiece clicked: imageKey=${photo.imageKey}, imageAlbum=${photo.uris?.imageAlbum}, album=${photo.uris?.album}, albumKey=$albumKey"
                                         }
                                         if (albumKey.isNotEmpty()) {
                                             onNavigateToPhotoDetail(albumKey, photo.imageKey)
