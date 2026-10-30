@@ -893,3 +893,14 @@ The owner paid for the Apple Developer Program on 2026-10-29 (verification pendi
 ### 2026-10-30: the device build passes on Xcode 26.2 (GitHub Actions run 40996297816)
 
 The `ios-ipa-size` job now selects Xcode 26.2 (Apple's upload requirement) and the unsigned release device build succeeded: **IPA 11,680 KB** (10,336 KB on Xcode 16.4), `.app` 38,888 KB, framework link 768 s, Xcode build 39 s. Kotlin 2.3.21, Compose Multiplatform 1.12.2 and XcodeGen all work with Xcode 26; the open Xcode 26 risk from the retro is closed for the build. Still to check at Stage 4: that an archive signed with automatic signing is accepted by App Store Connect (needs the account).
+
+### 2026-10-30: what blocks the view-model layer (measured), and the order
+
+`ui/viewmodel` is 4,480 lines (`SmugViewModel` 2,389, eight controllers). What ties it to Android:
+- **Compose runtime state** (`mutableStateOf`, `mutableStateListOf`, `snapshotFlow`: about 25 uses in `SmugViewModel`, `SearchController`, `TagSearchController`). `:shared` cannot depend on Compose until the AGP 9 / compileSdk 37 migration (Compose 1.12 artifacts demand it). Either do that migration first (needed for Stage 2 anyway; recommended) or rewrite the state as `StateFlow` (changes how every screen observes; riskier).
+- **`AndroidViewModel(application)`**: the application is used for `SharedPreferences` (7 uses in 3 files), `Toast` (2), a WorkManager enqueue (1), file I/O (3) and OkHttp (2). Each goes behind a small interface in shared code (a key-value store, a message flow in place of `Toast`, a scheduler, a file store). The ViewModel base becomes `androidx.lifecycle.ViewModel` (multiplatform since 2.8; `SavedStateHandle` too).
+- **Hilt** (`@HiltViewModel`, `@Inject`): replaced by Koin at the same step (1f); the repository already has no annotations.
+- **`CastManager`** is a constructor parameter: behind a `CastController` interface with a no-op on iOS (no casting in v1).
+- Paging (`PagingData`, `cachedIn`) is fine: `paging-common` is multiplatform and already in `:shared`.
+
+Order that keeps every step green: (1) AGP 9 and Gradle 9 migration; (2) the Android-bound pieces behind interfaces, one per commit; (3) the eight controllers (small) move; (4) `SmugViewModel` moves, with Koin replacing Hilt; (5) the iOS CI compiles all of it.
