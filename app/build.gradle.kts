@@ -2,8 +2,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.kapt")
+    id("com.android.legacy-kapt")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.dagger.hilt.android")
@@ -12,7 +11,7 @@ plugins {
 
 android {
     namespace = "com.smugview.app"
-    compileSdk = 36
+    compileSdk = 37
 
     // Read local.properties
     val localProperties = Properties()
@@ -115,6 +114,12 @@ kotlin {
     }
 }
 
+// AGP 9's Compose Preview support wants unit tests on for every variant it builds resources for, release included. The tests that run are
+// still only the debug ones (`testDebugUnitTest`).
+androidComponents {
+    beforeVariants { variant -> variant.hostTests[com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE]?.enable = true }
+}
+
 dependencies {
     // Room is left out until Stage 1e: the shared module is on Room 2.8, whose driver wants a database NAME where the app's 24 migration and
     // legacy-repair tests (and its database builders) pass a path. The app keeps Room 2.7.1 and does not use the shared database yet.
@@ -159,7 +164,7 @@ dependencies {
     kapt("androidx.room:room-compiler-processing:2.8.5")
 
     // Hilt Dependency Injection
-    val hiltVersion = "2.58"
+    val hiltVersion = "2.60.1"
     implementation("com.google.dagger:hilt-android:$hiltVersion")
     kapt("com.google.dagger:hilt-compiler:$hiltVersion")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")

@@ -1,6 +1,6 @@
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
     id("androidx.room")
@@ -18,21 +18,16 @@ configurations.matching { it.name in setOf("kspJvm", "kspAndroid", "kspIosArm64"
 
 // iOS spike (Stage 0, step 3): a Kotlin Multiplatform module that `:app` does not depend on yet. The iOS targets are declared here and
 // compiled on a macOS runner; on Windows only the JVM target builds and runs its tests.
-android {
-    namespace = "com.smugview.shared"
-    compileSdk = 36
-    defaultConfig { minSdk = 26 }
-    // The app is built for Java 17; inline functions from this library must not be built for a newer target.
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-}
-
 kotlin {
     jvm()
-    // Stage 1: the Android app consumes the shared code through this target.
-    androidTarget { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+    // Stage 1: the Android app consumes the shared code through this target. The app is built for Java 17, and inline functions from
+    // this library must not be built for a newer target.
+    androidLibrary {
+        namespace = "com.smugview.shared"
+        compileSdk = 37
+        minSdk = 26
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+    }
     iosArm64()
     iosSimulatorArm64()
 
