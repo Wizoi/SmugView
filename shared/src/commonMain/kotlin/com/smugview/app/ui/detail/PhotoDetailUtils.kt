@@ -1,6 +1,7 @@
 package com.smugview.app.ui.detail
 
-import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToLong
 
 /**
  * Shared helpers for the photo-detail screens (PhotoDetailScreen / SearchPhotoDetailScreen /
@@ -16,8 +17,15 @@ import java.util.Locale
 fun formatPhotoFileSize(sizeBytes: Long?): String {
     if (sizeBytes == null) return "Unknown"
     return if (sizeBytes > 1024 * 1024) {
-        String.format(Locale.US, "%.2f MB", sizeBytes / (1024.0 * 1024.0))
+        twoDecimals(sizeBytes / (1024.0 * 1024.0)) + " MB"
     } else {
-        String.format(Locale.US, "%.2f KB", sizeBytes / 1024.0)
+        twoDecimals(sizeBytes / 1024.0) + " KB"
     }
+}
+
+/** [value] with two decimals and a point, whatever the device language (what `%.2f` with `Locale.US` gave). */
+private fun twoDecimals(value: Double): String {
+    val hundredths = abs(value * 100).roundToLong()
+    val sign = if (value < 0 && hundredths != 0L) "-" else ""
+    return sign + (hundredths / 100) + "." + (hundredths % 100).toString().padStart(2, '0')
 }

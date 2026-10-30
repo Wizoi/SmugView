@@ -27,9 +27,6 @@ import com.smugview.app.data.api.isVideo
 import com.smugview.app.data.db.CachedNode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalConfiguration
-import android.content.Intent
-import android.widget.Toast
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,10 +34,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
@@ -121,7 +116,7 @@ fun PhotoGridScreen(
         }
     }
 
-    val context = LocalContext.current
+    val context = coil3.compose.LocalPlatformContext.current
     LaunchedEffect(lazyPhotos.itemCount, currentAlbumStyle) {
         val imageLoader = SingletonImageLoader.get(context)
         val preloadLimit = minOf(lazyPhotos.itemCount, 24)

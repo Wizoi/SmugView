@@ -2,7 +2,6 @@ package com.smugview.app.ui.detail
 
 import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
-import android.graphics.drawable.BitmapDrawable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -27,19 +26,15 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.palette.graphics.Palette
 import coil3.compose.AsyncImage
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
-import coil3.request.allowHardware
 import coil3.request.crossfade
-import coil3.toBitmap
 import coil3.request.SuccessResult
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.ui.rememberDominantBackgroundColor
@@ -125,7 +120,7 @@ fun ImmersivePhotoPage(
     onLongPress: () -> Unit,
     onRequestAddToCollection: () -> Unit
 ) {
-    val context = LocalContext.current
+    val context = coil3.compose.LocalPlatformContext.current
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (photo.isVideo) {
             val rawUrl = photo.videoUrl ?: photo.archivedUri ?: photo.thumbnailUrl ?: ""

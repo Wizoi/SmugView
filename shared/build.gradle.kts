@@ -20,6 +20,10 @@ configurations.matching { it.name in setOf("kspJvm", "kspAndroid", "kspIosArm64"
 
 // iOS spike (Stage 0, step 3): a Kotlin Multiplatform module that `:app` does not depend on yet. The iOS targets are declared here and
 // compiled on a macOS runner; on Windows only the JVM target builds and runs its tests.
+compose.resources {
+    packageOfResClass = "com.smugview.shared.generated"
+}
+
 kotlin {
     jvm()
     // Stage 1: the Android app consumes the shared code through this target. The app is built for Java 17, and inline functions from
@@ -29,6 +33,7 @@ kotlin {
         compileSdk = 37
         minSdk = 26
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+        androidResources { enable = true } // Compose Multiplatform resources (camera logos)
     }
     iosArm64()
     iosSimulatorArm64()
@@ -42,9 +47,12 @@ kotlin {
             api("io.ktor:ktor-client-core:3.0.3")
             // The Compose runtime only (state holders such as mutableStateOf in the view-model layer); the screens stay in the app.
             implementation(compose.runtime)
+            implementation(compose.components.resources)
+            api("androidx.paging:paging-compose:3.5.3")
             api(compose.material3) // MaterialTheme and the components the screens use
             api(compose.foundation)
             implementation(compose.animation) // animateColorAsState (the viewer's background)
+            api("io.coil-kt.coil3:coil-compose:3.6.3") // AsyncImage and ImageRequest in the screens
             api(compose.ui) // ImageVector (the icons) and the other graphics types the shared UI state uses
             // The multiplatform ViewModel and SavedStateHandle (the base of SmugViewModel).
             api("androidx.lifecycle:lifecycle-viewmodel:2.10.0")
@@ -74,6 +82,7 @@ kotlin {
         }
         iosMain.dependencies {
             implementation("io.ktor:ktor-client-darwin:3.0.3")
+            implementation("io.coil-kt.coil3:coil-network-ktor3:3.6.3") // fetches images over the Darwin engine
         }
     }
 }

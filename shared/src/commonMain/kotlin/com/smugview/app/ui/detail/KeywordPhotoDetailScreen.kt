@@ -3,7 +3,6 @@ package com.smugview.app.ui.detail
 import com.smugview.app.ui.rememberDominantBackgroundColor
 import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
-import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,8 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,7 +47,7 @@ fun KeywordPhotoDetailScreen(
     onNavigateToKeywordImages: () -> Unit,
     onNavigateToGallery: (albumKey: String, imageKey: String) -> Unit = { _, _ -> }
 ) {
-    val context = LocalContext.current
+    val context = coil3.compose.LocalPlatformContext.current
     val scope = rememberCoroutineScope()
 
     val keywordPhotos by viewModel.tagFilteredPhotos.collectAsState()

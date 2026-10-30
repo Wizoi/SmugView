@@ -12,7 +12,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,7 +35,6 @@ fun AddToCollectionsDialog(
     onDismissRequest: () -> Unit,
     viewModel: SmugViewModel
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val localCollections by viewModel.localCollections.collectAsState()
 

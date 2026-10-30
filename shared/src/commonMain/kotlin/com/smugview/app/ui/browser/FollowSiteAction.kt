@@ -12,14 +12,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.smugview.app.ui.AppPermission
 import com.smugview.app.ui.rememberPermissionRequest
 import com.smugview.app.data.notify.FollowTap
-import com.smugview.app.data.notify.NewGalleryFollow
+import com.smugview.app.data.notify.SiteFollow
 import com.smugview.app.data.notify.NewGalleryText
 import com.smugview.app.ui.theme.NeonBlue
 import kotlinx.coroutines.launch
 
 /** The Hub top bar bell: follow this site for new-gallery notifications, asking for the notification permission first when Android needs it. */
 @Composable
-internal fun FollowSiteAction(follow: NewGalleryFollow, nickname: String) {
+internal fun FollowSiteAction(follow: SiteFollow, nickname: String) {
     val scope = rememberCoroutineScope()
     val following by remember(nickname) { follow.isFollowing(nickname) }.collectAsState(initial = false)
 

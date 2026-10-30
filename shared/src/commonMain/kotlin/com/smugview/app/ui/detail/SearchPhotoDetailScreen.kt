@@ -3,7 +3,6 @@ package com.smugview.app.ui.detail
 import com.smugview.app.ui.rememberDominantBackgroundColor
 import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
-import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,14 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
@@ -57,7 +53,7 @@ fun SearchPhotoDetailScreen(
     val searchPhotos = pagingFlow.collectAsLazyPagingItems()
     val localCollections by viewModel.localCollections.collectAsState()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val context = coil3.compose.LocalPlatformContext.current
 
     if (searchPhotos.itemCount == 0) {
         Box(

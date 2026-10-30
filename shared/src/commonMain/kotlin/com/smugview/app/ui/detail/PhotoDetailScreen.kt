@@ -1,15 +1,15 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.shared.generated.Res
+import com.smugview.shared.generated.camera_apple
+import com.smugview.shared.generated.camera_canon
+import com.smugview.shared.generated.camera_nikon
+import com.smugview.shared.generated.camera_sony
+import com.smugview.shared.generated.camera_fuji
+import com.smugview.shared.generated.camera_scanner
 import com.smugview.app.ui.rememberDominantBackgroundColor
 import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
-import android.content.ClipData
-import android.content.Context
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
-import android.net.Uri
-import android.os.Environment
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -39,14 +39,6 @@ import com.smugview.app.ui.text.Subject
 import com.smugview.app.ui.text.UserMessages
 import com.smugview.app.ui.text.forSubject
 import com.smugview.app.ui.browser.PasswordPromptHost
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import android.view.ViewGroup
-import android.content.res.Configuration
-import androidx.compose.ui.platform.LocalConfiguration
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,15 +48,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.palette.graphics.Palette
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.SingletonImageLoader
@@ -85,11 +74,6 @@ import com.smugview.app.ui.browser.BreadcrumbBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -110,7 +94,7 @@ fun PhotoDetailScreen(
     val lazyPhotos = viewModel.photosFlow.collectAsLazyPagingItems()
     val localCollections by viewModel.localCollections.collectAsState()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val context = coil3.compose.LocalPlatformContext.current
     val updatedKeywordsMap = remember { mutableStateMapOf<String, String>() }
 
     val ownAlbum by viewModel.albumState.collectAsState()
@@ -576,18 +560,18 @@ fun ExifDetailItem(label: String, value: String) {
 fun CameraLogo(cameraName: String) {
     val name = cameraName.lowercase()
     val drawableRes = when {
-        name.contains("iphone") || name.contains("apple") -> com.smugview.app.R.drawable.camera_apple
-        name.contains("canon") -> com.smugview.app.R.drawable.camera_canon
-        name.contains("nikon") -> com.smugview.app.R.drawable.camera_nikon
-        name.contains("sony") -> com.smugview.app.R.drawable.camera_sony
-        name.contains("fuji") -> com.smugview.app.R.drawable.camera_fuji
-        name.contains("ez controller") || name.contains("noritsu") || name.contains("scanner") -> com.smugview.app.R.drawable.camera_scanner
+        name.contains("iphone") || name.contains("apple") -> Res.drawable.camera_apple
+        name.contains("canon") -> Res.drawable.camera_canon
+        name.contains("nikon") -> Res.drawable.camera_nikon
+        name.contains("sony") -> Res.drawable.camera_sony
+        name.contains("fuji") -> Res.drawable.camera_fuji
+        name.contains("ez controller") || name.contains("noritsu") || name.contains("scanner") -> Res.drawable.camera_scanner
         else -> null
     }
 
     if (drawableRes != null) {
         androidx.compose.foundation.Image(
-            painter = androidx.compose.ui.res.painterResource(id = drawableRes),
+            painter = org.jetbrains.compose.resources.painterResource(drawableRes),
             contentDescription = "Camera Image",
             modifier = Modifier.size(24.dp)
         )

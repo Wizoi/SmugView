@@ -3,11 +3,8 @@ package com.smugview.app.ui.browser
 import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Popup
-import android.content.Intent
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
@@ -61,7 +58,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.ui.theme.DeepDarkBackground
@@ -765,7 +761,7 @@ fun CollectionsTabView(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(collections, key = { it.id }) { col ->
-                        val glowColor = neonColors[Math.abs(col.id.hashCode()) % neonColors.size]
+                        val glowColor = neonColors[kotlin.math.abs(col.id.hashCode()) % neonColors.size]
                         Card(
                             shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
