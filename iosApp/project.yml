@@ -30,6 +30,8 @@ targets:
           - _CC1AD845._googlecast._tcp
         NSLocalNetworkUsageDescription: SmugView looks for Chromecasts and other cast devices on your Wi-Fi so you can show photos on your TV.
         NSPhotoLibraryAddUsageDescription: SmugView saves the photos you download to your photo library.
+        BGTaskSchedulerPermittedIdentifiers: ["com.smugview.app.newgalleries"]
+        UIBackgroundModes: ["fetch"]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.smugview.spike
