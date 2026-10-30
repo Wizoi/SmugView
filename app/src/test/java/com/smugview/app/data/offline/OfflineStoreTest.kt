@@ -285,7 +285,7 @@ class OfflineStoreTest {
         assertEquals("OFFLINE", row.failure); assertEquals(0, row.attempts); assertTrue(row.retryable)
         assertEquals(now, row.nextAttemptAt)
 
-        val busy = DownloadFailure.classify(429, okhttp3.Headers.headersOf("Retry-After", "120"), null, false, nowMs = now)!!
+        val busy = DownloadFailure.classify(429, "120", null, false, nowMs = now)!!
         s.fail(fileKey, busy)
         row = dao.getFile(fileKey)!!
         assertEquals("BUSY", row.failure); assertEquals(1, row.attempts)

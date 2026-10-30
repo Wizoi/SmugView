@@ -1,11 +1,8 @@
 package com.smugview.app.data.offline
 
-import okhttp3.Headers
-import java.time.Instant
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeParseException
-import java.util.concurrent.CancellationException
+import com.smugview.app.data.db.nowMillis
+import com.smugview.app.util.HttpDate
+import kotlinx.coroutines.CancellationException
 
 /** Why a file did not arrive (phase 5 design 2.4). The names are stored in `offline_files.failure`. */
 enum class FailureReason { OFFLINE, BUSY, STORAGE_FULL, GONE, FORBIDDEN, LOCKED, DAMAGED, UNEXPECTED, NO_SOURCE }
@@ -64,12 +61,12 @@ object DownloadFailure {
      */
     fun classify(
         code: Int?,
-        headers: Headers?,
+        retryAfter: String?,
         exception: Throwable?,
         wroteBytes: Boolean,
         syntheticCacheMiss: Boolean = false,
         reResolved: Boolean = false,
-        nowMs: Long = System.currentTimeMillis()
+        nowMs: Long = nowMillis()
     ): Failure? {
         if (exception is CancellationException) return null
         if (exception != null) {
@@ -81,7 +78,7 @@ object DownloadFailure {
             c in 200..299 -> null
             c == 504 && syntheticCacheMiss -> Failure(FailureReason.OFFLINE, retryable = true, countsAsAttempt = false)
             c == 408 || c == 429 || c in 500..599 ->
-                Failure(FailureReason.BUSY, retryable = true, retryAfterMs = retryAfterMs(headers, nowMs), httpCode = c)
+                Failure(FailureReason.BUSY, retryable = true, retryAfterMs = retryAfterMs(retryAfter, nowMs), httpCode = c)
             c == 404 || c == 410 -> Failure(FailureReason.GONE, retryable = false, httpCode = c)
             c == 401 || c == 403 ->
                 if (reResolved) Failure(FailureReason.FORBIDDEN, retryable = false, httpCode = c)
@@ -132,16 +129,12 @@ object DownloadFailure {
     }
 
     /** `Retry-After` as milliseconds: delta-seconds or an HTTP-date; null when absent or unparseable; never negative. */
-    internal fun retryAfterMs(headers: Headers?, nowMs: Long): Long? {
-        val raw = headers?.get("Retry-After")?.trim().orEmpty()
+    fun retryAfterMs(header: String?, nowMs: Long): Long? {
+        val raw = header?.trim().orEmpty()
         if (raw.isEmpty()) return null
         raw.toLongOrNull()?.let { return (it * 1000L).coerceIn(0L, RETRY_AFTER_MAX_MS) }
-        return try {
-            val at = ZonedDateTime.parse(raw, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant()
-            (at.toEpochMilli() - Instant.ofEpochMilli(nowMs).toEpochMilli()).coerceIn(0L, RETRY_AFTER_MAX_MS)
-        } catch (e: DateTimeParseException) {
-            null
-        }
+        val at = HttpDate.epochMillisOrNull(raw) ?: return null
+        return (at - nowMs).coerceIn(0L, RETRY_AFTER_MAX_MS)
     }
 
     private fun isNoSpace(e: Throwable): Boolean {

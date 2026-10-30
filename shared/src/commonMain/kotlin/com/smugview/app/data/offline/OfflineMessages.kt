@@ -1,6 +1,6 @@
 package com.smugview.app.data.offline
 
-import java.util.Locale
+import kotlin.math.floor
 
 /**
  * Every word the user reads about a saved photo or gallery (phase 5 design section 4), in one place so
@@ -128,9 +128,12 @@ object OfflineMessages {
         if (bytes == null) return "size unknown"
         val kb = 1024.0
         return when {
-            bytes >= kb * kb * kb -> String.format(Locale.ROOT, "%.1f GB", bytes / (kb * kb * kb))
-            bytes >= kb * kb -> String.format(Locale.ROOT, "%d MB", Math.round(bytes / (kb * kb)))
-            else -> String.format(Locale.ROOT, "%d KB", maxOf(1L, Math.round(bytes / kb)))
+            bytes >= kb * kb * kb -> {
+                val tenths = floor(bytes / (kb * kb * kb) * 10 + 0.5).toLong() // half up, as `%.1f` and `Math.round` do
+                "${tenths / 10}.${tenths % 10} GB"
+            }
+            bytes >= kb * kb -> "${floor(bytes / (kb * kb) + 0.5).toLong()} MB"
+            else -> "${maxOf(1L, floor(bytes / kb + 0.5).toLong())} KB"
         }
     }
 }

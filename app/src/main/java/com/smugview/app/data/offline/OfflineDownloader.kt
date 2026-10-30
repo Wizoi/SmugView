@@ -184,7 +184,7 @@ class OfflineDownloader(
             return ListOutcome.FAILED
         } catch (e: ApiException) {
             val code = e.code
-            val raw = okhttp3.Headers.Builder().apply { e.retryAfter?.let { add("Retry-After", it) } }.build()
+            val raw: String? = e.retryAfter
             val failure = if (code == 401 || code == 403) DownloadFailure.locked(transient = false)
             else DownloadFailure.classify(
                 code, raw, null, wroteBytes = false,
@@ -350,7 +350,7 @@ class OfflineDownloader(
                         SmugMugRepository.UnlockResult.Rejected -> Unit
                     }
                 }
-                val raw = okhttp3.Headers.Builder().apply { e.retryAfter?.let { add("Retry-After", it) } }.build()
+                val raw: String? = e.retryAfter
                 return Resolved.Fail(
                     DownloadFailure.classify(
                         code, raw, null, wroteBytes = false,
@@ -376,7 +376,7 @@ class OfflineDownloader(
             if (!r.isSuccessful) {
                 return Fetch.Fail(
                     DownloadFailure.classify(
-                        r.code, r.headers, null, wroteBytes = false,
+                        r.code, r.header("Retry-After"), null, wroteBytes = false,
                         syntheticCacheMiss = r.isSyntheticCacheMiss(), reResolved = reResolved, nowMs = clock()
                     ) ?: Failure(FailureReason.UNEXPECTED, retryable = false, httpCode = r.code)
                 )

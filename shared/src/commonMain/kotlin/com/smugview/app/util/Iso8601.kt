@@ -22,15 +22,19 @@ object Iso8601 {
                 sign * (digits.take(2).toInt() * 60 + digits.drop(2).toInt())
             }
         }
-        // days since 1970-01-01 from a civil date (Howard Hinnant's algorithm)
+        val seconds = civilToEpochSeconds(year, month, day, hour, minute, second, offsetMinutes)
+        return seconds * 1000L + millis
+    }
+
+    /** Seconds since 1970-01-01T00:00:00Z of a civil date and time with a UTC offset in minutes (Howard Hinnant's days-from-civil algorithm). */
+    fun civilToEpochSeconds(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int, offsetMinutes: Int): Long {
         val y = if (month <= 2) year - 1 else year
         val era = (if (y >= 0) y else y - 399) / 400
         val yoe = y - era * 400
         val doy = (153 * (if (month > 2) month - 3 else month + 9) + 2) / 5 + day - 1
         val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
         val days = era * 146_097L + doe - 719_468L
-        val seconds = days * 86_400L + hour * 3_600L + minute * 60L + second - offsetMinutes * 60L
-        return seconds * 1000L + millis
+        return days * 86_400L + hour * 3_600L + minute * 60L + second - offsetMinutes * 60L
     }
 
     /** True when [a] is strictly earlier than [b]; false when either is not a timestamp. */
