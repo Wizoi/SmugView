@@ -904,3 +904,26 @@ The `ios-ipa-size` job now selects Xcode 26.2 (Apple's upload requirement) and t
 - Paging (`PagingData`, `cachedIn`) is fine: `paging-common` is multiplatform and already in `:shared`.
 
 Order that keeps every step green: (1) AGP 9 and Gradle 9 migration; (2) the Android-bound pieces behind interfaces, one per commit; (3) the eight controllers (small) move; (4) `SmugViewModel` moves, with Koin replacing Hilt; (5) the iOS CI compiles all of it.
+
+### 2026-10-30: Stage 1 is done; the Stage 2 inventory (measured)
+
+Stage 1 ended with `SmugViewModel` (about 2,300 lines) in shared code behind a plain constructor; Android keeps Hilt as its composition root and iOS will get a hand-written one, so the Koin step (1f) is dropped. The Compose stack was aligned with Compose Multiplatform 1.12 (BOM 2026.09.00), which Stage 2 needs anyway.
+
+`ui/` is 29 files, about 10,900 lines. What ties it to Android (import counts):
+
+| Tie | Uses | Replacement | Risk |
+|---|---|---|---|
+| `androidx.paging.compose` | 21 | `paging-compose` is multiplatform (3.5.x): same API | low |
+| `android.widget.Toast` | 15 | the view model's `showMessage` (a message flow the host shows) | low |
+| Coil 2 `AsyncImage`, `ImageRequest`, image loader | 21 | Coil 3 (`coil3.compose.AsyncImage`) with the OkHttp network fetcher on Android over the same cache-less `Call.Factory` (R-37), Ktor on iOS | medium: image caching must stay out of the API cache |
+| `androidx.hilt.navigation` | 11 | the view model is passed down or obtained once in the host (`AppSmugViewModel` on Android) | low |
+| `android.content.Intent` (share, open links) | 9 | a `PlatformActions` interface: share a file, open a URL, save to Photos | medium (Stage 3 pieces) |
+| `androidx.activity.compose` (`BackHandler`, launchers) | 7 | `expect BackHandler`; launchers behind `PlatformActions` | low |
+| ZXing (QR code) | 4 | a multiplatform QR library (QRose) or a small encoder | low |
+| Palette (colour from an image) | 2 | drop or a small common colour sampler | low |
+| Media3 / ExoPlayer (video) | 3 | `expect VideoPlayer` (ExoPlayer on Android, AVPlayer on iOS) | high on iOS |
+| Bitmap / drawable / `HttpURLConnection` | 5 | platform helpers behind the same interface | low |
+| `material-icons-extended` | many | not published for Compose Multiplatform: copy the used icons as `ImageVector`s | medium (count them first) |
+| `navigation-compose` (in `MainActivity`) | 1 graph | JetBrains `navigation-compose` (same API), graph moves to shared code | low |
+
+Order: (a) icons and Toast/Intent behind interfaces (Android unchanged, tests green); (b) Coil 3; (c) move the screens file by file with the metadata compile and the iOS CI as the filter; (d) the navigation graph and an iOS `MainViewController` host; (e) video. Each step ends with the suite, the emulator check and the iOS job.
