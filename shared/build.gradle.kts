@@ -44,7 +44,7 @@ kotlin {
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
             implementation("androidx.room:room-runtime:2.8.5")
             implementation("androidx.sqlite:sqlite-bundled:2.6.2")
-            api("io.ktor:ktor-client-core:3.0.3")
+            api("io.ktor:ktor-client-core:3.1.0")
             // The Compose runtime only (state holders such as mutableStateOf in the view-model layer); the screens stay in the app.
             implementation(compose.runtime)
             implementation(compose.components.resources)
@@ -60,18 +60,18 @@ kotlin {
             api("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.10.0")
             implementation("androidx.room:room-paging:2.8.5")
             api("androidx.paging:paging-common:3.5.3")
-            implementation("io.ktor:ktor-client-content-negotiation:3.0.3")
-            implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.3")
+            implementation("io.ktor:ktor-client-content-negotiation:3.1.0")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.0")
             // QR encoding in common code (replaces ZXing, which is Java-only).
             implementation("io.github.g0dkar:qrcode-kotlin:4.5.0")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
-            implementation("io.ktor:ktor-client-mock:3.0.3")
+            implementation("io.ktor:ktor-client-mock:3.1.0")
         }
         jvmMain.dependencies {
-            implementation("io.ktor:ktor-client-okhttp:3.0.3")
+            implementation("io.ktor:ktor-client-okhttp:3.1.0")
         }
         androidMain.dependencies {
             implementation("androidx.activity:activity-compose:1.13.0")
@@ -79,10 +79,10 @@ kotlin {
             implementation("androidx.media3:media3-exoplayer:$media3")
             implementation("androidx.media3:media3-ui:$media3")
             implementation("androidx.media3:media3-common:$media3")
-            implementation("io.ktor:ktor-client-okhttp:3.0.3")
+            implementation("io.ktor:ktor-client-okhttp:3.1.0")
         }
         iosMain.dependencies {
-            implementation("io.ktor:ktor-client-darwin:3.0.3")
+            implementation("io.ktor:ktor-client-darwin:3.1.0")
             implementation("io.coil-kt.coil3:coil-network-ktor3:3.4.0") // fetches images over the Darwin engine
         }
     }
