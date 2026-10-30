@@ -34,10 +34,13 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.palette.graphics.Palette
-import coil.compose.AsyncImage
-import coil.imageLoader
-import coil.request.ImageRequest
-import coil.request.SuccessResult
+import coil3.compose.AsyncImage
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.request.crossfade
+import coil3.toBitmap
+import coil3.request.SuccessResult
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.ImageSizeDetailsPayload
 import com.smugview.app.data.db.OfflineCollection
@@ -79,9 +82,9 @@ fun rememberDominantBackgroundColor(
                         .data(url)
                         .allowHardware(false) // required for pixel reading
                         .build()
-                    val result = context.imageLoader.execute(req)
+                    val result = SingletonImageLoader.get(context).execute(req)
                     if (result is SuccessResult) {
-                        (result.drawable as? BitmapDrawable)?.bitmap?.let { bmp ->
+                        result.image.toBitmap().let { bmp ->
                             dominantColor = Color(Palette.from(bmp).generate().getDominantColor(defaultColor.toArgb()))
                         }
                     }
@@ -320,9 +323,9 @@ fun ImmersivePhotoPage(
                     contentDescription = photo.title ?: "Immersive photo details",
                     contentScale = ContentScale.Fit,
                     onSuccess = { state ->
-                        val d = state.result.drawable
-                        if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
-                            contentAspectRatio = d.intrinsicWidth.toFloat() / d.intrinsicHeight.toFloat()
+                        val d = state.result.image
+                        if (d.width > 0 && d.height > 0) {
+                            contentAspectRatio = d.width.toFloat() / d.height.toFloat()
                         }
                     },
                     onError = {

@@ -31,7 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.ui.theme.DeepDarkBackground

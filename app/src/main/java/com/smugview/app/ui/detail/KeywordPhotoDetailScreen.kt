@@ -29,8 +29,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.imageLoader
-import coil.request.ImageRequest
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.ui.theme.SurfaceGlass
 import com.smugview.app.ui.viewmodel.SmugViewModel
@@ -76,7 +76,7 @@ fun KeywordPhotoDetailScreen(
     val detailedPhoto = detailedPhotoState.value?.getOrNull()
 
     LaunchedEffect(pagerState.currentPage, keywordPhotos.size) {
-        val imageLoader = context.imageLoader
+        val imageLoader = SingletonImageLoader.get(context)
         listOf(pagerState.currentPage, pagerState.currentPage - 1, pagerState.currentPage + 1).forEach { index ->
             keywordPhotos.getOrNull(index)?.let { photo ->
                 viewModel.getImageDetails(photo.imageKey)

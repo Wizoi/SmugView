@@ -172,7 +172,9 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Coil Image Loading
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    // Coil 3 (multiplatform); the OkHttp fetcher keeps images on the cache-less call factory (R-37)
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
 
     // Palette API for dynamic theme color extraction
     implementation("androidx.palette:palette-ktx:1.0.0")

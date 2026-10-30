@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.smugview.app.data.api.UserData
 import com.smugview.app.ui.theme.DeepDarkBackground
 import com.smugview.app.ui.theme.GlowBorder

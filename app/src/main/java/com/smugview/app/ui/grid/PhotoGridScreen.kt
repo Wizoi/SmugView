@@ -43,10 +43,10 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.smugview.app.BuildConfig
-import coil.imageLoader
-import coil.request.ImageRequest
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.ui.theme.DeepDarkBackground
@@ -124,7 +124,7 @@ fun PhotoGridScreen(
 
     val context = LocalContext.current
     LaunchedEffect(lazyPhotos.itemCount, currentAlbumStyle) {
-        val imageLoader = context.imageLoader
+        val imageLoader = SingletonImageLoader.get(context)
         val preloadLimit = minOf(lazyPhotos.itemCount, 24)
         for (i in 0 until preloadLimit) {
             val photo = lazyPhotos[i]

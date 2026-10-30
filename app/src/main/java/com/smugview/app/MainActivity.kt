@@ -37,7 +37,7 @@ import com.smugview.app.ui.grid.PhotoGridScreen
 import com.smugview.app.ui.explorer.KeywordImagesScreen
 import com.smugview.app.ui.detail.KeywordPhotoDetailScreen
 import com.smugview.app.ui.theme.SmugViewTheme
-import coil.imageLoader
+import coil3.SingletonImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.hilt.navigation.compose.hiltViewModel
 

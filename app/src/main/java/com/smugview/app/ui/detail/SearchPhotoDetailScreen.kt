@@ -31,8 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
-import coil.imageLoader
-import coil.request.ImageRequest
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.ui.theme.SurfaceGlass
 import com.smugview.app.ui.viewmodel.SmugViewModel
@@ -79,7 +79,7 @@ fun SearchPhotoDetailScreen(
 
     // Preload current + neighbor images and their full metadata.
     LaunchedEffect(pagerState.currentPage, searchPhotos.itemCount) {
-        val imageLoader = context.imageLoader
+        val imageLoader = SingletonImageLoader.get(context)
         listOf(pagerState.currentPage, pagerState.currentPage - 1, pagerState.currentPage + 1).forEach { index ->
             if (index in 0 until searchPhotos.itemCount) {
                 searchPhotos[index]?.let { photo ->

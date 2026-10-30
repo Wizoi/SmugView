@@ -64,11 +64,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.palette.graphics.Palette
-import coil.ImageLoader
-import coil.compose.AsyncImage
-import coil.imageLoader
-import coil.request.ImageRequest
-import coil.request.SuccessResult
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.data.api.ExifData
@@ -182,7 +182,7 @@ fun PhotoDetailScreen(
 
     // Preload next and previous images in the background when current page changes
     LaunchedEffect(pagerState.currentPage, lazyPhotos.itemCount) {
-        val imageLoader = context.imageLoader
+        val imageLoader = SingletonImageLoader.get(context)
         val prevIndex = pagerState.currentPage - 1
         val nextIndex = pagerState.currentPage + 1
         listOf(prevIndex, nextIndex).forEach { index ->

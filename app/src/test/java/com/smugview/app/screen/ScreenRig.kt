@@ -7,12 +7,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
-import coil.Coil
-import coil.ImageLoader
-import coil.decode.DataSource
-import coil.intercept.Interceptor
-import coil.request.ImageResult
-import coil.request.SuccessResult
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.asImage
+import coil3.decode.DataSource
+import coil3.intercept.Interceptor
+import coil3.request.ImageResult
+import coil3.request.SuccessResult
 import kotlinx.coroutines.android.asCoroutineDispatcher
 import com.smugview.app.scenario.ScenarioRig
 import com.smugview.app.ui.theme.SmugViewTheme
@@ -52,14 +53,12 @@ class ScreenRig(
     /** The `data` of every Coil request, in order, as the string the app passed (a URL for the app's images). */
     val imageRequests = CopyOnWriteArrayList<String>()
 
-    private val recorder = Interceptor { chain ->
-        imageRequests += chain.request.data.toString()
-        val bitmap = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
-        SuccessResult(
-            drawable = android.graphics.drawable.BitmapDrawable(rig.app.resources, bitmap),
-            request = chain.request,
-            dataSource = DataSource.MEMORY
-        ) as ImageResult
+    private val recorder = object : Interceptor {
+        override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+            imageRequests += chain.request.data.toString()
+            val bitmap = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
+            return SuccessResult(image = bitmap.asImage(), request = chain.request, dataSource = DataSource.MEMORY)
+        }
     }
 
     init {
@@ -67,7 +66,7 @@ class ScreenRig(
         shadowOf(rig.app.packageManager).addActivityIfNotPresent(
             ComponentName(rig.app.packageName, ComponentActivity::class.java.name)
         )
-        Coil.setImageLoader(ImageLoader.Builder(rig.app).components { add(recorder) }.build())
+        SingletonImageLoader.setUnsafe(ImageLoader.Builder(rig.app).components { add(recorder) }.build())
     }
 
     /** The grid <-> viewer navigation of [setGalleryContent]; null until it is called. */

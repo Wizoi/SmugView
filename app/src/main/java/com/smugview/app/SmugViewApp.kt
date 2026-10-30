@@ -3,8 +3,11 @@ package com.smugview.app
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import coil.ImageLoader
-import coil.ImageLoaderFactory
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import com.smugview.app.util.IgnoreCacheHeaders
 import com.smugview.app.data.offline.OfflineScheduler
 import com.smugview.app.data.offline.OfflineStartup
 import com.smugview.app.data.offline.OfflineStore
@@ -21,7 +24,7 @@ import javax.inject.Inject
 import javax.inject.Named
 
 @HiltAndroidApp
-class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
+class SmugViewApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
@@ -73,10 +76,10 @@ class SmugViewApp : Application(), Configuration.Provider, ImageLoaderFactory {
             .setWorkerFactory(workerFactory)
             .build()
 
-    override fun newImageLoader(): ImageLoader {
-        return ImageLoader.Builder(this)
-            .callFactory(callFactory)
-            .respectCacheHeaders(false)
+    override fun newImageLoader(context: PlatformContext): ImageLoader {
+        return ImageLoader.Builder(context)
+            // Images go through the cache-less call factory (R-37); `respectCacheHeaders(false)` of Coil 2 is the always-cache strategy below.
+            .components { add(OkHttpNetworkFetcherFactory(callFactory = { callFactory }, cacheStrategy = { IgnoreCacheHeaders })) }
             .build()
     }
 }
