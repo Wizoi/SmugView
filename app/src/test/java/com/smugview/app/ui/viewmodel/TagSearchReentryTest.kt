@@ -50,7 +50,7 @@ class TagSearchReentryTest {
                 .thenReturn(ImageSearchResponse(ImageSearchPayload(photos, PagesData(1, photos.size, photos.size))))
         }
         controller = TagSearchController(
-            repository = repo, apiKey = "k", viewModelScope = root, siteScope = { root }, sharedPrefs = prefs,
+            repository = repo, apiKey = "k", viewModelScope = root, siteScope = { root }, sharedPrefs = com.smugview.app.data.prefs.SharedPrefsStore(prefs),
             searchScope = scopeFlow, isViewingDetail = MutableStateFlow(false),
             activeNickname = MutableStateFlow("idzifamily"), getUnlockedPassword = { null }
         )

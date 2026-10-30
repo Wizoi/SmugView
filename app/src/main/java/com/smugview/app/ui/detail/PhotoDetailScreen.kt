@@ -1,5 +1,7 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.util.Toaster
+import com.smugview.app.ui.icons.AppIcons
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -7,7 +9,6 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Environment
-import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -21,35 +22,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Forward
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.Add
 import kotlinx.coroutines.flow.first
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.AspectRatio
-import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Lens
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Iso
-import androidx.compose.material.icons.filled.ZoomIn
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Event
 import androidx.compose.material3.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -91,11 +64,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.palette.graphics.Palette
-import coil.ImageLoader
-import coil.compose.AsyncImage
-import coil.imageLoader
-import coil.request.ImageRequest
-import coil.request.SuccessResult
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import com.smugview.app.data.api.AlbumImageData
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.data.api.ExifData
@@ -127,7 +100,7 @@ fun PhotoDetailScreen(
     onNavigateToGallery: (albumKey: String, albumTitle: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
     onNavigateToCastController: (String) -> Unit,
-    viewModel: SmugViewModel = hiltViewModel()
+    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>()
 ) {
     LaunchedEffect(albumKey, targetImageKey) {
         viewModel.selectAlbum(albumKey, targetImageKey)
@@ -209,7 +182,7 @@ fun PhotoDetailScreen(
 
     // Preload next and previous images in the background when current page changes
     LaunchedEffect(pagerState.currentPage, lazyPhotos.itemCount) {
-        val imageLoader = context.imageLoader
+        val imageLoader = SingletonImageLoader.get(context)
         val prevIndex = pagerState.currentPage - 1
         val nextIndex = pagerState.currentPage + 1
         listOf(prevIndex, nextIndex).forEach { index ->
@@ -348,7 +321,7 @@ fun PhotoDetailScreen(
                             .clip(CircleShape)
                             .background(SurfaceGlass)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(AppIcons.ArrowBackMirrored, contentDescription = "Back", tint = Color.White)
                     }
 
                     val cState = activeDevice?.state ?: com.smugview.app.data.cast.ConnectionState.DISCONNECTED
@@ -619,7 +592,7 @@ fun CameraLogo(cameraName: String) {
         )
     } else {
         Icon(
-            imageVector = Icons.Default.CameraAlt,
+            imageVector = AppIcons.CameraAlt,
             contentDescription = "Camera",
             tint = Color.White.copy(alpha = 0.7f),
             modifier = Modifier.size(24.dp)
@@ -678,13 +651,13 @@ fun sharePhoto(
     photo: AlbumImageData,
     link: String?
 ) {
-    Toast.makeText(context, com.smugview.app.ui.text.UserMessages.SHARE_PREPARING, Toast.LENGTH_SHORT).show()
+    Toaster.show(com.smugview.app.ui.text.UserMessages.SHARE_PREPARING)
 
     coroutineScope.launch {
         try {
             val factory = (context.applicationContext as com.smugview.app.SmugViewApp).callFactory
             val file = com.smugview.app.share.ShareFiles(context.cacheDir, factory)
-                .prepare(photo.imageKey, viewModel.savedFileOf(photo.imageKey), photo.thumbnailUrl)
+                .prepare(photo.imageKey, viewModel.savedFileOf(photo.imageKey)?.let { java.io.File(it) }, photo.thumbnailUrl)
             val fileUri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val description = photo.fileName?.takeIf { it.isNotBlank() }
                 ?: photo.title?.takeIf { it.isNotBlank() }
@@ -705,7 +678,7 @@ fun sharePhoto(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            Toast.makeText(context, com.smugview.app.ui.text.UserMessages.shareFailed(shareProblem(e)), Toast.LENGTH_SHORT).show()
+            Toaster.show(com.smugview.app.ui.text.UserMessages.shareFailed(shareProblem(e)))
         }
     }
 }
@@ -731,11 +704,11 @@ internal fun shareProblem(e: Throwable): com.smugview.app.ui.text.Problem {
  * offline), else from the CDN. The toast says what happened, and why when it did not.
  */
 suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, viewModel: SmugViewModel) {
-    val saved = viewModel.savedFileOf(photo.imageKey)
+    val saved = viewModel.savedFileOf(photo.imageKey)?.let { java.io.File(it) }
     var detailedPhoto = photo
     var detailsError: Throwable? = null
     if (saved == null && detailedPhoto.archivedUri == null) {
-        Toast.makeText(context, "Fetching high-resolution image details...", Toast.LENGTH_SHORT).show()
+        Toaster.show("Fetching high-resolution image details...")
         try {
             val result = viewModel.getImageDetails(photo.imageKey).first { it != null }
             if (result != null && result.isSuccess) detailedPhoto = result.getOrThrow() else detailsError = result?.exceptionOrNull()
@@ -754,11 +727,11 @@ suspend fun downloadPhotoToGallery(context: Context, photo: AlbumImageData, view
         val result = com.smugview.app.download.PhotoDownloader(context, factory)
             .download(photo.imageKey, detailedPhoto.fileName ?: photo.fileName, saved, sourceUrl, smaller)
         val said = if (result.original) com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED else com.smugview.app.ui.text.UserMessages.DOWNLOAD_SAVED_SMALLER
-        Toast.makeText(context, said, Toast.LENGTH_LONG).show()
+        Toaster.show(said, long = true)
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
-        Toast.makeText(context, com.smugview.app.download.downloadMessage(e), Toast.LENGTH_LONG).show()
+        Toaster.show(com.smugview.app.download.downloadMessage(e), long = true)
     }
 }
 
@@ -778,7 +751,7 @@ fun rememberPhotoDownloadAction(viewModel: SmugViewModel): (AlbumImageData) -> U
         waiting = null
         if (photo == null) return@rememberLauncherForActivityResult
         if (granted) scope.launch { downloadPhotoToGallery(context, photo, viewModel) }
-        else Toast.makeText(context, com.smugview.app.ui.text.UserMessages.DOWNLOAD_PERMISSION, Toast.LENGTH_LONG).show()
+        else Toaster.show(com.smugview.app.ui.text.UserMessages.DOWNLOAD_PERMISSION, long = true)
     }
     return { photo ->
         val needsPermission = android.os.Build.VERSION.SDK_INT < 29 &&
@@ -911,7 +884,7 @@ fun VideoPlayerView(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FastRewind,
+                            imageVector = AppIcons.FastRewind,
                             contentDescription = "-15s",
                             tint = Color.White,
                             modifier = Modifier.size(36.dp)
@@ -931,7 +904,7 @@ fun VideoPlayerView(
                         }
                     ) {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            imageVector = if (isPlaying) AppIcons.Pause else AppIcons.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play",
                             tint = Color.White,
                             modifier = Modifier.size(48.dp)
@@ -947,7 +920,7 @@ fun VideoPlayerView(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FastForward,
+                            imageVector = AppIcons.FastForward,
                             contentDescription = "+15s",
                             tint = Color.White,
                             modifier = Modifier.size(36.dp)

@@ -74,3 +74,34 @@ class CommonHelpersParityTest {
         assertTrue(reads > 0)
     }
 }
+
+/** The `Retry-After` HTTP date and the size text, against the `java.time` and `String.format` they replaced. */
+class OfflineCommonParityTest {
+    @Test fun `http dates read the same as java time rfc 1123`() {
+        val dates = listOf(
+            "Mon, 15 Nov 2027 08:12:31 GMT", "Wed, 21 Oct 2015 07:28:00 GMT", "Sun, 06 Nov 1994 08:49:37 GMT",
+            "Thu, 01 Jan 1970 00:00:00 GMT", "Sat, 29 Feb 2020 23:59:59 GMT", "Fri, 31 Dec 2100 12:00:00 +0200",
+            "Tue, 5 Mar 2024 01:02:03 -0700"
+        )
+        for (d in dates) {
+            val expected = java.time.ZonedDateTime.parse(d, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()
+            assertEquals(d, expected, HttpDate.epochMillisOrNull(d))
+        }
+        assertNull(HttpDate.epochMillisOrNull("soon"))
+        assertNull(HttpDate.epochMillisOrNull("120"))
+    }
+
+    @Test fun `size text is the same as the old String format`() {
+        fun old(bytes: Long): String {
+            val kb = 1024.0
+            return when {
+                bytes >= kb * kb * kb -> String.format(java.util.Locale.ROOT, "%.1f GB", bytes / (kb * kb * kb))
+                bytes >= kb * kb -> String.format(java.util.Locale.ROOT, "%d MB", Math.round(bytes / (kb * kb)))
+                else -> String.format(java.util.Locale.ROOT, "%d KB", maxOf(1L, Math.round(bytes / kb)))
+            }
+        }
+        val samples = listOf(0L, 1L, 511L, 512L, 1023L, 1024L, 1536L, 999_999L, 1_048_575L, 1_048_576L, 1_572_864L, 105_906_176L,
+            1_073_741_823L, 1_073_741_824L, 1_288_490_189L, 1_610_612_736L, 5_000_000_000L, 123_456_789_012L)
+        for (b in samples) assertEquals("$b", old(b), com.smugview.app.data.offline.OfflineMessages.size(b))
+    }
+}

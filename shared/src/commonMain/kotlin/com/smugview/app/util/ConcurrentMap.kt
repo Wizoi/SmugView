@@ -25,3 +25,13 @@ class AtomicCounter(initial: Int = 0) {
 
 /** The simple class name of a failure, for diagnostics lines (`javaClass.simpleName` is JVM only). */
 fun Throwable.kindName(): String = this::class.simpleName ?: "Throwable"
+
+/** A small thread-safe set; [add] says whether the element was new (like `MutableSet.add`). */
+class ConcurrentSet<T> {
+    private val lock = SimpleLock()
+    private val set = HashSet<T>()
+
+    fun add(element: T): Boolean = lock.withLock { set.add(element) }
+    fun remove(element: T): Boolean = lock.withLock { set.remove(element) }
+    fun contains(element: T): Boolean = lock.withLock { element in set }
+}

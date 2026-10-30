@@ -30,15 +30,15 @@ class OfflineScheduler(
     private val store: OfflineStore,
     private val settings: OfflineSettings,
     private val clock: () -> Long = System::currentTimeMillis
-) {
+) : OfflineScheduling {
     /** Something was added or removed: run a pass on every chain that has work. Cheap; safe to call often. */
-    suspend fun kick() {
+    override suspend fun kick() {
         enqueue(NetworkClass.ANY, ExistingWorkPolicy.APPEND_OR_REPLACE, delayMs = 0)
         if (settings.rule.value == OfflineNetworkRule.WIFI_ONLY && store.countWantedGalleryOnly() > 0) enqueue(NetworkClass.UNMETERED, ExistingWorkPolicy.APPEND_OR_REPLACE, delayMs = 0)
     }
 
     /** At app start: only when something is not DONE (and not permanently failed). */
-    suspend fun kickIfWanted() {
+    override suspend fun kickIfWanted() {
         if (store.countWanted() > 0) kick()
     }
 
@@ -46,7 +46,7 @@ class OfflineScheduler(
      * Called by the worker after a pass. [PassResult.more]: the budget ran out with files due, so append the next
      * run. Otherwise, when retryable failures remain, enqueue one delayed run for the earliest. Never both.
      */
-    suspend fun after(result: PassResult, network: NetworkClass) {
+    override suspend fun after(result: PassResult, network: NetworkClass) {
         if (result.more) {
             enqueue(network, ExistingWorkPolicy.APPEND_OR_REPLACE, delayMs = 0)
             return

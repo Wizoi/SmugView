@@ -66,6 +66,8 @@ class ViewedMarkScenarioTest {
     private fun launchAndLight() {
         vm.selectSite("idzifamily")
         awaitUntil("the launch crawl lit Family's gallery", 10_000) { "LCdk7F" in lit() }
+        // The dot is lit while the sync may still be writing index rows; a test that edits the index must wait for it to finish.
+        awaitUntil("the launch sync has finished", 10_000) { !rig.reporter.hasOpenRun() }
     }
 
     /** The rows a browse of Family -> School -> the gallery leaves behind (depth 2, AlbumKey != NodeID). */

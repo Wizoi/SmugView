@@ -17,4 +17,7 @@ object ApiErrors {
         is AlbumLockedException -> error.pendingReason == TransientReason.Offline
         else -> false
     }
+
+    /** True only when SmugMug explicitly refused the credentials (401/403). Offline, 429, 5xx and the synthetic 504 say nothing about a saved password. */
+    fun isPasswordRejection(error: Throwable?): Boolean = error is ApiException && (error.code == 401 || error.code == 403)
 }

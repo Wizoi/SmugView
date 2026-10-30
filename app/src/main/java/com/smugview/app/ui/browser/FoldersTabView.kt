@@ -1,5 +1,6 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -9,7 +10,6 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -20,7 +20,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,39 +33,10 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.PhotoAlbum
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
 import com.smugview.app.data.api.isVideo
 import androidx.compose.animation.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
 import com.smugview.app.ui.component.ProfilePreviewCard
 import com.smugview.app.ui.component.ProfileAvatar
 import com.smugview.app.ui.component.AddToCollectionsDialog
@@ -380,7 +351,7 @@ fun FoldersTabView(
                             modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                imageVector = AppIcons.ArrowBackMirrored,
                                 contentDescription = "Back",
                                 tint = Color.White
                             )
@@ -402,7 +373,7 @@ fun FoldersTabView(
                             modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Search,
+                                imageVector = AppIcons.Search,
                                 contentDescription = "Search in Folder",
                                 tint = Color.White
                             )
@@ -417,7 +388,7 @@ fun FoldersTabView(
                                 modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.BookmarkBorder,
+                                    imageVector = AppIcons.BookmarkBorder,
                                     contentDescription = "Bookmark Folder",
                                     tint = Color.White
                                 )
@@ -430,7 +401,7 @@ fun FoldersTabView(
                             modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Share,
+                                imageVector = AppIcons.Share,
                                 contentDescription = "Share Folder",
                                 tint = Color.White
                             )
@@ -448,7 +419,7 @@ fun FoldersTabView(
                             modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Refresh,
+                                imageVector = AppIcons.Refresh,
                                 contentDescription = "Refresh Folder",
                                 tint = Color.White
                             )

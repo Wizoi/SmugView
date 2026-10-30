@@ -1,9 +1,11 @@
 package com.smugview.shared.platform
 
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 actual class SimpleLock {
-    private val lock = ReentrantLock()
-    actual fun <T> withLock(block: () -> T): T = lock.withLock(block)
+    @PublishedApi internal val lock = ReentrantLock()
+    actual inline fun <T> withLock(block: () -> T): T {
+        lock.lock()
+        try { return block() } finally { lock.unlock() }
+    }
 }

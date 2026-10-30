@@ -1,5 +1,6 @@
 package com.smugview.app.ui.component
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.ui.platform.testTag
 import com.smugview.app.ui.text.UserMessages
 import androidx.compose.foundation.background
@@ -8,8 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.smugview.app.data.cast.CastDevice
 import com.smugview.app.data.cast.ConnectionState
 import com.smugview.app.data.cast.WebCompanionFailure
@@ -73,7 +72,7 @@ fun CastControllerScreen(
         ) {
             IconButton(onClick = onBackClick) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
+                    imageVector = AppIcons.ArrowBack,
                     contentDescription = "Back to gallery",
                     tint = Color.White
                 )
@@ -138,7 +137,7 @@ fun CastControllerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (activeDevice.state == ConnectionState.CONNECTING) Icons.Default.Cast else Icons.Default.CastConnected,
+                    imageVector = if (activeDevice.state == ConnectionState.CONNECTING) AppIcons.Cast else AppIcons.CastConnected,
                     contentDescription = null,
                     tint = neonBlue,
                     modifier = Modifier.size(24.dp)
@@ -232,7 +231,7 @@ fun CastControllerScreen(
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Default.Image,
+                            imageVector = AppIcons.Image,
                             contentDescription = null,
                             tint = Color.Gray,
                             modifier = Modifier.size(64.dp)
@@ -261,7 +260,7 @@ fun CastControllerScreen(
                 modifier = Modifier.size(56.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.SkipPrevious,
+                    imageVector = AppIcons.SkipPrevious,
                     contentDescription = "Previous Photo",
                     tint = Color.White,
                     modifier = Modifier.size(36.dp)
@@ -279,7 +278,7 @@ fun CastControllerScreen(
                     .border(1.dp, neonBlue, RoundedCornerShape(16.dp))
             ) {
                 Icon(
-                    imageVector = if (isSlideshowPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    imageVector = if (isSlideshowPlaying) AppIcons.Pause else AppIcons.PlayArrow,
                     contentDescription = if (isSlideshowPlaying) "Pause slideshow" else "Play slideshow",
                     tint = neonBlue,
                     modifier = Modifier.size(40.dp)
@@ -293,7 +292,7 @@ fun CastControllerScreen(
                 modifier = Modifier.size(56.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.SkipNext,
+                    imageVector = AppIcons.SkipNext,
                     contentDescription = "Next Photo",
                     tint = Color.White,
                     modifier = Modifier.size(36.dp)
@@ -361,7 +360,7 @@ fun CastControllerScreen(
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
-                            imageVector = if (isMuted || volume == 0f) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                            imageVector = if (isMuted || volume == 0f) AppIcons.VolumeOff else AppIcons.VolumeUp,
                             contentDescription = "Toggle Mute",
                             tint = Color.LightGray,
                             modifier = Modifier.size(18.dp)
@@ -416,7 +415,7 @@ fun CastControllerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Default.CastConnected,
+                    imageVector = AppIcons.CastConnected,
                     contentDescription = null,
                     tint = Color.White
                 )

@@ -85,5 +85,5 @@ object Diag {
     @Volatile var log: DiagLog = DiagLog.NOOP
 
     /** Exceptions that reached a site session's handler (6-6): a job nobody caught. Counted in `report.txt`, never shown. */
-    val uncaughtSiteErrors = java.util.concurrent.atomic.AtomicInteger()
+    val uncaughtSiteErrors get() = SiteErrors.uncaught
 }

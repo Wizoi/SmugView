@@ -25,7 +25,7 @@ class DownloadFailureTest {
 
     private fun http(code: Int, vararg headers: Pair<String, String>, synthetic: Boolean = false, reResolved: Boolean = false): Failure? =
         DownloadFailure.classify(
-            code, Headers.headersOf(*headers.flatMap { listOf(it.first, it.second) }.toTypedArray()),
+            code, headers.firstOrNull { it.first == "Retry-After" }?.second,
             exception = null, wroteBytes = false, syntheticCacheMiss = synthetic, reResolved = reResolved, nowMs = now
         )
 
@@ -88,7 +88,7 @@ class DownloadFailureTest {
         val realWrapped = response(real)
 
         fun classify(r: Response) = DownloadFailure.classify(
-            r.code, r.headers, null, false, syntheticCacheMiss = r.networkResponse == null && r.cacheResponse == null
+            r.code, r.header("Retry-After"), null, false, syntheticCacheMiss = r.networkResponse == null && r.cacheResponse == null
         )
         assertEquals(FailureReason.OFFLINE, classify(synthetic)!!.reason)
         assertEquals(FailureReason.BUSY, classify(realWrapped)!!.reason)
@@ -128,7 +128,7 @@ class DownloadFailureTest {
         val date = "Mon, 15 Nov 2027 08:12:31 GMT"
         val atMs = java.time.ZonedDateTime.parse(date, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()
         val inTenMinutes = DownloadFailure.classify(
-            429, Headers.headersOf("Retry-After", date), null, false, nowMs = atMs - 10 * 60_000L
+            429, date, null, false, nowMs = atMs - 10 * 60_000L
         )!!
         assertEquals(10 * 60_000L, inTenMinutes.retryAfterMs)
 

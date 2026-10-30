@@ -19,8 +19,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +37,7 @@ import com.smugview.app.ui.grid.PhotoGridScreen
 import com.smugview.app.ui.explorer.KeywordImagesScreen
 import com.smugview.app.ui.detail.KeywordPhotoDetailScreen
 import com.smugview.app.ui.theme.SmugViewTheme
-import coil.imageLoader
+import coil3.SingletonImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -111,7 +109,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SmugViewNavigation(
-    viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel(),
+    viewModel: com.smugview.app.ui.viewmodel.SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>(),
     newGalleryFollow: com.smugview.app.data.notify.NewGalleryFollow? = null,
     pendingOpen: PendingOpen? = null,
     onOpenHandled: () -> Unit = {}

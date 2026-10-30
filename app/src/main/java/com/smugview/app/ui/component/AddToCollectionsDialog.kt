@@ -1,15 +1,12 @@
 package com.smugview.app.ui.component
 
-import android.widget.Toast
+import com.smugview.app.util.Toaster
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -70,11 +67,11 @@ fun AddToCollectionsDialog(
                     collectionId = col.id, type = type, itemKey = itemKey, title = title,
                     albumKey = key, albumTitle = albumTitle, thumbnailUrl = thumbnailUrl, imageUrl = imageUrl
                 )
-                Toast.makeText(context, "Saved to ${col.name}!", Toast.LENGTH_SHORT).show()
+                Toaster.show("Saved to ${col.name}!")
             }
             removed.forEach { col ->
                 viewModel.removeBookmark(col.id, type, itemKey)
-                Toast.makeText(context, "Removed from ${col.name}", Toast.LENGTH_SHORT).show()
+                Toaster.show("Removed from ${col.name}")
             }
             viewModel.lastSelectedCollectionIds = localCollections.filter { ticked[it.id] == true }.map { it.id }.toSet()
             onDismissRequest()
@@ -165,7 +162,7 @@ fun AddToCollectionsDialog(
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Folder,
+                                            imageVector = AppIcons.Folder,
                                             contentDescription = "Collection",
                                             tint = NeonBlue.copy(alpha = 0.8f),
                                             modifier = Modifier.size(20.dp)
@@ -225,7 +222,7 @@ fun AddToCollectionsDialog(
                         onClick = {
                             if (newCollectionName.trim().isNotEmpty()) {
                                 viewModel.createCollection(newCollectionName.trim())
-                                Toast.makeText(context, "Collection created!", Toast.LENGTH_SHORT).show()
+                                Toaster.show("Collection created!")
                                 newCollectionName = ""
                             }
                         },
@@ -234,7 +231,7 @@ fun AddToCollectionsDialog(
                             .background(NeonBlue, RoundedCornerShape(8.dp))
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Add,
+                            imageVector = AppIcons.Add,
                             contentDescription = "Create",
                             tint = Color.Black
                         )

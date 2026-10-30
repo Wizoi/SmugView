@@ -1,7 +1,8 @@
 package com.smugview.app.ui.detail
 
+import com.smugview.app.util.Toaster
+import com.smugview.app.ui.icons.AppIcons
 import android.content.res.Configuration
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,9 +15,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,8 +29,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.imageLoader
-import coil.request.ImageRequest
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
 import com.smugview.app.ui.component.AddToCollectionsDialog
 import com.smugview.app.ui.theme.SurfaceGlass
 import com.smugview.app.ui.viewmodel.SmugViewModel
@@ -78,7 +76,7 @@ fun KeywordPhotoDetailScreen(
     val detailedPhoto = detailedPhotoState.value?.getOrNull()
 
     LaunchedEffect(pagerState.currentPage, keywordPhotos.size) {
-        val imageLoader = context.imageLoader
+        val imageLoader = SingletonImageLoader.get(context)
         listOf(pagerState.currentPage, pagerState.currentPage - 1, pagerState.currentPage + 1).forEach { index ->
             keywordPhotos.getOrNull(index)?.let { photo ->
                 viewModel.getImageDetails(photo.imageKey)
@@ -134,7 +132,7 @@ fun KeywordPhotoDetailScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBackClick, modifier = Modifier.clip(CircleShape).background(SurfaceGlass)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    Icon(AppIcons.ArrowBackMirrored, contentDescription = "Back", tint = Color.White)
                 }
                 if (currentPhoto != null) {
                     Button(
@@ -166,7 +164,7 @@ fun KeywordPhotoDetailScreen(
                                     if (!resolved.isNullOrEmpty()) {
                                         onNavigateToGallery(resolved, imageKey)
                                     } else {
-                                        Toast.makeText(context, "Couldn't find this photo's gallery. Please try again.", Toast.LENGTH_SHORT).show()
+                                        Toaster.show("Couldn't find this photo's gallery. Please try again.")
                                     }
                                 }
                             }
@@ -178,7 +176,7 @@ fun KeywordPhotoDetailScreen(
                         if (isResolvingAlbum) {
                             CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                         } else {
-                            Icon(Icons.Default.FolderOpen, "Jump to Gallery", tint = Color.White, modifier = Modifier.size(18.dp))
+                            Icon(AppIcons.FolderOpen, "Jump to Gallery", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Jump to Gallery", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)

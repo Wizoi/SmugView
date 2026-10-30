@@ -266,7 +266,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideOfflineStore(database: AppDatabase, @ApplicationContext context: Context): com.smugview.app.data.offline.OfflineStore =
-        com.smugview.app.data.offline.OfflineStore(database, context.filesDir)
+        com.smugview.app.data.offline.OfflineStore(database, context.filesDir.path)
 
     @Provides
     @Singleton
@@ -278,7 +278,7 @@ object AppModule {
     ): com.smugview.app.data.offline.OfflineDownloader = com.smugview.app.data.offline.OfflineDownloader(
         store = store,
         repo = repository,
-        images = images,
+        fetcher = com.smugview.app.data.offline.OkHttpOriginalFetcher(images),
         apiKey = { com.smugview.app.BuildConfig.SMUGMUG_API_KEY },
         settings = settings
     )

@@ -53,7 +53,7 @@ class SearchWindowTest {
         val tagScope = SearchScope("Folder: School", "P4BKB", "/api/v2/node/P4BKB")
         val controller = TagSearchController(
             repository = rig.repository, apiKey = "test-key", viewModelScope = scope, siteScope = { scope },
-            sharedPrefs = rig.app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE),
+            sharedPrefs = com.smugview.app.data.prefs.SharedPrefsStore(rig.app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE)),
             searchScope = MutableStateFlow(tagScope), isViewingDetail = MutableStateFlow(false),
             activeNickname = MutableStateFlow("idzifamily"), getUnlockedPassword = { null }
         )

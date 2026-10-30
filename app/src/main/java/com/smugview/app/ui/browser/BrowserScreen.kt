@@ -1,5 +1,6 @@
 package com.smugview.app.ui.browser
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
@@ -10,7 +11,6 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.activity.compose.BackHandler
 import com.smugview.app.data.repository.UnlockManager
@@ -22,7 +22,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,39 +35,10 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.PhotoAlbum
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
 import com.smugview.app.data.api.isVideo
 import androidx.compose.animation.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
 import com.smugview.app.ui.component.ProfilePreviewCard
 import com.smugview.app.ui.component.ProfileAvatar
 import com.smugview.app.ui.component.AddToCollectionsDialog
@@ -126,7 +97,7 @@ fun BrowserScreen(
     onNavigateToPhotoDetail: (albumKey: String, imageKey: String) -> Unit,
     onNavigateToKeywordImages: () -> Unit,
     onNavigateToCastController: (title: String) -> Unit,
-    viewModel: SmugViewModel = hiltViewModel(),
+    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>(),
     newGalleryFollow: com.smugview.app.data.notify.NewGalleryFollow? = null
 ) {
     val uiState by viewModel.browserState.collectAsState()
@@ -177,7 +148,7 @@ fun BrowserScreen(
                                 }
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                                    imageVector = AppIcons.ExitToAppMirrored,
                                     contentDescription = "Exit Site",
                                     tint = NeonBlue,
                                     modifier = Modifier.size(18.dp)
@@ -209,7 +180,7 @@ fun BrowserScreen(
                 tonalElevation = 8.dp
             ) {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Home", modifier = Modifier.size(20.dp)) },
+                    icon = { Icon(AppIcons.Home, contentDescription = "Home", modifier = Modifier.size(20.dp)) },
                     label = { Text("Home", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Folders,
                     enabled = isSiteLoaded,
@@ -229,7 +200,7 @@ fun BrowserScreen(
                     }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(20.dp)) },
+                    icon = { Icon(AppIcons.Search, contentDescription = "Search", modifier = Modifier.size(20.dp)) },
                     label = { Text("Search", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Search,
                     enabled = isSiteLoaded,
@@ -243,7 +214,7 @@ fun BrowserScreen(
                     onClick = { viewModel.setActiveTab(BrowserTab.Search) }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.LocalOffer, contentDescription = "Tag Search", modifier = Modifier.size(20.dp)) },
+                    icon = { Icon(AppIcons.LocalOffer, contentDescription = "Tag Search", modifier = Modifier.size(20.dp)) },
                     label = { Text("Tags", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.TagSearch,
                     enabled = isSiteLoaded,
@@ -257,7 +228,7 @@ fun BrowserScreen(
                     onClick = { viewModel.setActiveTab(BrowserTab.TagSearch) }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.PhotoAlbum, contentDescription = "Collections", modifier = Modifier.size(20.dp)) },
+                    icon = { Icon(AppIcons.PhotoAlbum, contentDescription = "Collections", modifier = Modifier.size(20.dp)) },
                     label = { Text("Collections", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Collections,
                     enabled = isSiteLoaded,
@@ -282,7 +253,7 @@ fun BrowserScreen(
                                 fontSize = 9.sp
                             )
                         } else {
-                            Icon(Icons.Default.Hub, contentDescription = "Hub", modifier = Modifier.size(20.dp))
+                            Icon(AppIcons.Hub, contentDescription = "Hub", modifier = Modifier.size(20.dp))
                         }
                     },
                     label = {
@@ -399,7 +370,7 @@ fun BrowserScreen(
                                     .padding(16.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                Icon(AppIcons.Close, contentDescription = "Close", tint = Color.White)
                             }
 
                             Column(
@@ -574,7 +545,7 @@ fun BrowserNodeItem(
                     }
 
                     if (lock != UnlockManager.RowLock.None) {
-                        val lockIcon = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock
+                        val lockIcon = if (isUnlocked) AppIcons.LockOpen else AppIcons.Lock
                         val lockColor = if (isUnlocked) Color(0xFF00E5FF) else Color(0xFFFFB800)
                         Icon(
                             imageVector = lockIcon,
@@ -643,7 +614,7 @@ fun PasswordPromptDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Icon(
-                    imageVector = Icons.Default.Lock,
+                    imageVector = AppIcons.Lock,
                     contentDescription = "Lock",
                     tint = Color(0xFFFFB800),
                     modifier = Modifier.size(40.dp)
@@ -762,7 +733,7 @@ fun BreadcrumbBar(
             // Root Node Item (Home Icon)
             item {
                 Icon(
-                    imageVector = Icons.Default.Home,
+                    imageVector = AppIcons.Home,
                     contentDescription = "Home",
                     tint = NeonBlue,
                     modifier = Modifier

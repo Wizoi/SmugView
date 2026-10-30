@@ -128,18 +128,17 @@ dependencies {
     // AndroidX & Core
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation("androidx.activity:activity-compose:1.13.0")
 
     // Jetpack Compose
-    implementation(platform("androidx.compose:compose-bom:2024.04.00"))
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
 
     // Jetpack Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.navigation:navigation-compose:2.10.2")
 
     // Room Database
     val roomVersion = "2.8.5"
@@ -152,8 +151,8 @@ dependencies {
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     // Paging 3
-    implementation("androidx.paging:paging-runtime-ktx:3.2.1")
-    implementation("androidx.paging:paging-compose:3.2.1")
+    implementation("androidx.paging:paging-runtime-ktx:3.5.3")
+    implementation("androidx.paging:paging-compose:3.5.3")
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
@@ -167,13 +166,15 @@ dependencies {
     val hiltVersion = "2.60.1"
     implementation("com.google.dagger:hilt-android:$hiltVersion")
     kapt("com.google.dagger:hilt-compiler:$hiltVersion")
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation("androidx.hilt:hilt-navigation-compose:1.4.0")
 
     // Encrypted storage for gallery passwords
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Coil Image Loading
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    // Coil 3 (multiplatform); the OkHttp fetcher keeps images on the cache-less call factory (R-37)
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
 
     // Palette API for dynamic theme color extraction
     implementation("androidx.palette:palette-ktx:1.0.0")
@@ -195,6 +196,8 @@ dependencies {
 
     // Testing
     testImplementation("junit:junit:4.13.2")
+    // Lifecycle 2.10 enforces the main thread; a test whose coroutines resume on a worker thread uses this rule to say "this thread is the main one".
+    testImplementation("androidx.arch.core:core-testing:2.2.0")
     // Gson is no longer how the app reads SmugMug (Stage 1c); the recorder and a few fixtures still use it to read JSON in tests
     testImplementation("com.google.code.gson:gson:2.10.1")
     testImplementation("org.mockito:mockito-core:5.8.0")
@@ -206,7 +209,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("androidx.test:core:1.5.0")
     // Phase 6-0: Compose UI tests under Robolectric (ui-test-manifest is already debugImplementation)
-    testImplementation(platform("androidx.compose:compose-bom:2024.04.00"))
+    testImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     testImplementation("androidx.compose.ui:ui-test-junit4")
     // WorkManager test utilities (TestListenableWorkerBuilder) for the offline worker tests (phase 5)
     testImplementation("androidx.work:work-testing:2.9.0")
@@ -215,7 +218,7 @@ dependencies {
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.04.00"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

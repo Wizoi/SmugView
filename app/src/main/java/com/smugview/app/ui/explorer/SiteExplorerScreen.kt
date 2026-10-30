@@ -1,5 +1,6 @@
 package com.smugview.app.ui.explorer
 
+import com.smugview.app.ui.icons.AppIcons
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,10 +10,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.smugview.app.data.api.UserData
 import com.smugview.app.ui.theme.DeepDarkBackground
 import com.smugview.app.ui.theme.GlowBorder
@@ -45,7 +42,7 @@ import com.smugview.app.ui.component.ProfilePreviewCard
 @Composable
 fun SiteExplorerScreen(
     onNavigateToBrowser: () -> Unit,
-    viewModel: SmugViewModel = hiltViewModel()
+    viewModel: SmugViewModel = hiltViewModel<com.smugview.app.ui.viewmodel.AppSmugViewModel>()
 ) {
     val uiState by viewModel.splashState.collectAsState()
     val recentSites by viewModel.recentSites.collectAsState()
@@ -131,7 +128,7 @@ fun SiteExplorerScreen(
                 value = nicknameQuery,
                 onValueChange = { nicknameQuery = it },
                 placeholder = { Text("e.g. smugmug", color = Color.White.copy(alpha = 0.4f)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = NeonBlue) },
+                leadingIcon = { Icon(AppIcons.Search, contentDescription = "Search", tint = NeonBlue) },
                 singleLine = true,
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -161,7 +158,7 @@ fun SiteExplorerScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
-                            imageVector = Icons.Default.History,
+                            imageVector = AppIcons.History,
                             contentDescription = "History",
                             tint = Color.White.copy(alpha = 0.4f),
                             modifier = Modifier.size(16.dp)

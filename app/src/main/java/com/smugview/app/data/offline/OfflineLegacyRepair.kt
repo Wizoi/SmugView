@@ -39,7 +39,7 @@ class OfflineLegacyRepair(
  */
 class OfflineStartup(
     private val repair: OfflineLegacyRepair,
-    private val scheduler: OfflineScheduler
+    private val scheduler: OfflineScheduling
 ) {
     suspend fun run() {
         // A failed repair (a database or disk error) leaves the old rows PENDING: not waking the scheduler is then the
