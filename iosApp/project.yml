@@ -16,6 +16,8 @@ targets:
       properties:
         CADisableMinimumFrameDurationOnPhone: true
         SmugMugAPIKey: $(SMUGMUG_API_KEY)
+        BGTaskSchedulerPermittedIdentifiers: ["com.smugview.app.newgalleries"]
+        UIBackgroundModes: ["fetch"]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.smugview.spike
