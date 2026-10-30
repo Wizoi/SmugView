@@ -3,12 +3,20 @@ options:
   bundleIdPrefix: com.smugview
   deploymentTarget:
     iOS: "16.0"
+packages:
+  # The Google Cast sender SDK (decision 2 of docs/design/ios-casting.md: the dynamic flavour). Version read from Google's release notes.
+  GoogleCast:
+    url: https://github.com/googlecast/google-cast-ios-sdk
+    exactVersion: 4.8.6
 targets:
   iosApp:
     type: application
     platform: iOS
     sources:
       - iosApp
+    dependencies:
+      - package: GoogleCast
+        product: GoogleCastDynamic
     # Compose Multiplatform refuses to start without this key (full refresh rate on ProMotion iPhones); found by the CI crash report of 2026-10-30.
     # SmugMugAPIKey is read by IosApp.kt; the build setting SMUGMUG_API_KEY is empty here and set by whoever builds a device test app.
     info:
@@ -16,6 +24,11 @@ targets:
       properties:
         CADisableMinimumFrameDurationOnPhone: true
         SmugMugAPIKey: $(SMUGMUG_API_KEY)
+        # Cast discovery (Google's iOS permissions page): both services, and the sentence shown with the local-network prompt (decision 4).
+        NSBonjourServices:
+          - _googlecast._tcp
+          - _CC1AD845._googlecast._tcp
+        NSLocalNetworkUsageDescription: SmugView looks for Chromecasts and other cast devices on your Wi-Fi so you can show photos on your TV.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.smugview.spike
