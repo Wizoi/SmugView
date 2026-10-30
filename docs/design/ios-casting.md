@@ -1,6 +1,6 @@
 # iOS casting: Google Cast and AirPlay external display (plan for owner sign-off)
 
-Status: **proposed, not approved, no code written.** Written 2026-10-30. Decisions already made by the owner: iOS v1 gets Google Cast
+Status: **approved by the owner on 2026-10-30** (the six decisions in section 8 are settled). Written 2026-10-30. Decisions already made by the owner: iOS v1 gets Google Cast
 (parity with Android) and AirPlay done as an **external-display scene** (the photo viewer on the connected screen, controls on the phone).
 Roku and Fire TV are on the backburner. This replaces `ios-cross-platform-and-app-store.md` 4.8's "no casting in v1".
 
@@ -102,12 +102,11 @@ The screens and `CastController` talk only to the interface. iOS currently uses 
 5. M: external-display scene and `ExternalViewer`.
 6. S/M: the by-hand pass on the iPad and a Chromecast and an Apple TV.
 
-## 8. Decisions for the owner
+## 8. Decisions (all six settled by the owner, 2026-10-30)
 
-1. **Cast button:** reuse our existing device-selector sheet (needs Google's branding rules checked), or Google's `GCKUICastButton`.
-2. **SDK flavour:** dynamic (recommended) or static.
-3. **Data collection:** accept the Cast SDK's declared data types in the App Store privacy form, or decide against shipping Cast.
-4. **Local-network wording** and whether a one-time explanation screen comes before the first scan.
-5. **iOS 27 SDK:** keep the automatic-scene path for now (recommended) or build against the iOS 27 SDK soon.
-6. **Accept that the AirPlay scene is unproven until tried on the iPad with an Apple TV.** If an Apple TV does not deliver the scene, the
-   fallback is plain screen mirroring, which needs no code.
+1. **Cast button: our own device-selector sheet** (the one Android has), not Google's `GCKUICastButton`. We call `startDiscovery` ourselves. Open: confirm Google's branding rules for a custom picker (use Google's Cast icon template) before the store build.
+2. **SDK flavour: dynamic** (`GoogleCastDynamic` through SwiftPM, declared in XcodeGen `packages:`).
+3. **Data collection: ship Cast and declare it.** The App Store privacy answers and our own privacy manifest must list what the Cast SDK's manifest declares (DeviceID, OtherDiagnosticData, ProductInteraction for Analytics and AppFunctionality; required-reason APIs for file timestamps and UserDefaults). The privacy label therefore stops being 'no data collected'.
+4. **Local-network permission: explain first, then scan.** A one-time screen on the first tap of the cast button, then the system prompt. Proposed wording: 'SmugView looks for Chromecasts and other cast devices on your Wi-Fi so you can show photos on your TV.' The same sentence is the `NSLocalNetworkUsageDescription`.
+5. **iOS 27: current SDK, automatic scene.** Add the `UISceneAccessory` registration when we build against the iOS 27 SDK.
+6. **AirPlay scene risk accepted.** Build the external viewer and test it on the iPad with an Apple TV; if the scene never arrives, plain screen mirroring is the fallback.
