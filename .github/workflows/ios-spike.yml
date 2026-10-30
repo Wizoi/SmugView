@@ -1,12 +1,43 @@
 name: iOS spike (shared module)
 
-# Stage 0 of docs/design/ios-cross-platform-and-app-store.md. Runs only on the spike branch and by hand: it proves the shared module
-# (kotlinx.serialization models, Ktor client, Room KMP database and migrations) on the JVM and on the iOS simulator, and records how long
-# the Kotlin/Native build takes. No secret is used: the tests read recorded answers from app/src/test/resources/parity.
+# Stage 0 of docs/design/ios-cross-platform-and-app-store.md. Runs on the spike branch and by hand: it proves the shared module
+# (kotlinx.serialization models, Ktor client, Room KMP database and migrations) on the JVM and on the iOS simulator, runs the real app in a
+# simulator, and records how long the Kotlin/Native build takes. No secret is used: the tests read recorded answers from
+# app/src/test/resources/parity.
+#
+# Cost (measured on run 41090034744, 3-core 7 GB macOS runner): the debug checks take about 8 minutes; the release link took 36 minutes,
+# so it is its own job that runs only on demand, weekly, or when a commit message contains [release-link].
 on:
   push:
     branches: [spike/ios]
+    # Docs-only and Android-only commits do not need the iOS jobs. The tests read recorded answers from app/src/test/resources/parity.
+    paths:
+      - 'shared/**'
+      - 'spikeui/**'
+      - 'iosApp/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'app/src/test/resources/parity/**'
+      - '.github/**'
   workflow_dispatch:
+    inputs:
+      release_link:
+        description: 'Also link the release framework (about 36 minutes)'
+        type: boolean
+        default: false
+      release_binary_cache:
+        description: 'Release link: try kotlin.native.binary.enableReleaseBinaryCache (faster, changes the binary: a timing check, not a size number)'
+        type: boolean
+        default: false
+  schedule:
+    - cron: '17 5 * * 1' # Mondays: the release link still builds
+
+# A newer push replaces a running one. A manual or scheduled run has its own group, so a push does not cancel a 36-minute link.
+concurrency:
+  group: ios-${{ github.event_name == 'push' && 'push' || github.run_id }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -14,6 +45,7 @@ permissions:
 jobs:
   jvm:
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -41,9 +73,11 @@ jobs:
           name: jvm-test-reports
           path: shared/build/reports/tests
 
+  # The macOS jobs wait for the cheap Linux one: a failure there stops them before they spend macOS minutes.
   ios-simulator:
+    needs: jvm
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -72,42 +106,13 @@ jobs:
           end=$(date +%s)
           echo "iosSimulatorArm64Test took $((end - start)) s (exit $status)" | tee -a "$GITHUB_STEP_SUMMARY"
           exit $status
-      # Anyone can read annotations without logging in; build logs need a login. So the useful parts of the log go there.
+      # Anyone can read annotations without logging in; the useful parts of the log go there.
       - name: Put the first errors in the annotations
         if: always()
         run: bash .github/scripts/annotate-log.sh ios-build.log
       - name: Report the iOS test results
         if: always()
         run: python3 .github/scripts/report-tests.py shared/build/test-results iOS-simulator-tests
-      - name: Link the release framework and measure it (Stage 0, step 5)
-        if: steps.tests.outcome == 'success'
-        run: |
-          set -o pipefail
-          start=$(date +%s)
-          ./gradlew :spikeui:linkReleaseFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee ios-link.log
-          end=$(date +%s)
-          kb=$(du -sk spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework | cut -f1)
-          bin=$(find spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework -type f -name Shared -exec du -k {} + | cut -f1 | head -1)
-          echo "::notice title=iOS release link (simulator arm64)::link took $((end - start)) s (warm Gradle, cold K/N link), Shared.framework is ${kb} KB, the binary ${bin} KB"
-      - name: Put the first errors of the release link in the annotations
-        if: always()
-        run: |
-          [ -f ios-link.log ] && bash .github/scripts/annotate-log.sh ios-link.log release-link
-          exit 0
-      - name: Diagnose the Gradle cache
-        if: always()
-        run: |
-          {
-            echo "== Room klibs in the Gradle cache"
-            ls -laR ~/.gradle/caches/modules-2/files-2.1/androidx.room/room-common-iossimulatorarm64 2>&1 | head -30
-            echo "== every room-common klib under ~/.gradle"
-            find ~/.gradle -name "room-common*klib" 2>&1 | head -20
-            echo "== what the resolve task saw"
-            cat shared/build/resolved-klibs.txt 2>&1 | head -20
-            echo "== gradle.properties flags seen by the build"
-            grep -E "ksp|configuration-cache|caching" gradle.properties
-          } > ios-diag.txt 2>&1
-          bash .github/scripts/annotate-log.sh ios-diag.txt "gradle cache"
       - name: Fail the job when the tests failed
         if: steps.tests.outcome == 'failure'
         run: exit 1
@@ -117,15 +122,78 @@ jobs:
           name: ios-test-reports
           path: shared/build/reports/tests
 
-  # Stage 0, step 4: the shared Compose screen inside a tiny Xcode app, run on a simulator, with a screenshot. The PNG is pushed to the
+  # The release framework link (Stage 0, step 5): size and time. Slow (36 minutes on the standard runner), so on demand, weekly, or when a
+  # commit message contains [release-link]. It samples swap use every 30 s: the runner has 7 GB and the build gives the Kotlin/Native
+  # compiler 5 GB, so swapping is the suspect behind the time. The Gradle JVM gets 1.5 GB here so the two do not compete for memory.
+  ios-release-link:
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_link) ||
+      contains(github.event.head_commit.message, '[release-link]')
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cache the Kotlin/Native toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts', 'spikeui/build.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Link the release framework and measure it
+        id: link
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cache_flag=""
+          if [ "${{ inputs.release_binary_cache }}" = "true" ]; then cache_flag="-Pkotlin.native.binary.enableReleaseBinaryCache=true"; fi
+          echo "release binary cache flag: '${cache_flag}'" | tee mem.log
+          sysctl hw.memsize hw.ncpu 2>&1 | tee -a mem.log
+          ( while true; do echo "$(date +%H:%M:%S) $(sysctl -n vm.swapusage)"; sleep 30; done ) >> mem.log 2>&1 &
+          sampler=$!
+          start=$(date +%s)
+          ./gradlew :spikeui:linkReleaseFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache \
+            -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" $cache_flag 2>&1 | tee ios-link.log
+          status=${PIPESTATUS[0]}
+          end=$(date +%s)
+          kill $sampler 2>/dev/null || true
+          vm_stat >> mem.log 2>&1
+          kb=$(du -sk spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework 2>/dev/null | cut -f1)
+          bin=$(find spikeui/build/bin/iosSimulatorArm64/releaseFramework/Shared.framework -type f -name Shared -exec du -k {} + 2>/dev/null | cut -f1 | head -1)
+          echo "::notice title=iOS release link (simulator arm64)::link took $((end - start)) s (exit $status, cache flag '${cache_flag}'), Shared.framework is ${kb:-0} KB, the binary ${bin:-0} KB"
+          exit $status
+      - name: Put the first errors and the swap samples in the annotations
+        if: always()
+        run: |
+          [ -f ios-link.log ] && bash .github/scripts/annotate-log.sh ios-link.log release-link
+          [ -f mem.log ] && bash .github/scripts/annotate-log.sh mem.log release-link-memory
+          exit 0
+      - name: Fail the job when the link failed
+        if: steps.link.outcome == 'failure'
+        run: exit 1
+
+  # Stage 0, step 4 and Stage 2: the real app inside a tiny Xcode app, run on a simulator, with a screenshot. The PNG is pushed to the
   # branch `ios-spike-artifacts` (artifacts need a login to download; a branch can be read by anyone).
   ios-screen:
+    needs: jvm
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 45
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      # The first boot of a simulator spends about 40 s on "data migration". Start it now so that happens while Gradle builds.
+      - name: Start booting a simulator
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -m1 "iPhone" | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          echo "simulator: $UDID" | tee screen-run.log
+          xcrun simctl boot "$UDID" 2>&1 | tee -a screen-run.log
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -158,19 +226,18 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          UDID=$(xcrun simctl list devices available | grep -m1 "iPhone" | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
-          echo "simulator: $UDID" | tee screen-run.log
-          xcrun simctl boot "$UDID" 2>&1 | tee -a screen-run.log
           xcrun simctl bootstatus "$UDID" -b 2>&1 | tee -a screen-run.log
           xcrun simctl install "$UDID" build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app 2>&1 | tee -a screen-run.log
           xcrun simctl launch "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
           sleep 12
           xcrun simctl io "$UDID" screenshot ios-spike-screen.png 2>&1 | tee -a screen-run.log
-          # Why the app is (not) on screen: is it still running, what did it log, did it crash.
-          { echo '--- app still running?'; xcrun simctl spawn "$UDID" launchctl list | grep -i smugview || echo 'NOT RUNNING'; } 2>&1 | tee -a screen-run.log
-          { echo '--- app log (last 2 min)'; xcrun simctl spawn "$UDID" log show --last 2m --style compact --predicate 'process == "iosApp"' | tail -150; } 2>&1 | tee -a screen-run.log
-          { echo '--- crash reports'; for f in ~/Library/Logs/DiagnosticReports/iosApp*; do [ -f "$f" ] && { echo "== $f"; head -c 6000 "$f"; }; done; } 2>&1 | tee -a screen-run.log
           ls -la ios-spike-screen.png | tee -a screen-run.log
+          # When the app is not running it crashed or quit: say why (its process log and any crash report).
+          if ! xcrun simctl spawn "$UDID" launchctl list | grep -qi "UIKitApplication:com.smugview"; then
+            echo '--- APP NOT RUNNING after 12 s' | tee -a screen-run.log
+            { echo '--- app log (last 3 min)'; xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "iosApp"' | tail -150; } 2>&1 | tee -a screen-run.log
+            { echo '--- crash reports'; for f in ~/Library/Logs/DiagnosticReports/iosApp* "$HOME"/Library/Logs/DiagnosticReports/Retired/iosApp*; do [ -f "$f" ] && { echo "== $f"; head -c 6000 "$f"; }; done; } 2>&1 | tee -a screen-run.log
+          fi
       - name: Put the first errors in the annotations
         if: always()
         run: |
@@ -225,7 +292,7 @@ jobs:
         run: |
           set -o pipefail
           start=$(date +%s)
-          ./gradlew :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee ipa-framework.log
+          ./gradlew :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" 2>&1 | tee ipa-framework.log
           mid=$(date +%s)
           brew install xcodegen
           (cd iosApp && xcodegen generate)
