@@ -50,6 +50,8 @@ kotlin {
             api("androidx.paging:paging-common:3.5.3")
             implementation("io.ktor:ktor-client-content-negotiation:3.0.3")
             implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.3")
+            // QR encoding in common code (replaces ZXing, which is Java-only).
+            implementation("io.github.g0dkar:qrcode-kotlin:4.5.0")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

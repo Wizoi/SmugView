@@ -2,9 +2,7 @@ package com.smugview.app.ui.component
 
 import com.smugview.app.util.Toaster
 import com.smugview.app.ui.icons.AppIcons
-import android.content.Intent
-import android.graphics.Bitmap
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,19 +14,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.smugview.app.share.qrModules
 import com.smugview.app.share.ShareContent
 import com.smugview.app.ui.text.UserMessages
 import com.smugview.app.ui.theme.NeonBlue
@@ -58,8 +55,9 @@ fun QrShareDialog(
     val clipboardManager = LocalClipboardManager.current
     val hasLink = ShareContent.isShareable(url)
 
-    val qrBitmap by produceState<Bitmap?>(initialValue = null, url) {
-        value = if (hasLink) withContext(Dispatchers.Default) { generateQrCodeBitmap(url) } else null
+    // null while encoding; QrResult(null) when the address could not be encoded.
+    val qr by produceState<QrResult?>(initialValue = null, url) {
+        value = if (hasLink) withContext(Dispatchers.Default) { QrResult(qrModules(url)) } else null
     }
 
     AlertDialog(
@@ -87,7 +85,7 @@ fun QrShareDialog(
                         .background(Color.White),
                     contentAlignment = Alignment.Center
                 ) {
-                    val bitmap = qrBitmap
+                    val modules = qr?.modules
                     when {
                         !hasLink -> Text(
                             text = UserMessages.SHARE_NO_LINK,
@@ -96,12 +94,19 @@ fun QrShareDialog(
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(16.dp)
                         )
-                        bitmap != null -> Image(
-                            bitmap = bitmap.asImageBitmap(),
+                        modules != null -> QrCanvas(
+                            modules = modules,
                             contentDescription = "QR code for $title",
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(12.dp)
+                        )
+                        qr != null -> Text(
+                            text = UserMessages.SHARE_NO_LINK,
+                            color = Color.Black,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(16.dp)
                         )
                         else -> CircularProgressIndicator(color = NeonBlue)
                     }
@@ -187,17 +192,19 @@ fun QrShareDialog(
     )
 }
 
-/** Renders [url] as a black-on-white QR bitmap, or null if it couldn't be encoded (e.g. blank). */
-private fun generateQrCodeBitmap(url: String, sizePx: Int = 512): Bitmap? {
-    if (url.isBlank()) return null
-    return try {
-        val hints = mapOf(EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M, EncodeHintType.MARGIN to 0)
-        val bitMatrix = QRCodeWriter().encode(url, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
-        val pixels = IntArray(sizePx * sizePx) { i ->
-            if (bitMatrix[i % sizePx, i / sizePx]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+private class QrResult(val modules: Array<BooleanArray>?)
+
+/** Draws [modules] as black squares on the white box behind it. */
+@Composable
+private fun QrCanvas(modules: Array<BooleanArray>, contentDescription: String, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.semantics { this.contentDescription = contentDescription }) {
+        val count = modules.size
+        val cell = size.minDimension / count
+        val module = Size(cell, cell)
+        for (row in 0 until count) {
+            for (col in 0 until modules[row].size) {
+                if (modules[row][col]) drawRect(Color.Black, Offset(col * cell, row * cell), module)
+            }
         }
-        Bitmap.createBitmap(pixels, sizePx, sizePx, Bitmap.Config.RGB_565)
-    } catch (e: Exception) {
-        null
     }
 }
