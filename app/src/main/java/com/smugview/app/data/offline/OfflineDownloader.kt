@@ -236,7 +236,7 @@ class OfflineDownloader(
             }
 
             while (true) {
-                when (val f = fetch(current, write.part, reResolved)) {
+                when (val f = fetch(current, java.io.File(write.part), reResolved)) {
                     is Fetch.Ok -> {
                         val bad = DownloadFailure.verify(
                             current.expectedBytes, f.fetched.bytes, current.md5, f.fetched.md5,

@@ -47,7 +47,7 @@ class OfflineStoreTest {
     }
 
     private fun store(runId: String = "run0001") =
-        OfflineStore(db, filesDir, runId = runId, clock = { now }, freeBytes = { free })
+        OfflineStore(db, filesDir.path, runId = runId, clock = { now }, freeBytes = { free })
 
     private val sql get() = db.openHelper.writableDatabase
     private val dao get() = db.offlineDao()
@@ -60,7 +60,7 @@ class OfflineStoreTest {
         val bytes = FakeOriginals.bytes(key)
         s.request(key, albumKey = OfflineFixture.GALLERY_ALBUM_KEY, expectedBytes = bytes.size.toLong(), md5 = FakeOriginals.md5(key))
         val w = got(s.beginWrite(OfflineStore.fileKeyOf(key)))
-        w.part.writeBytes(bytes)
+        w.partFile.writeBytes(bytes)
         s.commit(w, "jpg", bytes.size.toLong())
     }
 
@@ -129,11 +129,11 @@ class OfflineStoreTest {
         val key = OfflineFixture.PENDING
         s.request(key)
         val w = got(s.beginWrite(OfflineStore.fileKeyOf(key)))
-        w.part.writeBytes(FakeOriginals.bytes(key))
+        w.partFile.writeBytes(FakeOriginals.bytes(key))
         sql.execSQL("DELETE FROM collection_photos WHERE imageKey = '$key'") // the user removed it mid-download
         assertEquals(OfflineStore.CommitResult.Unreferenced, s.commit(w, "jpg", 1))
         assertFalse(finalFile(key).exists())
-        assertFalse(w.part.exists())
+        assertFalse(w.partFile.exists())
         assertNull(dao.getFile(OfflineStore.fileKeyOf(key)))
     }
 
@@ -172,8 +172,8 @@ class OfflineStoreTest {
         val key = OfflineFixture.PENDING
         dead.request(key)
         val w = got(dead.beginWrite(OfflineStore.fileKeyOf(key)))
-        w.part.writeBytes(ByteArray(1234))
-        assertTrue(w.part.exists())
+        w.partFile.writeBytes(ByteArray(1234))
+        assertTrue(w.partFile.exists())
 
         val fresh = store("freshrun")
         fresh.recover()
@@ -190,9 +190,9 @@ class OfflineStoreTest {
         val key = OfflineFixture.PENDING
         s.request(key)
         val w = got(s.beginWrite(OfflineStore.fileKeyOf(key)))
-        w.part.writeBytes(ByteArray(10))
+        w.partFile.writeBytes(ByteArray(10))
         s.recover()
-        assertTrue(w.part.exists())
+        assertTrue(w.partFile.exists())
         assertEquals("DOWNLOADING", dao.getFile(OfflineStore.fileKeyOf(key))!!.state)
     }
 
@@ -202,8 +202,8 @@ class OfflineStoreTest {
         val dead = store("deadrun2")
         dead.request(key, expectedBytes = bytes.size.toLong(), md5 = FakeOriginals.md5(key))
         val w = got(dead.beginWrite(OfflineStore.fileKeyOf(key)))
-        w.part.writeBytes(bytes)
-        assertTrue(w.part.renameTo(finalFile(key))) // the process died right after the rename
+        w.partFile.writeBytes(bytes)
+        assertTrue(w.partFile.renameTo(finalFile(key))) // the process died right after the rename
 
         store("freshrun").recover()
         val row = dao.getFile(OfflineStore.fileKeyOf(key))!!
@@ -220,8 +220,8 @@ class OfflineStoreTest {
         dead.request(key, expectedBytes = bytes.size.toLong(), md5 = FakeOriginals.md5(key))
         val w = got(dead.beginWrite(OfflineStore.fileKeyOf(key)))
         // right size, wrong content: same length, different bytes
-        w.part.writeBytes(ByteArray(bytes.size) { 7 })
-        w.part.renameTo(finalFile(key))
+        w.partFile.writeBytes(ByteArray(bytes.size) { 7 })
+        w.partFile.renameTo(finalFile(key))
 
         val fresh = store("freshrun")
         fresh.recover()

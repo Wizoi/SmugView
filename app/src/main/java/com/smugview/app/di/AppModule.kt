@@ -266,7 +266,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideOfflineStore(database: AppDatabase, @ApplicationContext context: Context): com.smugview.app.data.offline.OfflineStore =
-        com.smugview.app.data.offline.OfflineStore(database, context.filesDir)
+        com.smugview.app.data.offline.OfflineStore(database, context.filesDir.path)
 
     @Provides
     @Singleton

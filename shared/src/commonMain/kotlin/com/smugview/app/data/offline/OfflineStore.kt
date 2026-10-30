@@ -1,6 +1,6 @@
 package com.smugview.app.data.offline
 
-import androidx.room.withTransaction
+import com.smugview.app.data.db.inTransaction
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.OfflineFile
 import com.smugview.app.data.db.OfflineGallery
@@ -11,11 +11,11 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.IOException
-import java.io.RandomAccessFile
-import java.security.MessageDigest
-import java.util.UUID
+import com.smugview.app.data.db.nowMillis
+import com.smugview.app.util.ioDispatcher
+import kotlinx.io.IOException
+import kotlin.concurrent.Volatile
+import kotlin.random.Random
 
 /**
  * The only owner of offline files (phase 5, design 2.1-2.4): their names, their rows in `offline_files`, and the
@@ -39,16 +39,19 @@ import java.util.UUID
  */
 class OfflineStore(
     private val db: AppDatabase,
-    private val filesDir: File,
-    val runId: String = UUID.randomUUID().toString().replace("-", ""),
-    private val clock: () -> Long = System::currentTimeMillis,
-    private val freeBytes: () -> Long = { filesDir.usableSpace },
-    private val io: CoroutineDispatcher = Dispatchers.IO
+    /** The app's files directory (a path with `/` separators); everything lives under it. */
+    private val filesDir: String,
+    val runId: String = newRunId(),
+    private val clock: () -> Long = ::nowMillis,
+    freeBytes: (() -> Long)? = null,
+    private val io: CoroutineDispatcher = ioDispatcher,
+    private val fs: FileOps = createPlatformFileOps()
 ) {
+    private val freeBytes: () -> Long = freeBytes ?: { fs.usableSpace(filesDir) }
     private val dao get() = db.offlineDao()
-    private val offlineDir = File(filesDir, DIR)
-    private val tmpDir = File(offlineDir, ".tmp")
-    private val legacyDir = File(filesDir, LEGACY_DIR)
+    private val offlineDir = join(filesDir, DIR)
+    private val tmpDir = join(offlineDir, ".tmp")
+    private val legacyDir = join(filesDir, LEGACY_DIR)
 
     /** Serializes everything that touches the files, so a collector never races a commit. */
     private val fileLock = Mutex()
@@ -56,7 +59,7 @@ class OfflineStore(
     @Volatile private var recovered = false
 
     /** A claimed row and the temp file it is being written to. */
-    class Write internal constructor(val fileKey: String, val imageKey: String, val part: File)
+    class Write internal constructor(val fileKey: String, val imageKey: String, val part: String)
 
     sealed interface CommitResult {
         data class Done(val relPath: String, val bytes: Long) : CommitResult
@@ -117,8 +120,8 @@ class OfflineStore(
      * listing was on the wire): nothing is written then. All of it or none of it: a failed listing never gets here.
      */
     suspend fun applyListing(gallery: OfflineGallery, images: List<ListedImage>, ilu: String?): Boolean =
-        db.withTransaction {
-            val current = dao.getGallery(gallery.collectionId, gallery.albumKey) ?: return@withTransaction false
+        db.inTransaction {
+            val current = dao.getGallery(gallery.collectionId, gallery.albumKey) ?: return@inTransaction false
             val now = clock()
             dao.deleteGalleryItems(current.collectionId, current.albumKey)
             val seen = HashSet<String>()
@@ -215,9 +218,9 @@ class OfflineStore(
         val row = dao.getFile(fileKey) ?: return@withContext null
         if (!isValidKey(row.imageKey)) return@withContext null
         if (dao.claim(fileKey, runId, clock()) == 0) return@withContext null
-        tmpDir.mkdirs()
-        val part = File(tmpDir, "${row.imageKey}.orig.$runId.part")
-        part.delete()
+        fs.mkdirs(tmpDir)
+        val part = join(tmpDir, "${row.imageKey}.orig.$runId.part")
+        fs.delete(part)
         Write(row.fileKey, row.imageKey, part)
     }
 
@@ -228,40 +231,33 @@ class OfflineStore(
     suspend fun commit(write: Write, ext: String, bytes: Long): CommitResult =
         withContext(NonCancellable + io) {
             fileLock.withLock {
-                RandomAccessFile(write.part, "rw").use { it.fd.sync() }
+                fs.sync(write.part)
                 var replaced: String? = null
-                val result = db.withTransaction {
+                val result = db.inTransaction {
                     val row = dao.getFile(write.fileKey)
                     val ours = row != null && row.state == DOWNLOADING && row.claim == runId
                     if (!ours || !dao.isReferenced(write.imageKey)) {
-                        write.part.delete()
+                        fs.delete(write.part)
                         if (ours) dao.deleteFile(write.fileKey)
-                        return@withTransaction CommitResult.Unreferenced
+                        return@inTransaction CommitResult.Unreferenced
                     }
                     val rel = relPathOf(write.imageKey, safeExt(ext))
-                    val final = File(filesDir, rel)
+                    val final = join(filesDir, rel)
                     replaced = row!!.relPath?.takeIf { it != rel }
                     dao.markDone(write.fileKey, runId, rel, bytes, clock())
                     // If this throws, the transaction rolls back and the row stays DOWNLOADING (the caller fails it).
                     // REPLACE_EXISTING: a photo whose MD5 changed is committed over its old file (5-7).
-                    try {
-                        java.nio.file.Files.move(
-                            write.part.toPath(), final.toPath(),
-                            java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE
-                        )
-                    } catch (e: java.nio.file.FileSystemException) {
-                        throw IOException("rename to ${final.name} failed", e)
-                    }
+                    fs.moveReplacing(write.part, final)
                     CommitResult.Done(rel, bytes)
                 }
-                replaced?.let { File(filesDir, it).delete() }
+                replaced?.let { fs.delete(join(filesDir, it)) }
                 result
             }
         }
 
     /** Gives the claim back (cancel): the `.part` is deleted and the row is PENDING again. */
     suspend fun abandon(write: Write) = withContext(NonCancellable + io) {
-        write.part.delete()
+        fs.delete(write.part)
         val row = dao.getFile(write.fileKey)
         if (row != null && row.state == DOWNLOADING && row.claim == runId) dao.markPending(write.fileKey, clock())
     }
@@ -271,8 +267,8 @@ class OfflineStore(
      * failure [Failure.countsAsAttempt]; `nextAttemptAt` comes from [DownloadFailure.nextAttemptDelayMs]. A DONE row
      * is never changed.
      */
-    suspend fun fail(fileKey: String, failure: Failure, part: File? = null) = withContext(NonCancellable + io) {
-        part?.delete()
+    suspend fun fail(fileKey: String, failure: Failure, part: String? = null) = withContext(NonCancellable + io) {
+        part?.let { fs.delete(it) }
         val row = dao.getFile(fileKey) ?: return@withContext
         val delay = DownloadFailure.nextAttemptDelayMs(failure, row.attempts)
         val now = clock()
@@ -312,8 +308,8 @@ class OfflineStore(
         fileLock.withLock {
             val keep = dao.doneRelPaths().toSet()
             var n = 0
-            offlineDir.listFiles()?.forEach { f ->
-                if (f.isFile && "$DIR/${f.name}" !in keep && f.delete()) n++
+            for (name in fs.listFiles(offlineDir)) {
+                if ("$DIR/$name" !in keep && fs.delete(join(offlineDir, name))) n++
             }
             n
         }
@@ -334,31 +330,30 @@ class OfflineStore(
         fileLock.withLock {
             for (row in dao.foreignDownloading(runId)) {
                 val adopted = adoptable(row)
-                if (adopted != null) dao.adoptDone(row.fileKey, "$DIR/${adopted.name}", adopted.length(), clock())
+                if (adopted != null) dao.adoptDone(row.fileKey, "$DIR/$adopted", fs.length(join(offlineDir, adopted)), clock())
                 else dao.markPending(row.fileKey, clock())
             }
-            tmpDir.listFiles()?.forEach { f ->
-                if (f.isFile && f.name.endsWith(".part") && claimOf(f.name) != runId) f.delete()
+            for (name in fs.listFiles(tmpDir)) {
+                if (name.endsWith(".part") && claimOf(name) != runId) fs.delete(join(tmpDir, name))
             }
         }
     }
 
     /** The file a dead process renamed but did not commit, when it is verifiably the whole thing. */
-    private fun adoptable(row: OfflineFile): File? {
+    private fun adoptable(row: OfflineFile): String? {
         if (!isValidKey(row.imageKey)) return null
         val size = row.expectedBytes ?: return null
         val prefix = "${row.imageKey}.orig."
-        val candidates = offlineDir.listFiles { f -> f.isFile && f.name.startsWith(prefix) } ?: return null
-        return candidates.firstOrNull { f ->
-            f.length() == size && (row.md5 == null || md5Hex(f).equals(row.md5, ignoreCase = true))
+        val candidates = fs.listFiles(offlineDir).filter { it.startsWith(prefix) }
+        return candidates.firstOrNull { name ->
+            val path = join(offlineDir, name)
+            fs.length(path) == size && (row.md5 == null || fs.md5Hex(path).equals(row.md5, ignoreCase = true))
         }
     }
 
     private fun deleteUnderOffline(relPath: String) {
-        val f = File(filesDir, relPath)
-        val base = offlineDir.canonicalFile
-        val canon = f.canonicalFile
-        if (canon.parentFile == base) canon.delete()
+        val f = join(filesDir, relPath)
+        if (fs.isDirectChild(offlineDir, f)) fs.delete(f)
     }
 
     // ---- legacy files of the pre-17 code (5-8, design 6.2, Q6) ------------------------------------------------
@@ -369,7 +364,7 @@ class OfflineStore(
     )
 
     /** Test seam: called after each settled row, so a test can "kill the process" between two rows. */
-    @Volatile internal var afterLegacyStep: (() -> Unit)? = null
+    @Volatile var afterLegacyStep: (() -> Unit)? = null
 
     /**
      * Settles what the old code left, once (the caller keeps the `offlineLegacyRepaired` flag) and silently (Q6 a):
@@ -420,22 +415,19 @@ class OfflineStore(
             val row = dao.getFile(fileKey) ?: return@withLock false
             if (row.state != PENDING && row.state != FAILED) return@withLock false
             if (!isValidKey(row.imageKey)) return@withLock false
-            val legacy = File(legacyDir, "${row.imageKey}.jpg")
-            if (!legacy.isFile) return@withLock false
-            val size = legacy.length()
+            val legacy = join(legacyDir, "${row.imageKey}.jpg")
+            if (!fs.isFile(legacy)) return@withLock false
+            val size = fs.length(legacy)
             val known = row.expectedBytes
             val whole = if (known != null) size == known else size > 0 && row.sourceUrl != null && looksLikeWholeJpeg(legacy)
             if (!whole) return@withLock false
             val rel = relPathOf(row.imageKey, "jpg")
             try {
-                offlineDir.mkdirs()
-                db.withTransaction {
-                    if (dao.adoptLegacy(fileKey, rel, size, clock()) == 0) return@withTransaction false
+                fs.mkdirs(offlineDir)
+                db.inTransaction {
+                    if (dao.adoptLegacy(fileKey, rel, size, clock()) == 0) return@inTransaction false
                     // If the move throws the transaction rolls back and the row is unchanged.
-                    java.nio.file.Files.move(
-                        legacy.toPath(), File(filesDir, rel).toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE
-                    )
+                    fs.moveReplacing(legacy, join(filesDir, rel))
                     true
                 }
             } catch (e: IOException) {
@@ -446,7 +438,7 @@ class OfflineStore(
 
     /** A gallery was just listed: any of its photos the old code downloaded is adopted by key (size known now). */
     suspend fun adoptLegacyFiles(imageKeys: Collection<String>): Int {
-        if (!legacyDir.isDirectory) return 0
+        if (fs.listFiles(legacyDir).isEmpty()) return 0
         var n = 0
         for (key in imageKeys) if (isValidKey(key) && adoptLegacyFile(fileKeyOf(key))) n++
         return n
@@ -458,32 +450,34 @@ class OfflineStore(
      */
     suspend fun cleanLegacyFiles(): Int = withContext(io) {
         fileLock.withLock {
-            if (!legacyDir.exists() || dao.countUnsettledGalleries() > 0) return@withLock 0
+            val names = fs.listFiles(legacyDir)
+            if (names.isEmpty() && !fs.isFile(legacyDir) || dao.countUnsettledGalleries() > 0) return@withLock 0
             var n = 0
-            legacyDir.listFiles()?.forEach { if (it.isFile && it.delete()) n++ }
-            legacyDir.delete()
+            for (name in names) if (fs.delete(join(legacyDir, name))) n++
+            fs.delete(legacyDir)
             n
         }
     }
 
     /** A JPEG that starts with SOI and has EOI near its end: a download the old code was killed in fails this. */
-    private fun looksLikeWholeJpeg(file: File): Boolean = try {
-        RandomAccessFile(file, "r").use { raf ->
-            if (raf.length() < 4) return@use false
-            val head = ByteArray(2).also { raf.readFully(it) }
-            if (head[0] != 0xFF.toByte() || head[1] != 0xD8.toByte()) return@use false
-            val tailLen = minOf(raf.length(), 1024L).toInt()
-            val tail = ByteArray(tailLen)
-            raf.seek(raf.length() - tailLen)
-            raf.readFully(tail)
-            (0 until tailLen - 1).any { tail[it] == 0xFF.toByte() && tail[it + 1] == 0xD9.toByte() }
+    private fun looksLikeWholeJpeg(path: String): Boolean = try {
+        val length = fs.length(path)
+        if (length < 4) false
+        else {
+            val head = fs.readAt(path, 0, 2)
+            if (head.size < 2 || head[0] != 0xFF.toByte() || head[1] != 0xD8.toByte()) false
+            else {
+                val tailLen = minOf(length, 1024L).toInt()
+                val tail = fs.readAt(path, length - tailLen, tailLen)
+                (0 until tail.size - 1).any { tail[it] == 0xFF.toByte() && tail[it + 1] == 0xD9.toByte() }
+            }
         }
     } catch (e: IOException) {
         false
     }
 
     /** A path under `filesDir` for a stored `relPath` (readers and tests). */
-    fun resolve(relPath: String): File = File(filesDir, relPath)
+    fun resolve(relPath: String): String = join(filesDir, relPath)
 
     companion object {
         const val DIR = "offline"
@@ -539,20 +533,10 @@ class OfflineStore(
         }
 
         /** `{imageKey}.orig.{claim}.part` -> claim. */
-        internal fun claimOf(partName: String): String =
+        fun claimOf(partName: String): String =
             partName.removeSuffix(".part").substringAfterLast('.')
 
-        fun md5Hex(file: File): String {
-            val md = MessageDigest.getInstance("MD5")
-            file.inputStream().use { input ->
-                val buf = ByteArray(64 * 1024)
-                while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    md.update(buf, 0, n)
-                }
-            }
-            return md.digest().joinToString("") { "%02x".format(it) }
-        }
+        /** A fresh id for this process's claims (32 hex characters). */
+        fun newRunId(): String = buildString { repeat(32) { append("0123456789abcdef"[Random.nextInt(16)]) } }
     }
 }

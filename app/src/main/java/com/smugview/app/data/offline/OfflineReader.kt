@@ -42,20 +42,22 @@ class OfflineReader(
 
     class DeleteConfirm(val photos: Int, val bytes: Long, val text: String)
 
+    private fun fileOf(relPath: String): File = File(store.resolve(relPath))
+
     /** Every saved photo and where it is. One query for the whole app. */
     fun localFiles(): Flow<Map<String, File>> =
-        dao.doneFiles().map { rows -> rows.associate { it.imageKey to store.resolve(it.relPath) } }
+        dao.doneFiles().map { rows -> rows.associate { it.imageKey to fileOf(it.relPath) } }
 
     /** The saved file of [imageKey], or null when it is not (completely) saved or the file is gone. */
     suspend fun localFile(imageKey: String): File? {
         val row = dao.doneFileOf(imageKey) ?: return null
-        return store.resolve(row.relPath ?: return null).takeIf { it.isFile && it.length() > 0 }
+        return fileOf(row.relPath ?: return null).takeIf { it.isFile && it.length() > 0 }
     }
 
     /** The saved copy of [imageKey] with what its row knew (title, date, format), or null. */
     suspend fun savedPhoto(imageKey: String): SavedPhoto? {
         val row = dao.doneFileOf(imageKey) ?: return null
-        val file = store.resolve(row.relPath ?: return null)
+        val file = fileOf(row.relPath ?: return null)
         return if (file.isFile && file.length() > 0) SavedPhoto(row, file) else null
     }
 
@@ -81,7 +83,7 @@ class OfflineReader(
     /** The saved photos of the kept gallery [albumKey] whose files exist, in listing order; empty when none. */
     suspend fun savedGallery(albumKey: String): List<SavedPhoto> =
         dao.savedPhotosOfGallery(albumKey).mapNotNull { row ->
-            val file = store.resolve(row.relPath ?: return@mapNotNull null)
+            val file = fileOf(row.relPath ?: return@mapNotNull null)
             if (file.isFile && file.length() > 0) SavedPhoto(row, file) else null
         }
 

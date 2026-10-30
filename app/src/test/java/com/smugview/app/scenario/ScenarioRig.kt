@@ -65,7 +65,7 @@ class ScenarioRig(
 
     /** The offline writers over this rig's database; the scheduler is a mock WorkManager (no pass runs here). */
     val offlineFilesDir: java.io.File = java.nio.file.Files.createTempDirectory("smugview-rig-files").toFile()
-    val offlineStore = com.smugview.app.data.offline.OfflineStore(db, offlineFilesDir, freeBytes = { 50L shl 30 })
+    val offlineStore = com.smugview.app.data.offline.OfflineStore(db, offlineFilesDir.path, freeBytes = { 50L shl 30 })
     val settings = com.smugview.app.data.offline.InMemoryOfflineSettings()
     val reader = com.smugview.app.data.offline.OfflineReader(db, offlineStore, settings)
     private fun offline() = com.smugview.app.data.offline.OfflineCollections(
