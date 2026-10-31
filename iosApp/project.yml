@@ -16,6 +16,14 @@ targets:
       properties:
         CADisableMinimumFrameDurationOnPhone: true
         SmugMugAPIKey: $(SMUGMUG_API_KEY)
+        # Casting: declare the external display scene role. No phone-scene entry is listed, so SwiftUI keeps its own; the delegate adaptor
+        # (ExternalSceneDelegate.swift) supplies the configuration. Unverified how Xcode merges this with the generated manifest.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleExternalDisplayNonInteractive:
+              - UISceneConfigurationName: External Display
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).ExternalSceneDelegate
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.smugview.spike
