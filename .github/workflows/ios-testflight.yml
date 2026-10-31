@@ -18,6 +18,10 @@ on:
         description: 'Added to the run number to form the build number (CFBundleVersion). Leave 0 unless a build number was already used.'
         type: string
         default: '0'
+      reuse_archive_run:
+        description: 'Run id of an earlier run of this workflow whose unsigned archive to reuse (skips the 25 minute link and archive). Empty: build.'
+        type: string
+        default: ''
 
 # Two uploads must not run at once, and a running upload is never cancelled by a newer one.
 concurrency:
@@ -26,6 +30,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   testflight:
@@ -110,11 +115,13 @@ jobs:
           echo "::notice title=Versions::marketing version $mv, build number $build"
 
       - name: Link the release framework for a device
+        if: inputs.reuse_archive_run == ''
         run: |
           ./gradlew :shared:assembleIosArm64MainResources :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache \
             -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
 
       - name: Generate the Xcode project
+        if: inputs.reuse_archive_run == ''
         run: |
           brew install xcodegen
           (cd iosApp && xcodegen generate)
@@ -124,24 +131,43 @@ jobs:
       # no devices"), and the account has none. A store build needs no development profile, so the archive is unsigned and the export step signs
       # it with the cloud-managed Apple Distribution certificate and an App Store profile.
       - name: Archive without signing
+        if: inputs.reuse_archive_run == ''
         env:
           SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_IOS_KEY }}
         run: |
           set -o pipefail
           xcodebuild archive             -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/SmugView.xcarchive"             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             DEVELOPMENT_TEAM="$TEAM_ID"             PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"             INFOPLIST_KEY_CFBundleDisplayName=SmugView             MARKETING_VERSION="$MARKETING_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"             SMUGMUG_API_KEY="$SMUGMUG_API_KEY" 2>&1 | tee archive.log
 
-      # Run 41209064953: App Store Connect rejected iosApp.app/Frameworks/GoogleCast.framework as badly signed. The Cast SDK is the STATIC product, so
-      # the code is already inside the app binary and this copy is only a leftover; a static library cannot carry a valid signature. Remove it.
-      - name: Remove a leftover static Cast framework from the archive
+      - name: Keep the unsigned archive for reruns
+        if: inputs.reuse_archive_run == ''
+        run: tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/unsigned-archive.tgz" SmugView.xcarchive
+      - uses: actions/upload-artifact@v6
+        if: inputs.reuse_archive_run == ''
+        with:
+          name: unsigned-archive
+          path: ${{ runner.temp }}/unsigned-archive.tgz
+          retention-days: 2
+      - name: Fetch the unsigned archive of an earlier run
+        if: inputs.reuse_archive_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          gh run download "${{ inputs.reuse_archive_run }}" --repo "$GITHUB_REPOSITORY" -n unsigned-archive -D "$RUNNER_TEMP/reuse"
+          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/reuse/unsigned-archive.tgz"
+          ls "$RUNNER_TEMP/SmugView.xcarchive/Products/Applications"
+
+      # Runs 41209064953 and 41216646750: App Store Connect rejected iosApp.app/Frameworks/GoogleCast.framework as not properly signed. It is a
+      # DYNAMIC library (Mach-O shared library), so it has to stay; but the archive is unsigned and the export step signs only the app itself.
+      # Experiment: give every embedded framework a signature first (ad hoc), so the export has something to replace with the distribution one.
+      - name: Give embedded frameworks an ad hoc signature
         run: |
           app="$RUNNER_TEMP/SmugView.xcarchive/Products/Applications/iosApp.app"
-          ls "$app/Frameworks" 2>/dev/null || echo "(no Frameworks directory)"
-          fw="$app/Frameworks/GoogleCast.framework"
-          if [ -d "$fw" ]; then
-            file "$fw/GoogleCast" || true
-            if file "$fw/GoogleCast" | grep -q "ar archive"; then rm -rf "$fw"; echo "removed the static GoogleCast.framework"
-            else echo "::warning title=GoogleCast.framework is not static::left in place; it must be signed"; fi
-          fi
+          for fw in "$app"/Frameworks/*.framework; do
+            [ -d "$fw" ] || continue
+            file "$fw/$(basename "$fw" .framework)" | cut -c1-200 || true
+            codesign --force --sign - "$fw" && echo "ad hoc signed $(basename "$fw")"
+          done
 
       # Two steps, so a failure says which stage broke: (1) export a signed .ipa (signing through the API key), (2) upload it. Earlier drafts used
       # `destination: upload` in one step, but an Apple Developer Forums thread (682091) says an API key does not work with that destination
