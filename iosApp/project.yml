@@ -31,6 +31,8 @@ targets:
         NSLocalNetworkUsageDescription: SmugView looks for Chromecasts and other cast devices on your Wi-Fi so you can show photos on your TV.
         NSPhotoLibraryAddUsageDescription: SmugView saves the photos you download to your photo library.
         BGTaskSchedulerPermittedIdentifiers: ["com.smugview.app.newgalleries", "com.smugview.app.offline"]
+        # The app only uses standard HTTPS, which is exempt from export documentation; this stops App Store Connect asking at every upload.
+        ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes: ["fetch", "processing"]
         # Casting: declare the external display scene role. No phone-scene entry is listed, so SwiftUI keeps its own; the delegate adaptor
         # (ExternalSceneDelegate.swift) supplies the configuration. Unverified how Xcode merges this with the generated manifest.
@@ -42,11 +44,12 @@ targets:
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).ExternalSceneDelegate
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.smugview.spike
+        PRODUCT_BUNDLE_IDENTIFIER: com.smugview.app
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_CFBundleDisplayName: SmugView spike
+        INFOPLIST_KEY_CFBundleDisplayName: SmugView
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.0"
         SMUGMUG_API_KEY: ""
         CODE_SIGNING_ALLOWED: NO

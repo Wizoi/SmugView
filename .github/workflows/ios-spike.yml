@@ -252,11 +252,11 @@ jobs:
           # First launch: open a public site (the Hub's own featured one, so no one's galleries are shown) as if tapped. The app saves it
           # as the active site once its profile loads. Then relaunch: a returning user opens straight into that site, which is the screen
           # worth a screenshot (a fresh launch with no saved site shows the Hub).
-          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch --terminate-running-process --stdout="$PWD/app-first-stdout.log" --stderr="$PWD/app-first-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
+          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch --terminate-running-process --stdout="$PWD/app-first-stdout.log" --stderr="$PWD/app-first-stderr.log" "$UDID" com.smugview.app 2>&1 | tee -a screen-run.log
           sleep 20
-          xcrun simctl terminate "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log || true
+          xcrun simctl terminate "$UDID" com.smugview.app 2>&1 | tee -a screen-run.log || true
           sleep 2
-          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a screen-run.log
+          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" "$UDID" com.smugview.app 2>&1 | tee -a screen-run.log
           sleep 25
           xcrun simctl io "$UDID" screenshot ios-spike-screen.png 2>&1 | tee -a screen-run.log
           ls -la ios-spike-screen.png | tee -a screen-run.log
