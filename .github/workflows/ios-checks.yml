@@ -75,16 +75,16 @@ jobs:
         continue-on-error: true
         run: |
           APP=build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
-          xcrun simctl uninstall "$UDID" com.smugview.spike 2>/dev/null || true
+          xcrun simctl uninstall "$UDID" com.smugview.app 2>/dev/null || true
           xcrun simctl install "$UDID" "$APP" 2>&1 | tee -a checks-run.log
           # The route is opened by the app's DEMO_ROUTE hook 3 s after start, once the site is selected.
           SIMCTL_CHILD_SMUGVIEW_DEBUG=1 SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=Tutorial \
             SIMCTL_CHILD_SMUGVIEW_DEMO_ROUTE=photo_detail/wmGrZV/XqnrDcz SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK=video \
-            xcrun simctl launch --terminate-running-process --stdout="$PWD/video-stdout.log" --stderr="$PWD/video-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a checks-run.log
+            xcrun simctl launch --terminate-running-process --stdout="$PWD/video-stdout.log" --stderr="$PWD/video-stderr.log" "$UDID" com.smugview.app 2>&1 | tee -a checks-run.log
           sleep 12
           xcrun simctl io "$UDID" screenshot video-check-screen.png 2>&1 | tee -a checks-run.log || true
           sleep 28
-          xcrun simctl terminate "$UDID" com.smugview.spike 2>&1 | tee -a checks-run.log || true
+          xcrun simctl terminate "$UDID" com.smugview.app 2>&1 | tee -a checks-run.log || true
           echo '--- video trace'; grep 'smugview-check\|smugview-debug' video-stdout.log || echo '(no trace lines at all)'
           python3 - <<'PY'
           import re, sys
@@ -127,13 +127,13 @@ jobs:
         run: |
           APP=build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
           # A fresh install: no database, no earlier files.
-          xcrun simctl uninstall "$UDID" com.smugview.spike 2>/dev/null || true
+          xcrun simctl uninstall "$UDID" com.smugview.app 2>/dev/null || true
           xcrun simctl install "$UDID" "$APP" 2>&1 | tee -a checks-run.log
           SIMCTL_CHILD_SMUGVIEW_DEBUG=1 SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK=offline \
-            xcrun simctl launch --terminate-running-process --stdout="$PWD/offline-stdout.log" --stderr="$PWD/offline-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a checks-run.log
+            xcrun simctl launch --terminate-running-process --stdout="$PWD/offline-stdout.log" --stderr="$PWD/offline-stderr.log" "$UDID" com.smugview.app 2>&1 | tee -a checks-run.log
           # 8 s before the gallery is kept, then 45 samples 2 s apart (about 100 s).
           sleep 105
-          xcrun simctl terminate "$UDID" com.smugview.spike 2>&1 | tee -a checks-run.log || true
+          xcrun simctl terminate "$UDID" com.smugview.app 2>&1 | tee -a checks-run.log || true
           echo '--- offline trace'; grep 'smugview-check' offline-stdout.log || echo '(no trace lines at all)'
           python3 - <<'PY'
           import re, os

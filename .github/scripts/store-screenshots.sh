@@ -7,7 +7,7 @@
 set -u
 
 : "${SITE:?}" "${ALBUM_KEY:?}" "${ALBUM_TITLE:?}" "${IMAGE_KEY:?}" "${SCENES:?}" "${IPHONE_NAME:?}" "${IPAD_NAME:?}" "${APP_PATH:?}"
-BUNDLE_ID="${BUNDLE_ID:-com.smugview.spike}"
+BUNDLE_ID="${BUNDLE_ID:-com.smugview.app}"
 OUT_DIR="${OUT_DIR:-store-screenshots}"
 LAUNCH_WAIT="${LAUNCH_WAIT:-30}"
 mkdir -p "$OUT_DIR"
