@@ -107,7 +107,9 @@ def main():
     errors = data.get("errors") or []
     detail = "; ".join((e.get("detail") or e.get("title") or "") for e in errors) or json.dumps(data)[:300]
     # 409 is how the API says a submission already exists or the build needs no review; either is fine for the testers.
-    kind = "notice" if status == 409 else "warning"
+    # Run 41243379305: 422 "Another build in the same train is already in beta review" while an earlier build of 1.0.0 waits.
+    # Apple allows one build per version in beta review at a time; submit the newer one by hand (or rerun) after the earlier one finishes.
+    kind = "notice" if status == 409 or "already in beta review" in detail else "warning"
     notice(kind, "Beta review: not submitted", f"HTTP {status}: {detail[:400]}")
 
 
