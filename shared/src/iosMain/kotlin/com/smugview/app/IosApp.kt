@@ -39,6 +39,15 @@ import com.smugview.app.data.offline.OfflineStore
 import com.smugview.app.data.offline.PassResult
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.diag.SyncReporter
+import com.smugview.app.data.security.PasswordStore
+import com.smugview.app.data.notify.SiteFollow
+import com.smugview.app.data.notify.SharedSiteFollow
+import com.smugview.app.data.notify.NewestGalleries
+import com.smugview.app.data.notify.NewGalleryRunner
+import com.smugview.app.data.notify.NewGalleryCheck
+import com.smugview.app.data.notify.IosGalleryAnnouncer
+import com.smugview.app.data.notify.IosBackgroundTasks
+import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.util.UserDefaultsStore
 import com.smugview.app.data.security.KeychainPasswordStore
 import com.smugview.app.data.repository.KeyValueSyncStateStore
@@ -110,11 +119,12 @@ fun SmugViewIosApp() {
         }
     }
     val photoFileOps = remember { IosPhotoFileOps() }
+    LaunchedEffect(Unit) { IosBackgroundTasks.runOnOpen() }
     SmugViewTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(modifier = Modifier.fillMaxSize()) {
                 CompositionLocalProvider(LocalPhotoFileOps provides photoFileOps) {
-                    SmugViewNavigation(viewModel = viewModel)
+                    SmugViewNavigation(viewModel = viewModel, newGalleryFollow = IosRoot.siteFollow)
                 }
                 banner?.let { message ->
                     Text(
@@ -152,18 +162,43 @@ private object IosRoot {
             .build()
     }
 
-    fun viewModel(): SmugViewModel {
-        val passwordStore = KeychainPasswordStore()
-        val settings = KeyValueOfflineSettings(UserDefaultsStore("smugview_offline_settings"))
-        val store = OfflineStore(database, documents)
-        val repository = SmugMugRepository(
-            KtorSmugMugApi(ApiHttp(HttpClient(platformEngine()))),
+    private val api: SmugMugApi by lazy { KtorSmugMugApi(ApiHttp(HttpClient(platformEngine()))) }
+
+    private val repository: SmugMugRepository by lazy {
+        SmugMugRepository(
+            api,
             database.collectionDao(),
             passwordStore,
             SyncReporter.NOOP,
             KeyValueSyncStateStore(UserDefaultsStore("smugview_sync_state"))
         )
-        return SmugViewModel(
+    }
+
+    private val passwordStore: PasswordStore by lazy { KeychainPasswordStore() }
+
+    /** What the new-gallery check does before it looks: unlock the saved password folders, as Android does. */
+    private val unlockSaved: suspend (String) -> Unit = { nickname -> repository.unlockSavedRoots(nickname, apiKey) }
+
+    private val newGalleryCheck: NewGalleryCheck by lazy {
+        val newest = NewestGalleries(api, apiKey)
+        NewGalleryCheck(database.notifyDao()) { newest(it) }
+    }
+
+    /** The Hub's bell. Following keeps the background refresh request alive; unfollowing the last site cancels it. */
+    val siteFollow: SiteFollow by lazy {
+        val dao = database.notifyDao()
+        SharedSiteFollow(dao, newGalleryCheck, unlockSaved) {
+            CoroutineScope(Dispatchers.Default).launch {
+                if (dao.enabledSites().isEmpty()) IosBackgroundTasks.cancel() else IosBackgroundTasks.scheduleNext()
+            }
+        }
+    }
+
+    private val viewModelInstance: SmugViewModel by lazy {
+        val settings = KeyValueOfflineSettings(UserDefaultsStore("smugview_offline_settings"))
+        val store = OfflineStore(database, documents)
+        IosBackgroundTasks.runner = NewGalleryRunner(database.notifyDao(), newGalleryCheck, unlockSaved, IosGalleryAnnouncer())
+        SmugViewModel(
             apiKey = apiKey,
             sharedPrefs = UserDefaultsStore("smugview_prefs"),
             searchStatusPrefs = UserDefaultsStore("smugview_search_status"),
@@ -177,6 +212,9 @@ private object IosRoot {
             defaultDispatcher = Dispatchers.Default
         )
     }
+
+    /** One instance for the whole process: the phone UI and, later, the AirPlay external screen read the same state. */
+    fun viewModel(): SmugViewModel = viewModelInstance
 }
 
 /** Stage 3 registers a `BGAppRefreshTask`; until then saved photos are fetched only when the app asks directly. */
