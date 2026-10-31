@@ -227,8 +227,10 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APP_APPLE_ID: '6829116939'
         run: |
-          pip3 install --quiet pyjwt cryptography
-          python3 .github/scripts/asc_beta_submit.py
+          # Run 41243114773: the runner's Python is externally managed (PEP 668), so a plain pip install is refused. Use a venv.
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet pyjwt cryptography
+          "$RUNNER_TEMP/venv/bin/python" .github/scripts/asc_beta_submit.py
 
       - name: Put the first errors in the annotations
         if: always()
