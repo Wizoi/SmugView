@@ -1,6 +1,7 @@
 package com.smugview.app.data.notify
 
 import com.smugview.app.data.db.nowMillis
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,6 +17,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * New-gallery checks on iOS: a BGAppRefreshTask (iOS picks the real time, so this is best effort) plus a check on open.
  * [runner] is filled by IosApp once the repository exists; the task handler reads it when the task fires.
  */
+@OptIn(ExperimentalForeignApi::class)
 object IosBackgroundTasks {
     const val IDENTIFIER = "com.smugview.app.newgalleries"
 
