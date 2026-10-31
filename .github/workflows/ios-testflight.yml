@@ -5,7 +5,7 @@ name: iOS TestFlight upload
 # and uploads it to App Store Connect, where it shows up in TestFlight. Manual only: it never runs on push.
 #
 # Needs three secrets (repository or `testflight` environment secrets): ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (base64 of the .p8).
-# Optional: SMUGMUG_API_KEY (without it the app starts but cannot load a site).
+# Optional: secret SMUGMUG_API_IOS_KEY, the iOS key (without it the app starts but cannot load a site).
 # The `testflight` environment should have the owner as required reviewer; the job waits for that approval before it starts.
 on:
   workflow_dispatch:
@@ -124,7 +124,7 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
+          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_IOS_KEY }}
         run: |
           set -o pipefail
           xcodebuild archive \

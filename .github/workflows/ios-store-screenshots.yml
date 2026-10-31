@@ -81,7 +81,7 @@ jobs:
           ./gradlew :spikeui:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee shots-framework.log
       - name: Generate and build the Xcode project
         env:
-          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
+          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_IOS_KEY }}
         run: |
           set -o pipefail
           brew install xcodegen

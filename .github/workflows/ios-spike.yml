@@ -235,7 +235,7 @@ jobs:
         continue-on-error: true
         env:
           # Optional: without the secret the app starts but cannot load a site. Set it with `gh secret set SMUGMUG_API_KEY`.
-          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
+          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_IOS_KEY }}
         run: |
           set -o pipefail
           brew install xcodegen

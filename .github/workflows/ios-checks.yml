@@ -56,7 +56,7 @@ jobs:
         if: steps.framework.outcome == 'success'
         continue-on-error: true
         env:
-          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
+          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_IOS_KEY }}
         run: |
           set -o pipefail
           brew install xcodegen
