@@ -267,6 +267,7 @@ fun PhotoDetailScreen(
             val discoveredDevices by viewModel.discoveredDevices.collectAsState()
             val castedAlbumKey by viewModel.castedAlbumKeyFlow.collectAsState()
             var showCastSelector by remember { mutableStateOf(false) }
+            val castGate = com.smugview.app.ui.component.rememberCastStartGate()
             var showRecastDialog by remember { mutableStateOf(false) }
 
             Column(
@@ -320,8 +321,10 @@ fun PhotoDetailScreen(
                                     onNavigateToCastController(albumTitle)
                                 }
                             } else {
-                                viewModel.startCastDiscovery()
-                                showCastSelector = true
+                                castGate.request {
+                                    viewModel.startCastDiscovery()
+                                    showCastSelector = true
+                                }
                             }
                         }
                     )
