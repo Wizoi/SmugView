@@ -30,15 +30,16 @@ import com.smugview.app.data.cast.CastManager
 import com.smugview.app.data.cast.WebCompanionFailure
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.Migrations
-import com.smugview.app.data.offline.NetworkClass
 import com.smugview.app.data.offline.NetworkKind
 import com.smugview.app.data.offline.OfflineCollections
 import com.smugview.app.data.offline.OfflineReader
-import com.smugview.app.data.offline.OfflineScheduling
 import com.smugview.app.data.offline.OfflineStore
-import com.smugview.app.data.offline.PassResult
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.diag.SyncReporter
+import com.smugview.app.data.offline.OfflineSettings
+import com.smugview.app.data.offline.OfflineDownloader
+import com.smugview.app.data.offline.KtorOriginalFetcher
+import com.smugview.app.data.offline.ForegroundOfflineScheduling
 import com.smugview.app.data.security.PasswordStore
 import com.smugview.app.data.notify.SiteFollow
 import com.smugview.app.data.notify.SharedSiteFollow
@@ -63,6 +64,7 @@ import io.ktor.client.HttpClient
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -194,9 +196,29 @@ private object IosRoot {
         }
     }
 
+    private val offlineSettings: OfflineSettings by lazy { KeyValueOfflineSettings(UserDefaultsStore("smugview_offline_settings")) }
+
+    private val offlineStore: OfflineStore by lazy { OfflineStore(database, documents) }
+
+    private val schedulerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Saved photos and kept galleries download while the app runs; a background task for the rest comes through `runBackgroundPass`. */
+    private val offlineScheduling: ForegroundOfflineScheduling by lazy {
+        // The image client has no cache and no content negotiation: originals are streamed to disk, not decoded.
+        val downloader = OfflineDownloader(
+            store = offlineStore,
+            repo = repository,
+            fetcher = KtorOriginalFetcher(HttpClient(platformEngine())),
+            apiKey = { apiKey },
+            settings = offlineSettings
+        )
+        // A network-kind monitor (NWPathMonitor) is not written yet; until then the phone is treated as on an unmetered network.
+        ForegroundOfflineScheduling.create(schedulerScope, flowOf(NetworkKind.UNMETERED), offlineSettings, downloader, offlineStore)
+    }
+
     private val viewModelInstance: SmugViewModel by lazy {
-        val settings = KeyValueOfflineSettings(UserDefaultsStore("smugview_offline_settings"))
-        val store = OfflineStore(database, documents)
+        val settings = offlineSettings
+        val store = offlineStore
         IosBackgroundTasks.runner = NewGalleryRunner(database.notifyDao(), newGalleryCheck, unlockSaved, IosGalleryAnnouncer())
         SmugViewModel(
             apiKey = apiKey,
@@ -205,23 +227,16 @@ private object IosRoot {
             showMessage = { message -> Toaster.show(message) },
             fileUri = { path -> "file://$path" },
             repository = repository,
-            offline = OfflineCollections(database, store, NoOfflineScheduling, settings),
+            offline = OfflineCollections(database, store, offlineScheduling, settings),
             offlineReader = OfflineReader(database, store, settings, flowOf(NetworkKind.UNMETERED)),
             castManager = NoCastManager,
             passwordStore = passwordStore,
             defaultDispatcher = Dispatchers.Default
-        )
+        ).also { schedulerScope.launch { offlineScheduling.kickIfWanted() } }
     }
 
     /** One instance for the whole process: the phone UI and, later, the AirPlay external screen read the same state. */
     fun viewModel(): SmugViewModel = viewModelInstance
-}
-
-/** Stage 3 registers a `BGAppRefreshTask`; until then saved photos are fetched only when the app asks directly. */
-private object NoOfflineScheduling : OfflineScheduling {
-    override suspend fun kick() {}
-    override suspend fun kickIfWanted() {}
-    override suspend fun after(result: PassResult, network: NetworkClass) {}
 }
 
 /** No casting on iOS in v1: nothing is discovered. */
