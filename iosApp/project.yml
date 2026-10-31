@@ -16,6 +16,9 @@ targets:
       properties:
         CADisableMinimumFrameDurationOnPhone: true
         SmugMugAPIKey: $(SMUGMUG_API_KEY)
+        # Stage 3 offline downloads: BGProcessingTask. If the new-gallery BGAppRefreshTask branch adds its own entries, merge into these two arrays (one key each).
+        BGTaskSchedulerPermittedIdentifiers: ["com.smugview.app.offline"]
+        UIBackgroundModes: ["processing"]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.smugview.spike
