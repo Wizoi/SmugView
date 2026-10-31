@@ -57,7 +57,10 @@ import com.smugview.app.util.UserDefaultsStore
 import com.smugview.app.data.security.KeychainPasswordStore
 import com.smugview.app.data.repository.KeyValueSyncStateStore
 import com.smugview.app.data.offline.KeyValueOfflineSettings
+import com.smugview.app.ui.DemoHooks
 import com.smugview.app.ui.IosPhotoFileOps
+import com.smugview.app.ui.viewmodel.BrowserTab
+import com.smugview.app.util.UrlParts
 import com.smugview.app.ui.LocalPhotoFileOps
 import com.smugview.app.ui.theme.SmugViewTheme
 import com.smugview.app.ui.viewmodel.SmugViewModel
@@ -97,6 +100,24 @@ fun SmugViewIosApp() {
             // it had been tapped, so the screenshot shows real data. Unset in every normal launch.
             val demoSite = NSProcessInfo.processInfo.environment["SMUGVIEW_DEMO_SITE"] as? String
             if (!demoSite.isNullOrBlank()) vm.selectSite(demoSite)
+            // Store-screenshot hooks (ios-store-screenshots.yml), all unset in a normal launch. DEMO_ROUTE opens a route 3 s after start
+            // (a photo_grid title is URL-encoded here); DEMO_TAB = Folders|Search|TagSearch|Hub|Collections; DEMO_SHEET = info|share.
+            val env = NSProcessInfo.processInfo.environment
+            (env["SMUGVIEW_DEMO_ROUTE"] as? String)?.takeIf { it.isNotBlank() }?.let { raw ->
+                val parts = raw.split("/", limit = 3)
+                DemoHooks.route =
+                    if (parts.size == 3 && parts[0] == "photo_grid") "photo_grid/${parts[1]}/${UrlParts.encode(parts[2])}" else raw
+            }
+            DemoHooks.setSheet(env["SMUGVIEW_DEMO_SHEET"] as? String)
+            (env["SMUGVIEW_DEMO_TAB"] as? String)?.let { name ->
+                val tab = BrowserTab.entries.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }
+                if (tab != null) {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        delay(5000) // after the saved site has loaded and settled its own tab
+                        vm.setActiveTab(tab)
+                    }
+                }
+            }
             // CI trace: `SIMCTL_CHILD_SMUGVIEW_DEBUG=1` prints what the app thinks, to stdout, every 5 s (the key's length, never its value).
             if (NSProcessInfo.processInfo.environment["SMUGVIEW_DEBUG"] != null) {
                 CoroutineScope(Dispatchers.Default).launch {

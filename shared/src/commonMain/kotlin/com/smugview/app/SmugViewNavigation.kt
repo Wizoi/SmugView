@@ -48,6 +48,13 @@ fun SmugViewNavigation(
         onOpenHandled()
     }
 
+    // Store-screenshot hook (DemoHooks.route): inert unless the iOS CI job set it.
+    LaunchedEffect(Unit) {
+        val demo = com.smugview.app.ui.DemoHooks.route ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(3000)
+        navController.navigate(demo) { launchSingleTop = true }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = "browser") {
             composable("browser") {
