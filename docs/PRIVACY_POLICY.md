@@ -36,7 +36,7 @@ If you follow a site, SmugView can check it in the background for new galleries 
 
 When you cast to a TV device, SmugView runs a small local web server on your phone, reachable only by the specific device you cast to on your local Wi-Fi network, to serve the photo being displayed. This traffic never leaves your local network.
 
-**On iPhone and iPad** SmugView uses Google's Cast SDK to find Chromecast and other Google Cast devices on your Wi-Fi network, which is why iOS asks for local network permission the first time you open the cast sheet. Photo links are sent to the device you choose. The Cast SDK, which is Google's code, collects a device identifier, diagnostic data and product-interaction data for analytics and app functionality; Google states this data is not linked to you and not used for tracking. See [Google's privacy policy](https://policies.google.com/privacy). AirPlay to a TV or display uses Apple's own system and sends nothing to us.
+**On iPhone and iPad** SmugView uses Google's Cast SDK to find Chromecast and other Google Cast devices on your Wi-Fi network (and, if you allow it, nearby by Bluetooth), which is why iOS asks for local network permission the first time you open the cast sheet. Photo links are sent to the device you choose. The Cast SDK, which is Google's code, collects a device identifier, diagnostic data and product-interaction data for analytics and app functionality; Google states this data is not linked to you and not used for tracking. See [Google's privacy policy](https://policies.google.com/privacy). AirPlay to a TV or display uses Apple's own system and sends nothing to us.
 
 ## Children's privacy
 

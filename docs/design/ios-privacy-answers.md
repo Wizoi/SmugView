@@ -67,3 +67,7 @@ Unlock passwords: stored in the Keychain on the device (planned: IosApp.kt still
 - [OWNER] Keep the defensive FileTimestamp and SystemBootTime entries, or trim after the privacy report.
 - [OWNER] Whether free disk space is ever shown to users (would add 85F4.1).
 - [OWNER] Whether Cast analytics can be limited (no documented switch verified, UNVERIFIED); if so the label could shrink.
+
+## 6. Bluetooth purpose string (2026-10-31)
+
+App Store Connect mail for build 6 (ITMS-90683): the Cast SDK references the CoreBluetooth APIs, so `NSBluetoothAlwaysUsageDescription` is required in the Info.plist even though SmugView itself never uses Bluetooth. Added in `iosApp/project.yml`. The privacy policy's Casting section says the Cast SDK finds devices on the Wi-Fi network; it should also say it may use Bluetooth to find nearby Cast devices (done in the same commit).

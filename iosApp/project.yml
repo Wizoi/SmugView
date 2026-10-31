@@ -33,6 +33,8 @@ targets:
           - _googlecast._tcp
           - _CC1AD845._googlecast._tcp
         NSLocalNetworkUsageDescription: SmugView looks for Chromecasts and other cast devices on your Wi-Fi so you can show photos on your TV.
+        # ITMS-90683 (App Store Connect mail for build 6): the Google Cast SDK references CoreBluetooth, so the plist needs a purpose string.
+        NSBluetoothAlwaysUsageDescription: SmugView can use Bluetooth to find nearby Chromecast and other Google Cast devices so you can show photos on your TV.
         NSPhotoLibraryAddUsageDescription: SmugView saves the photos you download to your photo library.
         BGTaskSchedulerPermittedIdentifiers: ["com.smugview.app.newgalleries", "com.smugview.app.offline"]
         # The app only uses standard HTTPS, which is exempt from export documentation; this stops App Store Connect asking at every upload.
