@@ -142,7 +142,10 @@ jobs:
             MARKETING_VERSION="$MARKETING_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             SMUGMUG_API_KEY="$SMUGMUG_API_KEY" 2>&1 | tee archive.log
 
-      - name: Export and upload to App Store Connect
+      # Two steps, so a failure says which stage broke: (1) export a signed .ipa (signing through the API key), (2) upload it. Earlier drafts used
+      # `destination: upload` in one step, but an Apple Developer Forums thread (682091) says an API key does not work with that destination
+      # and uploads then need a separate tool; that thread is old and unofficial, so this split avoids relying on either answer.
+      - name: Export a signed IPA
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -154,27 +157,37 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
+            <key>destination</key><string>export</string>
             <key>teamID</key><string>${TEAM_ID}</string>
             <key>signingStyle</key><string>automatic</string>
             <key>uploadSymbols</key><true/>
           </dict>
           </plist>
           PLIST
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/SmugView.xcarchive" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee export.log
+          xcodebuild -exportArchive             -archivePath "$RUNNER_TEMP/SmugView.xcarchive"             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"             -exportPath "$RUNNER_TEMP/export"             -allowProvisioningUpdates             -authenticationKeyPath "$ASC_KEY_PATH"             -authenticationKeyID "$ASC_KEY_ID"             -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee export.log
+          ls -la "$RUNNER_TEMP/export"
+
+      # altool reads the key from ~/.appstoreconnect/private_keys/AuthKey_<KEYID>.p8 (UNVERIFIED here: Apple's upload page only shows -u/-p
+      # and suggests a JWT with Transporter for API keys). If this step is refused, try Transporter (`xcrun iTMSTransporter`/the Transporter
+      # app's command line) with a JWT, or the App Store Connect API. The IPA from the previous step is the same either way.
+      - name: Upload the IPA to App Store Connect
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          ipa=$(ls "$RUNNER_TEMP"/export/*.ipa | head -n 1)
+          echo "uploading $(basename "$ipa")"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          cp "$ASC_KEY_PATH" "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee upload.log
           echo "::notice title=Uploaded::version $MARKETING_VERSION build $BUILD_NUMBER sent to App Store Connect. Processing happens on Apple's side; watch TestFlight."
 
       - name: Put the first errors in the annotations
         if: always()
         run: |
-          for f in archive.log export.log; do
+          for f in archive.log export.log upload.log; do
             [ -f "$f" ] && bash .github/scripts/annotate-log.sh "$f" "$f"
           done
           exit 0
@@ -182,7 +195,7 @@ jobs:
       - name: Delete the API key file
         if: always()
         run: |
-          rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/ExportOptions.plist"
+          rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/ExportOptions.plist" "$HOME/.appstoreconnect/private_keys"
 
 # ---------------------------------------------------------------------------------------------------------------------------------------
 # Fallback, NOT used: fastlane match (design doc section 5.1). Use it if Xcode cloud signing with the API key is refused (for example the
