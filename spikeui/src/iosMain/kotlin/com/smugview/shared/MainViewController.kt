@@ -27,3 +27,8 @@ fun openFromNotification(nickname: String, albumKey: String?, albumTitle: String
 
 /** Video sound plays with the silent switch on. Call once at startup. */
 fun activatePlaybackAudioSessionAtStartup() = com.smugview.app.ui.activateIosPlaybackAudioSession()
+
+/** Swift calls this once at launch (iOSApp.init) with its Google Cast wrapper, before the first screen builds the cast manager. */
+fun installCastBridge(bridge: SwiftCastBridge) {
+    com.smugview.app.data.cast.CastBridgeHost.bridge = SwiftCastBridgeAdapter(bridge)
+}
