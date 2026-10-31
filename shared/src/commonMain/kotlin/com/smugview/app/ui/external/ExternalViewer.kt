@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -55,4 +57,14 @@ fun ExternalViewer(imageUri: String?) {
 fun ExternalViewerRoot() {
     val image by ExternalDisplay.image.collectAsState()
     ExternalViewer(image)
+}
+
+/**
+ * Called by a photo viewer with the picture it is showing: the second screen (AirPlay or a cable) follows it, and goes black when the viewer
+ * is left. Nothing reads this on Android, so calling it there changes nothing.
+ */
+@Composable
+fun PublishToExternalDisplay(uri: String?) {
+    LaunchedEffect(uri) { ExternalDisplay.show(uri) }
+    DisposableEffect(Unit) { onDispose { ExternalDisplay.clear() } }
 }

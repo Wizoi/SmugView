@@ -66,6 +66,7 @@ fun KeywordPhotoDetailScreen(
     val currentPhoto = remember(keywordPhotos, pagerState.currentPage) {
         keywordPhotos.getOrNull(pagerState.currentPage)
     }
+    com.smugview.app.ui.external.PublishToExternalDisplay(currentPhoto?.let { viewerImageModel(it.thumbnailUrl, it.archivedUri, it.localUri) })
 
     val detailedPhotoState = remember(currentPhoto?.imageKey) {
         currentPhoto?.imageKey?.let { viewModel.getImageDetails(it) }

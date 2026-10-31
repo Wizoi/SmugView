@@ -67,6 +67,7 @@ fun SearchPhotoDetailScreen(
 
     val pagerState = rememberPagerState(initialPage = initialIndex, pageCount = { searchPhotos.itemCount })
     val currentPhoto = if (pagerState.currentPage < searchPhotos.itemCount) searchPhotos[pagerState.currentPage] else null
+    com.smugview.app.ui.external.PublishToExternalDisplay(currentPhoto?.let { viewerImageModel(it.thumbnailUrl, it.archivedUri, it.localUri) })
 
     val detailedPhotoState = remember(currentPhoto?.imageKey) {
         currentPhoto?.imageKey?.let { viewModel.getImageDetails(it) }
