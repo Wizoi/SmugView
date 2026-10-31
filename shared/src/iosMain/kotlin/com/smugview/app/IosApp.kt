@@ -97,6 +97,14 @@ fun SmugViewIosApp() {
             // it had been tapped, so the screenshot shows real data. Unset in every normal launch.
             val demoSite = NSProcessInfo.processInfo.environment["SMUGVIEW_DEMO_SITE"] as? String
             if (!demoSite.isNullOrBlank()) vm.selectSite(demoSite)
+            // CI: SIMCTL_CHILD_SMUGVIEW_DEMO_TAB=Hub|Folders|Search|TagSearch|Collections opens that tab (after the site has loaded).
+            val demoTab = NSProcessInfo.processInfo.environment["SMUGVIEW_DEMO_TAB"] as? String
+            if (!demoTab.isNullOrBlank()) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    delay(2500)
+                    runCatching { vm.setActiveTab(com.smugview.app.ui.viewmodel.BrowserTab.valueOf(demoTab)) }
+                }
+            }
             // CI trace: `SIMCTL_CHILD_SMUGVIEW_DEBUG=1` prints what the app thinks, to stdout, every 5 s (the key's length, never its value).
             if (NSProcessInfo.processInfo.environment["SMUGVIEW_DEBUG"] != null) {
                 CoroutineScope(Dispatchers.Default).launch {
@@ -137,7 +145,9 @@ fun SmugViewIosApp() {
                         viewModel = viewModel,
                         newGalleryFollow = IosRoot.siteFollow,
                         pendingOpen = pendingOpen,
-                        onOpenHandled = { IosPendingOpen.clear() }
+                        onOpenHandled = { IosPendingOpen.clear() },
+                        // CI: SIMCTL_CHILD_SMUGVIEW_DEMO_ROUTE=photo_detail/albumKey/imageKey (and the other routes in SmugViewNavigation).
+                        startRoute = (NSProcessInfo.processInfo.environment["SMUGVIEW_DEMO_ROUTE"] as? String)?.takeIf { it.isNotBlank() }
                     )
                 }
                 banner?.let { message ->

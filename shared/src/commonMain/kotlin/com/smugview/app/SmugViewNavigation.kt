@@ -34,10 +34,19 @@ fun SmugViewNavigation(
     viewModel: com.smugview.app.ui.viewmodel.SmugViewModel,
     newGalleryFollow: SiteFollow? = null,
     pendingOpen: PendingOpen? = null,
-    onOpenHandled: () -> Unit = {}
+    onOpenHandled: () -> Unit = {},
+    /** Demo/CI only: a route to open a moment after the first screen (for example `photo_detail/albumKey/imageKey`). Null in normal use. */
+    startRoute: String? = null
 ) {
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(startRoute) {
+        if (startRoute != null) {
+            kotlinx.coroutines.delay(3000)
+            navController.navigate(startRoute) { launchSingleTop = true }
+        }
+    }
 
     LaunchedEffect(pendingOpen) {
         val open = pendingOpen ?: return@LaunchedEffect
