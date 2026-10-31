@@ -196,7 +196,7 @@ fun PhotoDetailScreen(
     // Overlays & sheets state
     var showExifSheet by remember { mutableStateOf(false) }
     var showAddToCollectionDialog by remember { mutableStateOf(false) }
-    var showControls by remember { mutableStateOf(false) }
+    var showControls by remember { mutableStateOf(com.smugview.app.ui.DemoHooks.sheet != null) }
 
 
     Box(

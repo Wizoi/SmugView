@@ -34,20 +34,9 @@ fun SmugViewNavigation(
     viewModel: com.smugview.app.ui.viewmodel.SmugViewModel,
     newGalleryFollow: SiteFollow? = null,
     pendingOpen: PendingOpen? = null,
-    onOpenHandled: () -> Unit = {},
-    /** Demo/CI only: a route to open a moment after the first screen (for example `photo_detail/albumKey/imageKey`). Null in normal use. */
-    startRoute: String? = null
+    onOpenHandled: () -> Unit = {}
 ) {
     val navController = rememberNavController()
-    val coroutineScope = rememberCoroutineScope()
-
-    LaunchedEffect(startRoute) {
-        if (startRoute != null) {
-            kotlinx.coroutines.delay(3000)
-            navController.navigate(startRoute) { launchSingleTop = true }
-        }
-    }
-
     LaunchedEffect(pendingOpen) {
         val open = pendingOpen ?: return@LaunchedEffect
         if (viewModel.activeNickname.value != open.nickname) viewModel.selectSite(open.nickname)
@@ -55,6 +44,15 @@ fun SmugViewNavigation(
             navController.navigate("photo_grid/${open.albumKey}/${UrlParts.encode(open.albumTitle.orEmpty())}") { launchSingleTop = true }
         }
         onOpenHandled()
+    }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    // Store-screenshot hook (DemoHooks.route): inert unless the iOS CI job set it.
+    LaunchedEffect(Unit) {
+        val demo = com.smugview.app.ui.DemoHooks.route ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(3000)
+        navController.navigate(demo) { launchSingleTop = true }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {

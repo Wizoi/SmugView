@@ -1,0 +1,130 @@
+name: iOS store screenshots (DRAFT)
+
+# DRAFT, third-party content, NOT FOR THE STORE. The default site (`smugmugfilms`) belongs to SmugMug and its photographers; this run only
+# checks the layout and the pipeline. To make the real set, dispatch it with the owner's own public gallery (site, album key, album title,
+# image key below). Output: artifact `store-screenshots` and the branch `ios-store-screenshots` (<device>/<NN>-<scene>.jpg + README.md).
+#
+# Apple's rules (https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications): JPEG or PNG, no alpha
+# channel, 1 to 10 per size. iPhone "Dynamic Island (medium)" 1206x2622 / 1179x2556 (optional 1320x2868); iPad 13-inch 2064x2752 / 2048x2732.
+# The simulator cannot tap: the app opens each scene itself through the SMUGVIEW_DEMO_* variables read in IosApp.kt (inert in a normal launch).
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: 'Public SmugMug nickname to show (default: SmugMug Films, third-party content)'
+        default: 'smugmugfilms'
+      album_key:
+        description: 'Album key of a gallery on that site'
+        default: 'nMmnCR'
+      album_title:
+        description: 'Title of that album (the grid shows it in the header)'
+        default: 'Norway Behind The Scenes Photos'
+      image_key:
+        description: 'Image key of a photo in that album (first photo)'
+        default: 'fdMT7mj'
+      scenes:
+        description: 'Space separated, in order. Known: home album-grid photo info share hub search collections'
+        default: 'home album-grid photo info share hub search collections'
+      iphone_name:
+        description: 'Simulator name for the 6.3-inch iPhone set (1206x2622)'
+        default: 'iPhone 16 Pro'
+      ipad_name:
+        description: 'Simulator name for the iPad 13-inch set'
+        default: 'iPad Pro 13-inch (M4)'
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      SITE: ${{ inputs.site }}
+      ALBUM_KEY: ${{ inputs.album_key }}
+      ALBUM_TITLE: ${{ inputs.album_title }}
+      IMAGE_KEY: ${{ inputs.image_key }}
+      SCENES: ${{ inputs.scenes }}
+      IPHONE_NAME: ${{ inputs.iphone_name }}
+      IPAD_NAME: ${{ inputs.ipad_name }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          xcodebuild -version
+      - name: Check that both simulators exist
+        run: |
+          xcrun simctl list devices available | grep -E "iPhone|iPad" | sed 's/^/    /'
+          for name in "$IPHONE_NAME" "$IPAD_NAME"; do
+            if ! xcrun simctl list devices available | grep -qF "    $name ("; then
+              echo "::error title=simulator missing::no available simulator is named '$name' (the list is in this step's log)"
+              exit 1
+            fi
+          done
+          # The flags the next steps rely on; prints them so a missing one is visible in the log.
+          xcrun simctl status_bar 2>&1 | head -30 || true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Cache the Kotlin/Native toolchain
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts', 'spikeui/build.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Build the Shared framework for the simulator
+        run: |
+          set -o pipefail
+          ./gradlew :spikeui:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee shots-framework.log
+      - name: Generate and build the Xcode project
+        env:
+          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
+        run: |
+          set -o pipefail
+          brew install xcodegen
+          (cd iosApp && xcodegen generate)
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/xcode ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SMUGMUG_API_KEY="$SMUGMUG_API_KEY" build 2>&1 | tee shots-xcode.log
+      - name: Take the screenshots on both simulators
+        id: shots
+        continue-on-error: true
+        env:
+          APP_PATH: ${{ github.workspace }}/build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
+          OUT_DIR: ${{ github.workspace }}/store-screenshots
+        run: |
+          set -o pipefail
+          bash .github/scripts/store-screenshots.sh 2>&1 | tee shots-run.log
+      - name: Put the table and the errors in the annotations
+        if: always()
+        run: |
+          if [ -f store-screenshots/sizes.tsv ]; then
+            { echo '### Screenshots (DRAFT, third-party content, not for the store)'; echo; echo '| file | pixels | alpha | accepted |'; echo '|---|---|---|---|'
+              awk -F'\t' '{printf "| %s | %sx%s | %s | %s |\n", $1, $2, $3, $4, $5}' store-screenshots/sizes.tsv; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          for f in shots-framework.log shots-xcode.log shots-run.log; do
+            [ -f "$f" ] && bash .github/scripts/annotate-log.sh "$f" "$f"
+          done
+          exit 0
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: store-screenshots
+          path: store-screenshots
+      - name: Publish to the ios-store-screenshots branch
+        if: always() && hashFiles('store-screenshots/README.md') != ''
+        run: |
+          mkdir -p "$RUNNER_TEMP/art"
+          # The raw PNGs (with alpha) stay in the artifact only.
+          rsync -a --exclude raw store-screenshots/ "$RUNNER_TEMP/art/"
+          cd "$RUNNER_TEMP/art"
+          git init -q && git checkout -q -b ios-store-screenshots
+          git config user.name "github-actions" && git config user.email "actions@users.noreply.github.com"
+          git add -A && git commit -q -m "DRAFT store screenshots (third-party content, not for the store) from run ${{ github.run_id }} (${{ github.sha }})"
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git push -q -f origin ios-store-screenshots
+          echo "::notice title=screenshots::pushed to the ios-store-screenshots branch"
+      - name: Fail the job when a shot was missing, the wrong size or had alpha
+        if: steps.shots.outcome == 'failure'
+        run: exit 1

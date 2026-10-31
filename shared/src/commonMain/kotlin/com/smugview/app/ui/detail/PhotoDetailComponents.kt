@@ -346,6 +346,19 @@ fun PhotoActionCapsule(
         shareLink = viewModel.shareLinkFor(photo)
         linkResolved = true
     }
+    // Store-screenshot hook (DemoHooks): inert unless the iOS CI job set it.
+    LaunchedEffect(photo.imageKey) {
+        if (com.smugview.app.ui.DemoHooks.takeSheet("info")) {
+            kotlinx.coroutines.delay(2500)
+            onShowExif()
+        }
+    }
+    LaunchedEffect(linkResolved, shareLink) {
+        if (linkResolved && shareLink != null && com.smugview.app.ui.DemoHooks.takeSheet("share")) {
+            kotlinx.coroutines.delay(2500)
+            showShareDialog = true
+        }
+    }
     Row(
         modifier = Modifier
             .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(32.dp))
