@@ -74,8 +74,15 @@ run_device() { # $1 = kind (iphone|ipad), $2 = device name
     local pairs=()
     for line in "${envs[@]+"${envs[@]}"}"; do pairs+=("SIMCTL_CHILD_$line"); done
     echo "-- $kind/$base env: ${envs[*]+"${envs[*]}"}"
-    env ${pairs[@]+"${pairs[@]}"} xcrun simctl launch "$udid" "$BUNDLE_ID" || { echo "::error title=launch failed::$kind/$base"; failed=1; continue; }
+    env ${pairs[@]+"${pairs[@]}"} xcrun simctl launch --stdout="$OUT_DIR/raw/$kind/$base.out.txt" --stderr="$OUT_DIR/raw/$kind/$base.err.txt" "$udid" "$BUNDLE_ID" || { echo "::error title=launch failed::$kind/$base"; failed=1; continue; }
     sleep "$LAUNCH_WAIT"
+    # Run 41167973961: the info shots showed the home screen, so the app was gone. Record whether it is still running and print any crash report.
+    if xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -q "$BUNDLE_ID"; then echo "   app still running: $kind/$base"; else echo "::warning title=app not running::$kind/$base: the app is gone at screenshot time"; fi
+    for ips in $(ls -t "$HOME"/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -2); do
+      echo "   crash report: $ips"; cp "$ips" "$OUT_DIR/raw/$kind/$base.$(basename "$ips")" || true
+      grep -m6 -E '"exception"|"termination"|"asi"|"type"|"subtype"' "$ips" | cut -c1-300 || true
+    done
+    tail -n 15 "$OUT_DIR/raw/$kind/$base.out.txt" "$OUT_DIR/raw/$kind/$base.err.txt" 2>/dev/null | cut -c1-300 || true
     xcrun simctl io "$udid" screenshot "$OUT_DIR/raw/$kind/$base.png" || { echo "::error title=screenshot failed::$kind/$base"; failed=1; continue; }
     # PNG from simctl may carry an alpha channel; the store wants none: flat JPEG.
     sips -s format jpeg -s formatOptions 95 "$OUT_DIR/raw/$kind/$base.png" --out "$OUT_DIR/$kind/$base.jpg" >/dev/null

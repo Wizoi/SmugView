@@ -354,6 +354,7 @@ fun PhotoActionCapsule(
         }
     }
     LaunchedEffect(linkResolved, shareLink) {
+        if (com.smugview.app.ui.DemoHooks.route != null) println("smugview-demo share linkResolved=$linkResolved hasLink=${shareLink != null}")
         if (linkResolved && shareLink != null && com.smugview.app.ui.DemoHooks.takeSheet("share")) {
             kotlinx.coroutines.delay(2500)
             showShareDialog = true
