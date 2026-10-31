@@ -17,12 +17,16 @@ targets:
     dependencies:
       - package: GoogleCast
         product: GoogleCastStatic # experiment: the dynamic product double-defined GTMSessionFetcher (run 41141946510)
+        embed: false # static: the binary is linked in; embedding the framework made App Store Connect reject its signature (TestFlight run 41167504875)
     # Compose Multiplatform refuses to start without this key (full refresh rate on ProMotion iPhones); found by the CI crash report of 2026-10-30.
     # SmugMugAPIKey is read by IosApp.kt; the build setting SMUGMUG_API_KEY is empty here and set by whoever builds a device test app.
     info:
       path: Info.plist
       properties:
         CADisableMinimumFrameDurationOnPhone: true
+        # App Store Connect (run 41167504875): an iPad app that allows multitasking must list all four orientations. iPhone stays portrait.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         SmugMugAPIKey: $(SMUGMUG_API_KEY)
         # Cast discovery (Google's iOS permissions page): both services, and the sentence shown with the local-network prompt (decision 4).
         NSBonjourServices:

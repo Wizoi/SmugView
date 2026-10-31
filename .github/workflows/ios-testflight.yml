@@ -170,6 +170,8 @@ jobs:
           cp "$ASC_KEY_PATH" "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee upload.log
+          # Run 41167504875: altool printed UPLOAD FAILED yet the step and job were green. Fail on its words too.
+          if grep -q 'UPLOAD FAILED' upload.log; then echo '::error title=Upload failed::altool did not report success; see upload.log'; exit 1; fi
           echo "::notice title=Uploaded::version $MARKETING_VERSION build $BUILD_NUMBER sent to App Store Connect. Processing happens on Apple's side; watch TestFlight."
 
       - name: Put the first errors in the annotations
