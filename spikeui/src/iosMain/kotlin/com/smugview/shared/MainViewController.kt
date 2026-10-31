@@ -15,3 +15,8 @@ fun SmugViewAppViewController(): UIViewController = IosAppViewController()
 fun registerBackgroundTasks() {
     com.smugview.app.data.notify.IosBackgroundTasks.register { com.smugview.app.data.notify.IosBackgroundTasks.runner }
 }
+
+/** Swift calls this once at launch (iOSApp.init) with its Google Cast wrapper, before the first screen builds the cast manager. */
+fun installCastBridge(bridge: SwiftCastBridge) {
+    com.smugview.app.data.cast.CastBridgeHost.bridge = SwiftCastBridgeAdapter(bridge)
+}
