@@ -25,9 +25,6 @@ import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.smugview.app.data.api.ApiHttp
 import com.smugview.app.data.api.KtorSmugMugApi
-import com.smugview.app.data.cast.CastDevice
-import com.smugview.app.data.cast.CastManager
-import com.smugview.app.data.cast.WebCompanionFailure
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.Migrations
 import com.smugview.app.data.offline.NetworkKind
@@ -36,6 +33,10 @@ import com.smugview.app.data.offline.OfflineReader
 import com.smugview.app.data.offline.OfflineStore
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.diag.SyncReporter
+import com.smugview.app.ui.component.LocalCastExplainer
+import com.smugview.app.data.cast.createCastManager
+import com.smugview.app.data.cast.KeyValueCastExplainer
+import com.smugview.app.data.cast.CastBridgeHost
 import com.smugview.app.data.offline.OfflineSettings
 import com.smugview.app.data.offline.OfflineDownloader
 import com.smugview.app.data.offline.KtorOriginalFetcher
@@ -66,8 +67,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import platform.Foundation.NSBundle
@@ -125,7 +124,10 @@ fun SmugViewIosApp() {
     SmugViewTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(modifier = Modifier.fillMaxSize()) {
-                CompositionLocalProvider(LocalPhotoFileOps provides photoFileOps) {
+                CompositionLocalProvider(
+                    LocalPhotoFileOps provides photoFileOps,
+                    LocalCastExplainer provides KeyValueCastExplainer(UserDefaultsStore("smugview_prefs"))
+                ) {
                     SmugViewNavigation(viewModel = viewModel, newGalleryFollow = IosRoot.siteFollow)
                 }
                 banner?.let { message ->
@@ -202,6 +204,9 @@ private object IosRoot {
 
     private val schedulerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /** Casting runs one coroutine at a time on the UI thread, which the Google Cast SDK expects its calls on. */
+    private val castScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     /** Saved photos and kept galleries download while the app runs; a background task for the rest comes through `runBackgroundPass`. */
     private val offlineScheduling: ForegroundOfflineScheduling by lazy {
         // The image client has no cache and no content negotiation: originals are streamed to disk, not decoded.
@@ -229,7 +234,7 @@ private object IosRoot {
             repository = repository,
             offline = OfflineCollections(database, store, offlineScheduling, settings),
             offlineReader = OfflineReader(database, store, settings, flowOf(NetworkKind.UNMETERED)),
-            castManager = NoCastManager,
+            castManager = createCastManager(CastBridgeHost.bridge, castScope),
             passwordStore = passwordStore,
             defaultDispatcher = Dispatchers.Default
         ).also { schedulerScope.launch { offlineScheduling.kickIfWanted() } }
@@ -237,32 +242,4 @@ private object IosRoot {
 
     /** One instance for the whole process: the phone UI and, later, the AirPlay external screen read the same state. */
     fun viewModel(): SmugViewModel = viewModelInstance
-}
-
-/** No casting on iOS in v1: nothing is discovered. */
-private object NoCastManager : CastManager {
-    override val discoveredDevices: StateFlow<List<CastDevice>> = MutableStateFlow(emptyList())
-    override val activeDevice: StateFlow<CastDevice?> = MutableStateFlow(null)
-    override val isCasting: StateFlow<Boolean> = MutableStateFlow(false)
-    override val currentImageUri: StateFlow<String?> = MutableStateFlow(null)
-    override val slideshowInterval: StateFlow<Int> = MutableStateFlow(5)
-    override val isSlideshowPlaying: StateFlow<Boolean> = MutableStateFlow(false)
-    override val volume: StateFlow<Float> = MutableStateFlow(0.5f)
-    override val isMuted: StateFlow<Boolean> = MutableStateFlow(false)
-    override val isWebCompanionActive: StateFlow<Boolean> = MutableStateFlow(false)
-    override val webCompanionUrl: StateFlow<String?> = MutableStateFlow(null)
-    override val webCompanionFailure: StateFlow<WebCompanionFailure?> = MutableStateFlow(null)
-    override fun startDiscovery() {}
-    override fun stopDiscovery() {}
-    override fun connectToDevice(device: CastDevice) {}
-    override fun disconnect() {}
-    override fun castImage(url: String, title: String) {}
-    override fun castSlideshow(urls: List<String>, intervalSeconds: Int) {}
-    override fun setSlideshowPlaying(playing: Boolean) {}
-    override fun setSlideshowInterval(seconds: Int) {}
-    override fun nextPhoto() {}
-    override fun previousPhoto() {}
-    override fun setVolume(volume: Float) {}
-    override fun toggleMute() {}
-    override fun getLocalIpAddress(): String? = null
 }
