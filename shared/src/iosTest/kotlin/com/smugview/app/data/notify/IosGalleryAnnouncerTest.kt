@@ -6,23 +6,14 @@ import kotlin.test.assertFalse
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * A test process on the simulator has not been granted notification permission, so the announcer must say "not posted"
- * (false) and not throw. If a CI runner ever grants it, the empty-list case still holds.
+ * Only the empty-list case can run here. A test process on the simulator has no app bundle, so touching `UNUserNotificationCenter`
+ * raises `NSInternalInconsistencyException` ('bundleProxyForCurrentProcess is nil'), which Kotlin/Native cannot catch and which aborts the
+ * whole test run (CI run 41154411925). The "not authorised, so nothing is posted" case therefore needs the real app, not this test
+ * process: it is checked on the simulator or a device with the app running.
  */
 class IosGalleryAnnouncerTest {
-    private val gallery = ListedGallery(
-        nodeId = "nodeAAA", name = "Spring recital", webUri = "https://example.smugmug.com/Spring", urlPath = "/Spring", albumKey = "AbCd12"
-    )
-
     @Test
     fun anEmptyListPostsNothing() = runTest(timeout = 30.seconds) {
         assertFalse(IosGalleryAnnouncer().announce("example", emptyList()))
-    }
-
-    @Test
-    fun withoutAuthorisationNothingIsPostedAndNothingThrows() = runTest(timeout = 30.seconds) {
-        val posted = IosGalleryAnnouncer().announce("example", listOf(gallery))
-        println("IosGalleryAnnouncerTest: announce returned $posted")
-        assertFalse(posted, "notifications are not authorised in a test process")
     }
 }
