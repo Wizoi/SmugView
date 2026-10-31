@@ -187,8 +187,8 @@ fun PhotoGridScreen(
 
         val configuration = com.smugview.app.ui.rememberScreenInfo()
         val isLandscape = configuration.isLandscape
-        val staggeredColumns = if (isLandscape) 4 else 2
-        val gridColumns = if (isLandscape) 6 else 3
+        val staggeredColumns = configuration.staggeredColumns
+        val gridColumns = configuration.squareColumns
         val headerHeight = if (isLandscape) (configuration.heightDp / 4) else (configuration.heightDp / 6)
         val density = LocalDensity.current
         val headerHeightPx = remember(headerHeight) { with(density) { headerHeight.toPx() } }
