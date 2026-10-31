@@ -20,6 +20,9 @@ object DemoHooks {
         sheetPending = sheet != null
     }
 
+    /** True while [kind] is requested and not yet shown. Does not consume it, so an effect cancelled during its delay can start again. */
+    fun wants(kind: String): Boolean = sheetPending && sheet == kind
+
     /** True once, for the first screen that asks for [kind]; false afterwards and whenever no hook is set. */
     fun takeSheet(kind: String): Boolean {
         if (!sheetPending || sheet != kind) return false

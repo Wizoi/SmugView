@@ -355,9 +355,10 @@ fun PhotoActionCapsule(
     }
     LaunchedEffect(linkResolved, shareLink) {
         if (com.smugview.app.ui.DemoHooks.route != null) println("smugview-demo share linkResolved=$linkResolved hasLink=${shareLink != null}")
-        if (linkResolved && shareLink != null && com.smugview.app.ui.DemoHooks.takeSheet("share")) {
+        // Ask first, take after the delay: this effect restarts when the link resolves or the controls re-enter, and a cancelled run must not eat the hook.
+        if (linkResolved && shareLink != null && com.smugview.app.ui.DemoHooks.wants("share")) {
             kotlinx.coroutines.delay(2500)
-            showShareDialog = true
+            if (com.smugview.app.ui.DemoHooks.takeSheet("share")) showShareDialog = true
         }
     }
     Row(
