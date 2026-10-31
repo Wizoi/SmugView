@@ -1,0 +1,201 @@
+name: iOS TestFlight upload
+
+# Stage 4 of docs/design/ios-cross-platform-and-app-store.md. Owner checklist: docs/design/ios-testflight.md.
+# Builds the release app for a device, signs it with Xcode automatic signing (cloud-managed certificate, App Store Connect API key),
+# and uploads it to App Store Connect, where it shows up in TestFlight. Manual only: it never runs on push.
+#
+# Needs three secrets (repository or `testflight` environment secrets): ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (base64 of the .p8).
+# Optional: SMUGMUG_API_KEY (without it the app starts but cannot load a site).
+# The `testflight` environment should have the owner as required reviewer; the job waits for that approval before it starts.
+on:
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: 'Marketing version (CFBundleShortVersionString), e.g. 0.1.0. Empty: MARKETING_VERSION from iosApp/project.yml, else 1.0.0.'
+        type: string
+        default: ''
+      build_offset:
+        description: 'Added to the run number to form the build number (CFBundleVersion). Leave 0 unless a build number was already used.'
+        type: string
+        default: '0'
+
+# Two uploads must not run at once, and a running upload is never cancelled by a newer one.
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    timeout-minutes: 90
+    environment: testflight
+    env:
+      TEAM_ID: R28G4S7F77
+      BUNDLE_ID: com.smugview.app
+    steps:
+      - name: Check the secrets before spending macOS minutes
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=""
+          [ -z "$ASC_KEY_ID" ] && missing="$missing ASC_KEY_ID"
+          [ -z "$ASC_ISSUER_ID" ] && missing="$missing ASC_ISSUER_ID"
+          [ -z "$ASC_KEY_P8" ] && missing="$missing ASC_KEY_P8"
+          if [ -n "$missing" ]; then
+            echo "::error title=Missing secret::These GitHub secrets are empty or not set:$missing. See docs/design/ios-testflight.md, step 'add the three GitHub secrets'."
+            exit 1
+          fi
+          echo "::add-mask::$ASC_KEY_ID"
+          echo "::add-mask::$ASC_ISSUER_ID"
+
+      - uses: actions/checkout@v5
+
+      # The Cast SDK's static library needs the iOS 26 SDK, and Apple accepts uploads only from Xcode 26 or later.
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Cache the Kotlin/Native toolchain
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts', 'spikeui/build.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-
+
+      - name: Write the App Store Connect API key to a private file
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -e
+          umask 077
+          key_dir="$RUNNER_TEMP/asc"
+          mkdir -p "$key_dir"
+          chmod 700 "$key_dir"
+          # The secret is base64 of the .p8 file. Decode quietly; never print it.
+          printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key_dir/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$key_dir/AuthKey_${ASC_KEY_ID}.p8"
+          if ! head -n 1 "$key_dir/AuthKey_${ASC_KEY_ID}.p8" | grep -q 'BEGIN PRIVATE KEY'; then
+            echo "::error title=ASC_KEY_P8 is not a .p8::The decoded secret does not start with a PEM private key header. Re-encode the AuthKey_XXXX.p8 file with base64 (see docs/design/ios-testflight.md)."
+            rm -f "$key_dir/AuthKey_${ASC_KEY_ID}.p8"
+            exit 1
+          fi
+          echo "ASC_KEY_PATH=$key_dir/AuthKey_${ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Work out the version numbers
+        run: |
+          set -e
+          mv="${{ inputs.marketing_version }}"
+          if [ -z "$mv" ]; then
+            mv=$(sed -n -E 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"?([0-9.]+)"?.*/\1/p' iosApp/project.yml | head -n 1)
+          fi
+          mv="${mv:-1.0.0}"
+          offset="${{ inputs.build_offset }}"; offset="${offset:-0}"
+          build=$(( ${{ github.run_number }} + offset ))
+          case "$mv" in *[!0-9.]*|"") echo "::error title=Bad marketing version::'$mv' must be digits and dots only."; exit 1;; esac
+          echo "MARKETING_VERSION=$mv" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$build" >> "$GITHUB_ENV"
+          echo "::notice title=Versions::marketing version $mv, build number $build"
+
+      - name: Link the release framework for a device
+        run: |
+          ./gradlew :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache \
+            -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          (cd iosApp && xcodegen generate)
+
+      # Command-line build settings override project.yml (which has CODE_SIGNING_ALLOWED: NO for the simulator spike and the old bundle ID).
+      - name: Archive with automatic signing
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/SmugView.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+            INFOPLIST_KEY_CFBundleDisplayName=SmugView \
+            MARKETING_VERSION="$MARKETING_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            SMUGMUG_API_KEY="$SMUGMUG_API_KEY" 2>&1 | tee archive.log
+
+      - name: Export and upload to App Store Connect
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/SmugView.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee export.log
+          echo "::notice title=Uploaded::version $MARKETING_VERSION build $BUILD_NUMBER sent to App Store Connect. Processing happens on Apple's side; watch TestFlight."
+
+      - name: Put the first errors in the annotations
+        if: always()
+        run: |
+          for f in archive.log export.log; do
+            [ -f "$f" ] && bash .github/scripts/annotate-log.sh "$f" "$f"
+          done
+          exit 0
+
+      - name: Delete the API key file
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/ExportOptions.plist"
+
+# ---------------------------------------------------------------------------------------------------------------------------------------
+# Fallback, NOT used: fastlane match (design doc section 5.1). Use it if Xcode cloud signing with the API key is refused (for example the
+# key's role cannot create a distribution certificate). It needs a private certificate repo (Wizoi/smugview-certs) and secrets
+# MATCH_PASSWORD and MATCH_GIT_BASIC_AUTHORIZATION. Replace the two xcodebuild steps with:
+#
+#   - name: Signing with fastlane match
+#     run: |
+#       brew install fastlane
+#       fastlane match appstore --readonly false --app_identifier com.smugview.app --team_id R28G4S7F77 \
+#         --api_key_path "$RUNNER_TEMP/asc_key.json" --git_url https://github.com/Wizoi/smugview-certs.git
+#   (asc_key.json: {"key_id": "...", "issuer_id": "...", "key": "<p8 text>", "in_house": false})
+#   Then archive with CODE_SIGN_STYLE=Manual, PROVISIONING_PROFILE_SPECIFIER="match AppStore com.smugview.app",
+#   CODE_SIGN_IDENTITY="Apple Distribution", export with method app-store-connect and signingStyle manual, and upload with
+#   `xcrun altool --upload-app -f SmugView.ipa -t ios --apiKey ... --apiIssuer ...` (UNVERIFIED that altool takes the key id/issuer flags
+#   on Xcode 26; Apple's upload page only shows -u/-p).
