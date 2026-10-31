@@ -18,6 +18,10 @@ on:
         description: 'Added to the run number to form the build number (CFBundleVersion). Leave 0 unless a build number was already used.'
         type: string
         default: '0'
+      submit_beta_review:
+        description: 'After the upload, wait for Apple to process the build and submit it for Beta App Review (external testers). Internal testers never need it.'
+        type: boolean
+        default: true
       reuse_archive_run:
         description: 'Run id of an earlier run of this workflow whose unsigned archive to reuse (skips the 25 minute link and archive). Empty: build.'
         type: string
@@ -212,6 +216,19 @@ jobs:
           # Run 41167504875: altool printed UPLOAD FAILED yet the step and job were green. Fail on its words too.
           if grep -q 'UPLOAD FAILED' upload.log; then echo '::error title=Upload failed::altool did not report success; see upload.log'; exit 1; fi
           echo "::notice title=Uploaded::version $MARKETING_VERSION build $BUILD_NUMBER sent to App Store Connect. Processing happens on Apple's side; watch TestFlight."
+
+      # Beta App Review for external testers: wait until Apple has processed the build, then submit it. Optional and never fails the job.
+      # The app's Apple ID is public (it is in the URL of the app's page); it is not a secret.
+      - name: Submit the build for Beta App Review
+        if: inputs.submit_beta_review
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_APPLE_ID: '6829116939'
+        run: |
+          pip3 install --quiet pyjwt cryptography
+          python3 .github/scripts/asc_beta_submit.py
 
       - name: Put the first errors in the annotations
         if: always()
