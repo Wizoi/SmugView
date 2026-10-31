@@ -2,6 +2,7 @@ package com.smugview.shared
 
 import androidx.compose.ui.window.ComposeUIViewController
 import com.smugview.app.IosAppViewController
+import com.smugview.app.ui.external.ExternalViewerRoot
 import com.smugview.spikeui.FolderListApp
 import platform.UIKit.UIViewController
 
@@ -32,3 +33,6 @@ fun activatePlaybackAudioSessionAtStartup() = com.smugview.app.ui.activateIosPla
 fun installCastBridge(bridge: SwiftCastBridge) {
     com.smugview.app.data.cast.CastBridgeHost.bridge = SwiftCastBridgeAdapter(bridge)
 }
+
+/** The second screen (AirPlay / cable): black with the phone viewer's current photo. Reads `ExternalDisplay` (a process-wide object), so IosApp.kt needs no wiring for it. */
+fun ExternalViewerViewController(): UIViewController = ComposeUIViewController { ExternalViewerRoot() }
