@@ -1,0 +1,206 @@
+name: iOS end-to-end checks
+
+# Two checks of the real app on the iOS simulator, run by hand (workflow_dispatch only):
+#   video   - the viewer opens a public MP4 (site Tutorial, album wmGrZV, image XqnrDcz) and the AVPlayer position advances.
+#   offline - "keep this gallery offline" on a small public gallery (site smugmugfilms, album N44kNs, 8 photos) saves files to disk.
+# The app prints `smugview-check ...` lines to stdout when SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK is set (shared/.../DemoChecks.kt); the steps
+# below read them and decide. Each check writes PASS or FAIL to the job summary and an annotation, and neither stops the other; the
+# last step fails the job when either failed. Needs the secret SMUGMUG_API_KEY (without it no site loads and both checks fail).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-checks-${{ github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      # The Cast SDK's static library needs the iOS 26 SDK (same reason as the ios-screen job in ios-spike.yml).
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          xcodebuild -version
+      # The first boot of a simulator spends about 40 s on "data migration". Start it now so that happens while Gradle builds.
+      - name: Start booting a simulator
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -m1 "iPhone" | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          echo "simulator: $UDID" | tee checks-run.log
+          xcrun simctl boot "$UDID" 2>&1 | tee -a checks-run.log
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Cache the Kotlin/Native toolchain
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('build.gradle.kts', 'shared/build.gradle.kts', 'spikeui/build.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Build the Shared framework for the simulator
+        id: framework
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :spikeui:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee checks-framework.log
+      - name: Generate and build the Xcode project
+        id: xcode
+        if: steps.framework.outcome == 'success'
+        continue-on-error: true
+        env:
+          SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_KEY }}
+        run: |
+          set -o pipefail
+          brew install xcodegen
+          (cd iosApp && xcodegen generate)
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/xcode ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SMUGMUG_API_KEY="$SMUGMUG_API_KEY" build 2>&1 | tee checks-xcode.log
+      - name: Wait for the simulator
+        id: sim
+        if: steps.xcode.outcome == 'success'
+        continue-on-error: true
+        run: xcrun simctl bootstatus "$UDID" -b 2>&1 | tee -a checks-run.log
+
+      # ---- Check 1: video -------------------------------------------------------------------------------------------------------------
+      - name: "Check 1: video plays"
+        id: video
+        if: steps.sim.outcome == 'success'
+        continue-on-error: true
+        run: |
+          APP=build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
+          xcrun simctl uninstall "$UDID" com.smugview.spike 2>/dev/null || true
+          xcrun simctl install "$UDID" "$APP" 2>&1 | tee -a checks-run.log
+          # The route is opened by the app's DEMO_ROUTE hook 3 s after start, once the site is selected.
+          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=Tutorial \
+            SIMCTL_CHILD_SMUGVIEW_DEMO_ROUTE=photo_detail/wmGrZV/XqnrDcz SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK=video \
+            xcrun simctl launch --terminate-running-process --stdout="$PWD/video-stdout.log" --stderr="$PWD/video-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a checks-run.log
+          sleep 12
+          xcrun simctl io "$UDID" screenshot video-check-screen.png 2>&1 | tee -a checks-run.log || true
+          sleep 28
+          xcrun simctl terminate "$UDID" com.smugview.spike 2>&1 | tee -a checks-run.log || true
+          echo '--- video trace'; grep 'smugview-check\|smugview-debug' video-stdout.log || echo '(no trace lines at all)'
+          python3 - <<'PY'
+          import re, sys
+          samples = []
+          for line in open('video-stdout.log', errors='replace'):
+              m = re.search(r'smugview-check video t=(\d+) hasEngine=(\w+) isPlaying=(\w+) positionMs=(-?\d+) durationMs=(-?\d+)', line)
+              if m:
+                  samples.append((int(m.group(1)), m.group(2) == 'true', m.group(3) == 'true', int(m.group(4)), int(m.group(5))))
+          verdict, why = 'FAIL', ''
+          if not samples:
+              why = 'the app printed no video samples (DEMO_CHECK not read, or the app crashed; see video-stderr.log)'
+          elif not any(s[1] for s in samples):
+              why = 'no video engine was ever created: the viewer did not open the video (check DEMO_ROUTE and that the site Tutorial loaded)'
+          else:
+              playing = [s for s in samples if s[2]]
+              pos = [s[3] for s in samples if s[1]]
+              span = max(pos) - min(pos) if pos else 0
+              if not playing:
+                  why = 'the engine exists but isPlaying was never true (max duration %d ms, positions %s)' % (max(s[4] for s in samples), pos)
+              elif span < 1000:
+                  why = 'the position did not advance by 1000 ms (min %d, max %d)' % (min(pos), max(pos))
+              else:
+                  verdict = 'PASS'
+                  why = 'position advanced %d ms while playing (%d of %d samples playing, duration %d ms)' % (span, len(playing), len(samples), max(s[4] for s in samples))
+          msg = 'video check %s: %s' % (verdict, why)
+          print(msg)
+          open('video-verdict.txt', 'w').write(verdict + '\n')
+          import os
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write('### %s\n\n' % msg)
+          print('::%s title=iOS video check::%s' % ('notice' if verdict == 'PASS' else 'error', msg))
+          PY
+          exit 0
+
+      # ---- Check 2: offline -----------------------------------------------------------------------------------------------------------
+      - name: "Check 2: keep a gallery offline"
+        id: offline
+        if: steps.sim.outcome == 'success'
+        continue-on-error: true
+        run: |
+          APP=build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
+          # A fresh install: no database, no earlier files.
+          xcrun simctl uninstall "$UDID" com.smugview.spike 2>/dev/null || true
+          xcrun simctl install "$UDID" "$APP" 2>&1 | tee -a checks-run.log
+          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK=offline \
+            xcrun simctl launch --terminate-running-process --stdout="$PWD/offline-stdout.log" --stderr="$PWD/offline-stderr.log" "$UDID" com.smugview.spike 2>&1 | tee -a checks-run.log
+          # 8 s before the gallery is kept, then 45 samples 2 s apart (about 100 s).
+          sleep 105
+          xcrun simctl terminate "$UDID" com.smugview.spike 2>&1 | tee -a checks-run.log || true
+          echo '--- offline trace'; grep 'smugview-check' offline-stdout.log || echo '(no trace lines at all)'
+          python3 - <<'PY'
+          import re, os
+          samples, kept = [], False
+          for line in open('offline-stdout.log', errors='replace'):
+              if 'smugview-check offline kept' in line:
+                  kept = True
+              m = re.search(r'smugview-check offline t=(\d+) wanted=(\d+) done=(\d+) failed=(\d+) bytes=(\d+)(?: galleries=(\S*))?', line)
+              if m:
+                  samples.append(tuple(int(m.group(i)) for i in range(1, 6)) + (m.group(6) or '',))
+          verdict, why = 'FAIL', ''
+          if not samples:
+              why = 'the app printed no offline samples (DEMO_CHECK not read, or the app crashed; see offline-stderr.log)'
+          else:
+              last = samples[-1]
+              best_done = max(s[2] for s in samples)
+              best_bytes = max(s[4] for s in samples)
+              final = 'final wanted=%d done=%d failed=%d bytes=%d galleries=%s; best done=%d bytes=%d; kept=%s' % (last[1], last[2], last[3], last[4], last[5], best_done, best_bytes, kept)
+              if not kept:
+                  why = 'the gallery was never kept (see the trace); ' + final
+              elif best_done < 1 or best_bytes <= 0:
+                  why = 'nothing was saved; ' + final
+              elif last[3] > 0:
+                  why = 'rows are failing; ' + final
+              else:
+                  verdict = 'PASS'
+                  why = final
+          msg = 'offline check %s: %s' % (verdict, why)
+          print(msg)
+          open('offline-verdict.txt', 'w').write(verdict + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write('### %s\n\n' % msg)
+          print('::%s title=iOS offline check::%s' % ('notice' if verdict == 'PASS' else 'error', msg))
+          PY
+          exit 0
+
+      - name: Put the first errors in the annotations
+        if: always()
+        run: |
+          for f in checks-framework.log checks-xcode.log checks-run.log video-stderr.log offline-stderr.log; do
+            [ -f "$f" ] && bash .github/scripts/annotate-log.sh "$f" "$f"
+          done
+          exit 0
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios-checks-logs
+          path: |
+            video-stdout.log
+            video-stderr.log
+            video-check-screen.png
+            offline-stdout.log
+            offline-stderr.log
+            checks-run.log
+          if-no-files-found: ignore
+      # Both checks have run by now; only here does a failure fail the job.
+      - name: Fail the job when a step or a check failed
+        if: always()
+        run: |
+          fail=0
+          for s in "${{ steps.framework.outcome }}" "${{ steps.xcode.outcome }}" "${{ steps.sim.outcome }}"; do
+            if [ "$s" = "failure" ] || [ "$s" = "skipped" ]; then fail=1; fi
+          done
+          for f in video-verdict.txt offline-verdict.txt; do
+            if ! grep -q '^PASS' "$f" 2>/dev/null; then echo "$f: not PASS"; fail=1; fi
+          done
+          if [ "$fail" = 1 ]; then
+            echo '### iOS checks: at least one build step or check did not pass (see above)' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

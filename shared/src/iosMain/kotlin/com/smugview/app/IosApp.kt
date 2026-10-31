@@ -250,6 +250,8 @@ private object IosRoot {
             passwordStore = passwordStore,
             defaultDispatcher = Dispatchers.Default
         ).also {
+            // CI end-to-end checks (`SMUGVIEW_DEMO_CHECK=video|offline`); does nothing when unset.
+            DemoChecks.start(database, OfflineCollections(database, store, offlineScheduling, settings), documents)
             schedulerScope.launch {
                 offlineScheduling.kickIfWanted()
                 IosOfflineBackground.scheduleOfflineIfWanted()

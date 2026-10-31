@@ -33,6 +33,9 @@ import platform.QuartzCore.CATransaction
 import platform.UIKit.UIColor
 import platform.UIKit.UIView
 
+/** CI check handle (`SMUGVIEW_DEMO_CHECK=video` in `DemoChecks`): the engine of the video on screen now, null when none. */
+internal object VideoDebug { var engine: VideoEngine? = null }
+
 @OptIn(ExperimentalForeignApi::class)
 internal class AvVideoEngine(val player: AVPlayer) : VideoEngine {
     override val isPlaying: Boolean get() = player.rate != 0f
@@ -69,7 +72,7 @@ actual fun rememberVideoEngine(videoUrl: String): VideoEngine {
         val item = if (url != null) AVPlayerItem(uRL = url) else null
         val player = AVPlayer()
         if (item != null) player.replaceCurrentItemWithPlayerItem(item)
-        AvVideoEngine(player)
+        AvVideoEngine(player).also { VideoDebug.engine = it }
     }
     DisposableEffect(engine) {
         val player = engine.player
@@ -87,6 +90,7 @@ actual fun rememberVideoEngine(videoUrl: String): VideoEngine {
         player.play()
         onDispose {
             NSNotificationCenter.defaultCenter.removeObserver(token)
+            if (VideoDebug.engine === engine) VideoDebug.engine = null
             player.pause()
             player.replaceCurrentItemWithPlayerItem(null)
         }
