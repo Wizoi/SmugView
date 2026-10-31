@@ -78,7 +78,7 @@ jobs:
       - name: Build the Shared framework for the simulator
         run: |
           set -o pipefail
-          ./gradlew :spikeui:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee shots-framework.log
+          ./gradlew :shared:assembleIosSimulatorArm64MainResources :spikeui:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee shots-framework.log
       - name: Generate and build the Xcode project
         env:
           SMUGMUG_API_KEY: ${{ secrets.SMUGMUG_API_IOS_KEY }}

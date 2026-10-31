@@ -46,6 +46,19 @@ targets:
             UIWindowSceneSessionRoleExternalDisplayNonInteractive:
               - UISceneConfigurationName: External Display
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).ExternalSceneDelegate
+    # Compose Multiplatform resources (the camera-brand logos in the photo info sheet). The framework is linked by Gradle on its own, so nothing
+    # copies them into the app; without them the info sheet aborts the app ("Missing resource ... camera_canon.png", CI run 41209344892).
+    # Needs `./gradlew :shared:assembleIosSimulatorArm64MainResources` (device: ...IosArm64MainResources) to have run first.
+    postBuildScripts:
+      - name: Copy Compose resources
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$PLATFORM_NAME" = "iphoneos" ]; then T=iosArm64Main; else T=iosSimulatorArm64Main; fi
+          SRC="$SRCROOT/../shared/build/generated/compose/resourceGenerator/assembledResources/$T/composeResources"
+          DST="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/compose-resources/composeResources"
+          if [ ! -d "$SRC" ]; then echo "error: $SRC is missing: run the Gradle assemble...MainResources task first"; exit 1; fi
+          mkdir -p "$DST"
+          rsync -a --delete "$SRC/" "$DST/"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.smugview.app

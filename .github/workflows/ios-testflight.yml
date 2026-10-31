@@ -111,7 +111,7 @@ jobs:
 
       - name: Link the release framework for a device
         run: |
-          ./gradlew :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache \
+          ./gradlew :shared:assembleIosArm64MainResources :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache \
             -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
 
       - name: Generate the Xcode project
@@ -129,6 +129,19 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild archive             -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/SmugView.xcarchive"             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             DEVELOPMENT_TEAM="$TEAM_ID"             PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"             INFOPLIST_KEY_CFBundleDisplayName=SmugView             MARKETING_VERSION="$MARKETING_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER"             SMUGMUG_API_KEY="$SMUGMUG_API_KEY" 2>&1 | tee archive.log
+
+      # Run 41209064953: App Store Connect rejected iosApp.app/Frameworks/GoogleCast.framework as badly signed. The Cast SDK is the STATIC product, so
+      # the code is already inside the app binary and this copy is only a leftover; a static library cannot carry a valid signature. Remove it.
+      - name: Remove a leftover static Cast framework from the archive
+        run: |
+          app="$RUNNER_TEMP/SmugView.xcarchive/Products/Applications/iosApp.app"
+          ls "$app/Frameworks" 2>/dev/null || echo "(no Frameworks directory)"
+          fw="$app/Frameworks/GoogleCast.framework"
+          if [ -d "$fw" ]; then
+            file "$fw/GoogleCast" || true
+            if file "$fw/GoogleCast" | grep -q "ar archive"; then rm -rf "$fw"; echo "removed the static GoogleCast.framework"
+            else echo "::warning title=GoogleCast.framework is not static::left in place; it must be signed"; fi
+          fi
 
       # Two steps, so a failure says which stage broke: (1) export a signed .ipa (signing through the API key), (2) upload it. Earlier drafts used
       # `destination: upload` in one step, but an Apple Developer Forums thread (682091) says an API key does not work with that destination

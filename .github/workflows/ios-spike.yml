@@ -228,7 +228,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          ./gradlew :spikeui:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee screen-framework.log
+          ./gradlew :shared:assembleIosSimulatorArm64MainResources :spikeui:linkDebugFrameworkIosSimulatorArm64 --no-daemon --no-configuration-cache --no-build-cache 2>&1 | tee screen-framework.log
       - name: Generate and build the Xcode project
         id: xcode
         if: steps.framework.outcome == 'success'
@@ -355,7 +355,7 @@ jobs:
         run: |
           set -o pipefail
           start=$(date +%s)
-          ./gradlew :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8" 2>&1 | tee ipa-framework.log
+          ./gradlew :shared:assembleIosArm64MainResources :spikeui:linkReleaseFrameworkIosArm64 --no-daemon --no-configuration-cache --no-build-cache -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8" 2>&1 | tee ipa-framework.log
           mid=$(date +%s)
           brew install xcodegen
           (cd iosApp && xcodegen generate)
