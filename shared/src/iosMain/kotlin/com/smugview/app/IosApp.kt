@@ -9,6 +9,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,26 +26,41 @@ import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.smugview.app.data.api.ApiHttp
 import com.smugview.app.data.api.KtorSmugMugApi
-import com.smugview.app.data.cast.CastDevice
-import com.smugview.app.data.cast.CastManager
-import com.smugview.app.data.cast.WebCompanionFailure
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.Migrations
-import com.smugview.app.data.offline.InMemoryOfflineSettings
-import com.smugview.app.data.offline.NetworkClass
-import com.smugview.app.data.offline.NetworkKind
 import com.smugview.app.data.offline.OfflineCollections
 import com.smugview.app.data.offline.OfflineReader
-import com.smugview.app.data.offline.OfflineScheduling
 import com.smugview.app.data.offline.OfflineStore
-import com.smugview.app.data.offline.PassResult
-import com.smugview.app.data.repository.InMemorySyncStateStore
 import com.smugview.app.data.repository.SmugMugRepository
-import com.smugview.app.data.security.PasswordStore
 import com.smugview.app.diag.SyncReporter
+import com.smugview.app.data.notify.IosPendingOpen
+import com.smugview.app.data.offline.iosNetworkKindFlow
+import com.smugview.app.data.offline.IosOfflineBackground
+import com.smugview.app.ui.component.LocalCastExplainer
+import com.smugview.app.data.cast.createCastManager
+import com.smugview.app.data.cast.KeyValueCastExplainer
+import com.smugview.app.data.cast.CastBridgeHost
+import com.smugview.app.data.offline.OfflineSettings
+import com.smugview.app.data.offline.OfflineDownloader
+import com.smugview.app.data.offline.KtorOriginalFetcher
+import com.smugview.app.data.offline.ForegroundOfflineScheduling
+import com.smugview.app.data.security.PasswordStore
+import com.smugview.app.data.notify.SiteFollow
+import com.smugview.app.data.notify.SharedSiteFollow
+import com.smugview.app.data.notify.NewestGalleries
+import com.smugview.app.data.notify.NewGalleryRunner
+import com.smugview.app.data.notify.NewGalleryCheck
+import com.smugview.app.data.notify.IosGalleryAnnouncer
+import com.smugview.app.data.notify.IosBackgroundTasks
+import com.smugview.app.data.api.SmugMugApi
+import com.smugview.app.util.UserDefaultsStore
+import com.smugview.app.data.security.KeychainPasswordStore
+import com.smugview.app.data.repository.KeyValueSyncStateStore
+import com.smugview.app.data.offline.KeyValueOfflineSettings
+import com.smugview.app.ui.IosPhotoFileOps
+import com.smugview.app.ui.LocalPhotoFileOps
 import com.smugview.app.ui.theme.SmugViewTheme
 import com.smugview.app.ui.viewmodel.SmugViewModel
-import com.smugview.app.util.KeyValueStore
 import com.smugview.app.util.Toaster
 import com.smugview.app.util.ioDispatcher
 import com.smugview.shared.api.platformEngine
@@ -51,16 +68,14 @@ import io.ktor.client.HttpClient
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import platform.Foundation.NSBundle
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
-import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
@@ -107,10 +122,24 @@ fun SmugViewIosApp() {
             banner = null
         }
     }
+    val photoFileOps = remember { IosPhotoFileOps() }
+    // A tapped new-gallery notification (Swift hands it to IosPendingOpen): open that site, and the gallery when there was exactly one.
+    val pendingOpen by IosPendingOpen.pending.collectAsState()
+    LaunchedEffect(Unit) { IosBackgroundTasks.runOnOpen() }
     SmugViewTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(modifier = Modifier.fillMaxSize()) {
-                SmugViewNavigation(viewModel = viewModel)
+                CompositionLocalProvider(
+                    LocalPhotoFileOps provides photoFileOps,
+                    LocalCastExplainer provides KeyValueCastExplainer(UserDefaultsStore("smugview_prefs"))
+                ) {
+                    SmugViewNavigation(
+                        viewModel = viewModel,
+                        newGalleryFollow = IosRoot.siteFollow,
+                        pendingOpen = pendingOpen,
+                        onOpenHandled = { IosPendingOpen.clear() }
+                    )
+                }
                 banner?.let { message ->
                     Text(
                         text = message,
@@ -147,96 +176,87 @@ private object IosRoot {
             .build()
     }
 
-    fun viewModel(): SmugViewModel {
-        val passwordStore = MemoryPasswordStore()
-        val settings = InMemoryOfflineSettings()
-        val store = OfflineStore(database, documents)
-        val repository = SmugMugRepository(
-            KtorSmugMugApi(ApiHttp(HttpClient(platformEngine()))),
+    private val api: SmugMugApi by lazy { KtorSmugMugApi(ApiHttp(HttpClient(platformEngine()))) }
+
+    private val repository: SmugMugRepository by lazy {
+        SmugMugRepository(
+            api,
             database.collectionDao(),
             passwordStore,
             SyncReporter.NOOP,
-            InMemorySyncStateStore()
+            KeyValueSyncStateStore(UserDefaultsStore("smugview_sync_state"))
         )
-        return SmugViewModel(
+    }
+
+    private val passwordStore: PasswordStore by lazy { KeychainPasswordStore() }
+
+    /** What the new-gallery check does before it looks: unlock the saved password folders, as Android does. */
+    private val unlockSaved: suspend (String) -> Unit = { nickname -> repository.unlockSavedRoots(nickname, apiKey) }
+
+    private val newGalleryCheck: NewGalleryCheck by lazy {
+        val newest = NewestGalleries(api, apiKey)
+        NewGalleryCheck(database.notifyDao()) { newest(it) }
+    }
+
+    /** The Hub's bell. Following keeps the background refresh request alive; unfollowing the last site cancels it. */
+    val siteFollow: SiteFollow by lazy {
+        val dao = database.notifyDao()
+        SharedSiteFollow(dao, newGalleryCheck, unlockSaved) {
+            CoroutineScope(Dispatchers.Default).launch {
+                if (dao.enabledSites().isEmpty()) IosBackgroundTasks.cancel() else IosBackgroundTasks.scheduleNext()
+            }
+        }
+    }
+
+    private val offlineSettings: OfflineSettings by lazy { KeyValueOfflineSettings(UserDefaultsStore("smugview_offline_settings")) }
+
+    private val offlineStore: OfflineStore by lazy { OfflineStore(database, documents) }
+
+    private val schedulerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Casting runs one coroutine at a time on the UI thread, which the Google Cast SDK expects its calls on. */
+    private val castScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Saved photos and kept galleries download while the app runs; a background task for the rest comes through `runBackgroundPass`. */
+    private val offlineScheduling: ForegroundOfflineScheduling by lazy {
+        // The image client has no cache and no content negotiation: originals are streamed to disk, not decoded.
+        val downloader = OfflineDownloader(
+            store = offlineStore,
+            repo = repository,
+            fetcher = KtorOriginalFetcher(HttpClient(platformEngine())),
+            apiKey = { apiKey },
+            settings = offlineSettings
+        )
+        ForegroundOfflineScheduling.create(schedulerScope, iosNetworkKindFlow(), offlineSettings, downloader, offlineStore).also { scheduling ->
+            // A BGProcessingTask (registered at launch by Swift) runs a pass through this when iOS decides to wake the app.
+            IosOfflineBackground.provider = { scheduling.runBackgroundPass() }
+        }
+    }
+
+    private val viewModelInstance: SmugViewModel by lazy {
+        val settings = offlineSettings
+        val store = offlineStore
+        IosBackgroundTasks.runner = NewGalleryRunner(database.notifyDao(), newGalleryCheck, unlockSaved, IosGalleryAnnouncer())
+        SmugViewModel(
             apiKey = apiKey,
             sharedPrefs = UserDefaultsStore("smugview_prefs"),
             searchStatusPrefs = UserDefaultsStore("smugview_search_status"),
             showMessage = { message -> Toaster.show(message) },
             fileUri = { path -> "file://$path" },
             repository = repository,
-            offline = OfflineCollections(database, store, NoOfflineScheduling, settings),
-            offlineReader = OfflineReader(database, store, settings, flowOf(NetworkKind.UNMETERED)),
-            castManager = NoCastManager,
+            offline = OfflineCollections(database, store, offlineScheduling, settings),
+            offlineReader = OfflineReader(database, store, settings, iosNetworkKindFlow()),
+            castManager = createCastManager(CastBridgeHost.bridge, castScope),
             passwordStore = passwordStore,
             defaultDispatcher = Dispatchers.Default
-        )
+        ).also {
+            schedulerScope.launch {
+                offlineScheduling.kickIfWanted()
+                IosOfflineBackground.scheduleOfflineIfWanted()
+            }
+        }
     }
-}
 
-/** [KeyValueStore] over one `UserDefaults` suite. */
-private class UserDefaultsStore(name: String) : KeyValueStore {
-    private val defaults = NSUserDefaults(suiteName = name)
-    override fun getString(key: String, default: String?): String? = defaults.stringForKey(key) ?: default
-    override fun putString(key: String, value: String) = defaults.setObject(value, forKey = key)
-    override fun getLong(key: String, default: Long): Long = if (defaults.objectForKey(key) == null) default else defaults.integerForKey(key)
-    override fun putLong(key: String, value: Long) = defaults.setInteger(value, forKey = key)
-    override fun remove(key: String) = defaults.removeObjectForKey(key)
-}
-
-/** Stage 3 replaces this with the Keychain. Until then passwords last for the session only, and the screens say so. */
-private class MemoryPasswordStore : PasswordStore {
-    private val map = HashMap<String, String>()
-    private val keys = MutableStateFlow<Set<String>>(emptySet())
-    private val count = MutableStateFlow(0L)
-    override val unlockedKeys: StateFlow<Set<String>> = keys
-    override val revision: StateFlow<Long> = count
-    override val keptOnlyThisSession: StateFlow<Boolean> = MutableStateFlow(true)
-    override fun getPassword(key: String?): String? = key?.let { map[it] }
-    override fun savePassword(key: String, value: String) {
-        map[key] = value
-        keys.value = map.keys.toSet()
-        count.value = count.value + 1
-    }
-    override fun remove(key: String) {
-        map.remove(key)
-        keys.value = map.keys.toSet()
-        count.value = count.value + 1
-    }
-    override fun all(): Map<String, String> = map.toMap()
-}
-
-/** Stage 3 registers a `BGAppRefreshTask`; until then saved photos are fetched only when the app asks directly. */
-private object NoOfflineScheduling : OfflineScheduling {
-    override suspend fun kick() {}
-    override suspend fun kickIfWanted() {}
-    override suspend fun after(result: PassResult, network: NetworkClass) {}
-}
-
-/** No casting on iOS in v1: nothing is discovered. */
-private object NoCastManager : CastManager {
-    override val discoveredDevices: StateFlow<List<CastDevice>> = MutableStateFlow(emptyList())
-    override val activeDevice: StateFlow<CastDevice?> = MutableStateFlow(null)
-    override val isCasting: StateFlow<Boolean> = MutableStateFlow(false)
-    override val currentImageUri: StateFlow<String?> = MutableStateFlow(null)
-    override val slideshowInterval: StateFlow<Int> = MutableStateFlow(5)
-    override val isSlideshowPlaying: StateFlow<Boolean> = MutableStateFlow(false)
-    override val volume: StateFlow<Float> = MutableStateFlow(0.5f)
-    override val isMuted: StateFlow<Boolean> = MutableStateFlow(false)
-    override val isWebCompanionActive: StateFlow<Boolean> = MutableStateFlow(false)
-    override val webCompanionUrl: StateFlow<String?> = MutableStateFlow(null)
-    override val webCompanionFailure: StateFlow<WebCompanionFailure?> = MutableStateFlow(null)
-    override fun startDiscovery() {}
-    override fun stopDiscovery() {}
-    override fun connectToDevice(device: CastDevice) {}
-    override fun disconnect() {}
-    override fun castImage(url: String, title: String) {}
-    override fun castSlideshow(urls: List<String>, intervalSeconds: Int) {}
-    override fun setSlideshowPlaying(playing: Boolean) {}
-    override fun setSlideshowInterval(seconds: Int) {}
-    override fun nextPhoto() {}
-    override fun previousPhoto() {}
-    override fun setVolume(volume: Float) {}
-    override fun toggleMute() {}
-    override fun getLocalIpAddress(): String? = null
+    /** One instance for the whole process: the phone UI and, later, the AirPlay external screen read the same state. */
+    fun viewModel(): SmugViewModel = viewModelInstance
 }

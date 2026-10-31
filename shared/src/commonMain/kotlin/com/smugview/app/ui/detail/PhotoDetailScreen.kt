@@ -158,6 +158,7 @@ fun PhotoDetailScreen(
     }
 
     val currentPhoto = if (pagerState.currentPage < lazyPhotos.itemCount) lazyPhotos[pagerState.currentPage] else null
+    com.smugview.app.ui.external.PublishToExternalDisplay(currentPhoto?.let { viewerImageModel(it.thumbnailUrl, it.archivedUri, it.localUri) })
 
     // 6-7 (R-45): the one photo that was asked for can show before the gallery says it is locked (its image URL needs no
     // session). The prompt belongs here too, and dismissing it is Back.
@@ -267,6 +268,7 @@ fun PhotoDetailScreen(
             val discoveredDevices by viewModel.discoveredDevices.collectAsState()
             val castedAlbumKey by viewModel.castedAlbumKeyFlow.collectAsState()
             var showCastSelector by remember { mutableStateOf(false) }
+            val castGate = com.smugview.app.ui.component.rememberCastStartGate()
             var showRecastDialog by remember { mutableStateOf(false) }
 
             Column(
@@ -320,8 +322,10 @@ fun PhotoDetailScreen(
                                     onNavigateToCastController(albumTitle)
                                 }
                             } else {
-                                viewModel.startCastDiscovery()
-                                showCastSelector = true
+                                castGate.request {
+                                    viewModel.startCastDiscovery()
+                                    showCastSelector = true
+                                }
                             }
                         }
                     )

@@ -3,12 +3,20 @@ options:
   bundleIdPrefix: com.smugview
   deploymentTarget:
     iOS: "16.0"
+packages:
+  # The Google Cast sender SDK (decision 2 of docs/design/ios-casting.md: the dynamic flavour). Version read from Google's release notes.
+  GoogleCast:
+    url: https://github.com/googlecast/google-cast-ios-sdk
+    exactVersion: 4.8.6
 targets:
   iosApp:
     type: application
     platform: iOS
     sources:
       - iosApp
+    dependencies:
+      - package: GoogleCast
+        product: GoogleCastStatic # experiment: the dynamic product double-defined GTMSessionFetcher (run 41141946510)
     # Compose Multiplatform refuses to start without this key (full refresh rate on ProMotion iPhones); found by the CI crash report of 2026-10-30.
     # SmugMugAPIKey is read by IosApp.kt; the build setting SMUGMUG_API_KEY is empty here and set by whoever builds a device test app.
     info:
@@ -16,6 +24,22 @@ targets:
       properties:
         CADisableMinimumFrameDurationOnPhone: true
         SmugMugAPIKey: $(SMUGMUG_API_KEY)
+        # Cast discovery (Google's iOS permissions page): both services, and the sentence shown with the local-network prompt (decision 4).
+        NSBonjourServices:
+          - _googlecast._tcp
+          - _CC1AD845._googlecast._tcp
+        NSLocalNetworkUsageDescription: SmugView looks for Chromecasts and other cast devices on your Wi-Fi so you can show photos on your TV.
+        NSPhotoLibraryAddUsageDescription: SmugView saves the photos you download to your photo library.
+        BGTaskSchedulerPermittedIdentifiers: ["com.smugview.app.newgalleries", "com.smugview.app.offline"]
+        UIBackgroundModes: ["fetch", "processing"]
+        # Casting: declare the external display scene role. No phone-scene entry is listed, so SwiftUI keeps its own; the delegate adaptor
+        # (ExternalSceneDelegate.swift) supplies the configuration. Unverified how Xcode merges this with the generated manifest.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleExternalDisplayNonInteractive:
+              - UISceneConfigurationName: External Display
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).ExternalSceneDelegate
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.smugview.spike
@@ -29,4 +53,4 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../spikeui/build/bin/iosSimulatorArm64/debugFramework"
         "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]": "$(SRCROOT)/../spikeui/build/bin/iosArm64/releaseFramework"
-        OTHER_LDFLAGS: ["$(inherited)", "-framework", "Shared"]
+        OTHER_LDFLAGS: ["$(inherited)", "-framework", "Shared", "-ObjC"]

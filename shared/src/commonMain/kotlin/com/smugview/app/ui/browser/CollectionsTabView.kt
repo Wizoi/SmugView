@@ -103,6 +103,7 @@ fun CollectionsTabView(
     val isCasting by viewModel.isCasting.collectAsState()
     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     var showCastSelector by remember { mutableStateOf(false) }
+    val castGate = com.smugview.app.ui.component.rememberCastStartGate()
     var pendingCastCollectionId by remember { mutableStateOf<Long?>(null) }
     var pendingCastCollectionName by remember { mutableStateOf("") }
     
@@ -788,8 +789,10 @@ fun CollectionsTabView(
                                             } else {
                                                 pendingCastCollectionId = col.id
                                                 pendingCastCollectionName = col.name
-                                                viewModel.startCastDiscovery()
-                                                showCastSelector = true
+                                                castGate.request {
+                                                    viewModel.startCastDiscovery()
+                                                    showCastSelector = true
+                                                }
                                             }
                                         },
                                     ) {

@@ -686,6 +686,7 @@ fun PhotoGridScreen(
                     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
                     val castedAlbumKey by viewModel.castedAlbumKeyFlow.collectAsState()
                     var showCastSelector by remember { mutableStateOf(false) }
+                    val castGate = com.smugview.app.ui.component.rememberCastStartGate()
                     var showRecastDialog by remember { mutableStateOf(false) }
                     val cState = activeDevice?.state ?: com.smugview.app.data.cast.ConnectionState.DISCONNECTED
                     com.smugview.app.ui.component.CastButton(
@@ -698,8 +699,10 @@ fun PhotoGridScreen(
                                     onNavigateToCastController(albumTitle)
                                 }
                             } else {
-                                viewModel.startCastDiscovery()
-                                showCastSelector = true
+                                castGate.request {
+                                    viewModel.startCastDiscovery()
+                                    showCastSelector = true
+                                }
                             }
                         }
                     )
