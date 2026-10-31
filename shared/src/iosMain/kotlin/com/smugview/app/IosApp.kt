@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -27,12 +28,14 @@ import com.smugview.app.data.api.ApiHttp
 import com.smugview.app.data.api.KtorSmugMugApi
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.Migrations
-import com.smugview.app.data.offline.NetworkKind
 import com.smugview.app.data.offline.OfflineCollections
 import com.smugview.app.data.offline.OfflineReader
 import com.smugview.app.data.offline.OfflineStore
 import com.smugview.app.data.repository.SmugMugRepository
 import com.smugview.app.diag.SyncReporter
+import com.smugview.app.data.notify.IosPendingOpen
+import com.smugview.app.data.offline.iosNetworkKindFlow
+import com.smugview.app.data.offline.IosOfflineBackground
 import com.smugview.app.ui.component.LocalCastExplainer
 import com.smugview.app.data.cast.createCastManager
 import com.smugview.app.data.cast.KeyValueCastExplainer
@@ -120,6 +123,8 @@ fun SmugViewIosApp() {
         }
     }
     val photoFileOps = remember { IosPhotoFileOps() }
+    // A tapped new-gallery notification (Swift hands it to IosPendingOpen): open that site, and the gallery when there was exactly one.
+    val pendingOpen by IosPendingOpen.pending.collectAsState()
     LaunchedEffect(Unit) { IosBackgroundTasks.runOnOpen() }
     SmugViewTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -128,7 +133,12 @@ fun SmugViewIosApp() {
                     LocalPhotoFileOps provides photoFileOps,
                     LocalCastExplainer provides KeyValueCastExplainer(UserDefaultsStore("smugview_prefs"))
                 ) {
-                    SmugViewNavigation(viewModel = viewModel, newGalleryFollow = IosRoot.siteFollow)
+                    SmugViewNavigation(
+                        viewModel = viewModel,
+                        newGalleryFollow = IosRoot.siteFollow,
+                        pendingOpen = pendingOpen,
+                        onOpenHandled = { IosPendingOpen.clear() }
+                    )
                 }
                 banner?.let { message ->
                     Text(
@@ -217,8 +227,10 @@ private object IosRoot {
             apiKey = { apiKey },
             settings = offlineSettings
         )
-        // A network-kind monitor (NWPathMonitor) is not written yet; until then the phone is treated as on an unmetered network.
-        ForegroundOfflineScheduling.create(schedulerScope, flowOf(NetworkKind.UNMETERED), offlineSettings, downloader, offlineStore)
+        ForegroundOfflineScheduling.create(schedulerScope, iosNetworkKindFlow(), offlineSettings, downloader, offlineStore).also { scheduling ->
+            // A BGProcessingTask (registered at launch by Swift) runs a pass through this when iOS decides to wake the app.
+            IosOfflineBackground.provider = { scheduling.runBackgroundPass() }
+        }
     }
 
     private val viewModelInstance: SmugViewModel by lazy {
@@ -233,11 +245,16 @@ private object IosRoot {
             fileUri = { path -> "file://$path" },
             repository = repository,
             offline = OfflineCollections(database, store, offlineScheduling, settings),
-            offlineReader = OfflineReader(database, store, settings, flowOf(NetworkKind.UNMETERED)),
+            offlineReader = OfflineReader(database, store, settings, iosNetworkKindFlow()),
             castManager = createCastManager(CastBridgeHost.bridge, castScope),
             passwordStore = passwordStore,
             defaultDispatcher = Dispatchers.Default
-        ).also { schedulerScope.launch { offlineScheduling.kickIfWanted() } }
+        ).also {
+            schedulerScope.launch {
+                offlineScheduling.kickIfWanted()
+                IosOfflineBackground.scheduleOfflineIfWanted()
+            }
+        }
     }
 
     /** One instance for the whole process: the phone UI and, later, the AirPlay external screen read the same state. */
