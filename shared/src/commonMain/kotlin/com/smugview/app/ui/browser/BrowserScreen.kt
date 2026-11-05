@@ -596,6 +596,8 @@ fun PasswordPromptDialog(
     note: String? = null
 ) {
     var password by remember { mutableStateOf("") }
+    // SmugMug passwords are case sensitive and the dots hide a stray capital, so the owner of the field can look at what was typed.
+    var showPassword by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -647,7 +649,12 @@ fun PasswordPromptDialog(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password", color = Color.White.copy(alpha = 0.5f)) },
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { showPassword = !showPassword }) {
+                            Text(if (showPassword) "Hide" else "Show", color = NeonBlue)
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
                         capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None,
