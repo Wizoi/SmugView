@@ -68,6 +68,7 @@ import com.smugview.app.util.Toaster
 import com.smugview.app.util.ioDispatcher
 import com.smugview.shared.api.platformEngine
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.cookies.HttpCookies
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -197,7 +198,15 @@ private object IosRoot {
             .build()
     }
 
-    private val api: SmugMugApi by lazy { KtorSmugMugApi(ApiHttp(HttpClient(platformEngine()))) }
+    /**
+     * The `!unlock` answer carries the session as a cookie, and every later request to a password folder needs it (CLAUDE.md: the cookie jar is the
+     * only way in). Android's OkHttp stack has a jar; Ktor's Darwin engine keeps none unless the plugin is installed, so on iOS an unlock answered
+     * 200 and the next `!children` still answered 404 (CI run 41969637703, `SMUGVIEW_DEMO_CHECK=unlock`). In memory only, like Android's: it is empty
+     * at every launch, and `unlockSavedRoots` makes a session from the saved passwords.
+     */
+    private val api: SmugMugApi by lazy {
+        KtorSmugMugApi(ApiHttp(HttpClient(platformEngine()) { install(HttpCookies) }))
+    }
 
     private val repository: SmugMugRepository by lazy {
         SmugMugRepository(
