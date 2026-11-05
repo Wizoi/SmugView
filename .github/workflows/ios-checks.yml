@@ -189,7 +189,8 @@ jobs:
           fi
           xcrun simctl uninstall "$UDID" com.smugview.app 2>/dev/null || true
           xcrun simctl install "$UDID" "$APP" 2>&1 | tee -a checks-run.log
-          SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK=unlock SIMCTL_CHILD_SMUGVIEW_DEMO_UNLOCK_PASSWORD="$FAMILY_PW" \n            xcrun simctl launch --terminate-running-process --stdout="$PWD/unlock-stdout.log" --stderr="$PWD/unlock-stderr.log" "$UDID" com.smugview.app >/dev/null 2>&1
+          SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK=unlock SIMCTL_CHILD_SMUGVIEW_DEMO_UNLOCK_PASSWORD="$FAMILY_PW" \
+            xcrun simctl launch --terminate-running-process --stdout="$PWD/unlock-stdout.log" --stderr="$PWD/unlock-stderr.log" "$UDID" com.smugview.app >/dev/null 2>&1
           sleep 40
           xcrun simctl terminate "$UDID" com.smugview.app >/dev/null 2>&1 || true
           echo '--- unlock trace'; grep 'smugview-check unlock' unlock-stdout.log || echo '(no trace lines at all)'
