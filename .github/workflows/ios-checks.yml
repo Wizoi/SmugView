@@ -172,19 +172,19 @@ jobs:
 
       # ---- Check 3: unlock a password folder ------------------------------------------------------------------------------------------
       # The owner's TestFlight tester typed the right password and got "Incorrect password". This runs the app's own unlock call (api.unlockNode,
-      # the iOS network stack) with the Family folder's password from the secret SMUGMUG_FAMILY_PASSWORD, then lists the folder's children.
+      # the iOS network stack) with the Family folder's password from the secret SMUGMUG_FAMILY_PW, then lists the folder's children.
       # The app prints only the password's length, its non-ASCII count and whether it has edge spaces; never the password. Skipped without the secret.
       - name: "Check 3: unlock a password folder"
         id: unlock
         if: steps.sim.outcome == 'success'
         continue-on-error: true
         env:
-          FAMILY_PW: ${{ secrets.SMUGMUG_FAMILY_PASSWORD }}
+          FAMILY_PW: ${{ secrets.SMUGMUG_FAMILY_PW }}
         run: |
           APP=build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
           if [ -z "$FAMILY_PW" ]; then
             echo SKIPPED > unlock-verdict.txt
-            echo "::notice title=iOS unlock check::skipped: the secret SMUGMUG_FAMILY_PASSWORD is not set"
+            echo "::notice title=iOS unlock check::skipped: the secret SMUGMUG_FAMILY_PW is not set"
             exit 0
           fi
           xcrun simctl uninstall "$UDID" com.smugview.app 2>/dev/null || true
