@@ -1,5 +1,7 @@
 package com.smugview.app
 
+import com.smugview.app.data.api.ApiException
+import com.smugview.app.data.api.SmugMugApi
 import com.smugview.app.data.db.AppDatabase
 import com.smugview.app.data.db.OfflineCollection
 import com.smugview.app.data.offline.OfflineCollections
@@ -22,11 +24,12 @@ internal object DemoChecks {
     private val scope = CoroutineScope(Dispatchers.Default)
 
     /** Called once from the app's composition root; [offline], [db] and [documentsDir] are only used by the `offline` check. */
-    fun start(db: AppDatabase, offline: OfflineCollections, documentsDir: String) {
+    fun start(db: AppDatabase, offline: OfflineCollections, documentsDir: String, api: SmugMugApi, apiKey: String) {
         val which = NSProcessInfo.processInfo.environment["SMUGVIEW_DEMO_CHECK"] as? String
         when (which) {
             "video" -> scope.launch { runVideo() }
             "offline" -> scope.launch { runOffline(db, offline, documentsDir) }
+            "unlock" -> scope.launch { runUnlock(api, apiKey) }
             else -> Unit
         }
     }
@@ -96,5 +99,56 @@ internal object DemoChecks {
             delay(2000)
         }
         println("smugview-check offline done")
+    }
+
+    /**
+     * Unlocks a password folder with the real iOS network stack, the way the password prompt does (the same `api.unlockNode` call), then lists
+     * the folder's children. `SMUGVIEW_DEMO_UNLOCK_NODE` is the node (default the owner's Family folder) and `SMUGVIEW_DEMO_UNLOCK_PASSWORD` the
+     * password, which comes from a GitHub secret. The password is NEVER printed: only its length, how many characters are not ASCII and
+     * whether it starts or ends with a space, because those are what an iOS keyboard can change. Prints `smugview-check unlock ...`.
+     */
+    private suspend fun runUnlock(api: SmugMugApi, apiKey: String) {
+        val env = NSProcessInfo.processInfo.environment
+        val node = (env["SMUGVIEW_DEMO_UNLOCK_NODE"] as? String)?.takeIf { it.isNotBlank() } ?: "2sDN5x"
+        val password = (env["SMUGVIEW_DEMO_UNLOCK_PASSWORD"] as? String).orEmpty()
+        println(
+            "smugview-check unlock start node=$node passwordLength=${password.length} nonAscii=${password.count { it.code > 127 }} " +
+                "edgeSpace=${password.isNotEmpty() && (password.first() == ' ' || password.last() == ' ')} apiKeyLength=${apiKey.length}"
+        )
+        if (password.isEmpty()) {
+            println("smugview-check unlock result=NO_PASSWORD")
+            return
+        }
+        suspend fun children(label: String): Int {
+            return try {
+                val n = api.getNodeChildren(node, apiKey, count = 20).response.nodes.orEmpty().size
+                println("smugview-check unlock $label children=$n")
+                n
+            } catch (e: ApiException) {
+                println("smugview-check unlock $label children=error http=${e.code}")
+                -1
+            } catch (e: Throwable) {
+                println("smugview-check unlock $label children=error ${e::class.simpleName}")
+                -1
+            }
+        }
+        val before = children("before")
+        val code = try {
+            api.unlockNode(node, apiKey, password, "true").code
+        } catch (e: ApiException) {
+            e.code
+        } catch (e: Throwable) {
+            println("smugview-check unlock post error ${e::class.simpleName}: ${e.message?.take(120)}")
+            -1
+        }
+        println("smugview-check unlock post http=$code")
+        val after = children("after")
+        val verdict = when {
+            code !in 200..299 -> "REJECTED_OR_FAILED http=$code"
+            after > before -> "UNLOCKED children $before -> $after"
+            after > 0 -> "UNLOCKED children=$after (already listed before)"
+            else -> "POST_OK_BUT_STILL_EMPTY"
+        }
+        println("smugview-check unlock result=$verdict")
     }
 }

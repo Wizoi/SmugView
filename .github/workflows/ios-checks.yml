@@ -170,6 +170,41 @@ jobs:
           PY
           exit 0
 
+      # ---- Check 3: unlock a password folder ------------------------------------------------------------------------------------------
+      # The owner's TestFlight tester typed the right password and got "Incorrect password". This runs the app's own unlock call (api.unlockNode,
+      # the iOS network stack) with the Family folder's password from the secret SMUGMUG_FAMILY_PASSWORD, then lists the folder's children.
+      # The app prints only the password's length, its non-ASCII count and whether it has edge spaces; never the password. Skipped without the secret.
+      - name: "Check 3: unlock a password folder"
+        id: unlock
+        if: steps.sim.outcome == 'success'
+        continue-on-error: true
+        env:
+          FAMILY_PW: ${{ secrets.SMUGMUG_FAMILY_PASSWORD }}
+        run: |
+          APP=build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
+          if [ -z "$FAMILY_PW" ]; then
+            echo SKIPPED > unlock-verdict.txt
+            echo "::notice title=iOS unlock check::skipped: the secret SMUGMUG_FAMILY_PASSWORD is not set"
+            exit 0
+          fi
+          xcrun simctl uninstall "$UDID" com.smugview.app 2>/dev/null || true
+          xcrun simctl install "$UDID" "$APP" 2>&1 | tee -a checks-run.log
+          SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK=unlock SIMCTL_CHILD_SMUGVIEW_DEMO_UNLOCK_PASSWORD="$FAMILY_PW" \n            xcrun simctl launch --terminate-running-process --stdout="$PWD/unlock-stdout.log" --stderr="$PWD/unlock-stderr.log" "$UDID" com.smugview.app >/dev/null 2>&1
+          sleep 40
+          xcrun simctl terminate "$UDID" com.smugview.app >/dev/null 2>&1 || true
+          echo '--- unlock trace'; grep 'smugview-check unlock' unlock-stdout.log || echo '(no trace lines at all)'
+          result=$(grep -o 'smugview-check unlock result=.*' unlock-stdout.log | tail -n 1 | sed 's/smugview-check unlock result=//')
+          detail=$(grep 'smugview-check unlock' unlock-stdout.log | tr '\n' ';' | cut -c1-600)
+          case "$result" in
+            UNLOCKED*) verdict=PASS ;;
+            *) verdict=FAIL; [ -n "$result" ] || result="no result line (the app printed nothing or crashed; see unlock-stderr.log)" ;;
+          esac
+          echo "$verdict" > unlock-verdict.txt
+          msg="unlock check $verdict: $result | $detail"
+          echo "### $msg" >> "$GITHUB_STEP_SUMMARY"
+          echo "::$([ "$verdict" = PASS ] && echo notice || echo error) title=iOS unlock check::$msg"
+          exit 0
+
       - name: Put the first errors in the annotations
         if: always()
         run: |
@@ -187,6 +222,8 @@ jobs:
             video-check-screen.png
             offline-stdout.log
             offline-stderr.log
+            unlock-stdout.log
+            unlock-stderr.log
             checks-run.log
           if-no-files-found: ignore
       # Both checks have run by now; only here does a failure fail the job.
@@ -200,6 +237,8 @@ jobs:
           for f in video-verdict.txt offline-verdict.txt; do
             if ! grep -q '^PASS' "$f" 2>/dev/null; then echo "$f: not PASS"; fail=1; fi
           done
+          # The unlock check is optional: only a FAIL counts, not a skip (no secret).
+          if grep -q '^FAIL' unlock-verdict.txt 2>/dev/null; then echo "unlock-verdict.txt: FAIL"; fail=1; fi
           if [ "$fail" = 1 ]; then
             echo '### iOS checks: at least one build step or check did not pass (see above)' >> "$GITHUB_STEP_SUMMARY"
             exit 1
