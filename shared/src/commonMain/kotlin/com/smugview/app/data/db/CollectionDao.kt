@@ -38,9 +38,11 @@ interface CollectionDao {
      * leaves the index as it was. Keys are deleted in chunks (SQLite's variable limit).
      */
     @androidx.room.Transaction
-    suspend fun applyCrawl(upserts: List<CachedAlbum>, pruneKeys: List<String>) {
+    suspend fun applyCrawl(upserts: List<CachedAlbum>, pruneKeys: List<String>, viewedMarks: List<ViewedGalleryUpdate> = emptyList()) {
         if (upserts.isNotEmpty()) upsertAlbums(upserts)
         pruneKeys.chunked(500).forEach { deleteAlbumsByKeys(it) }
+        // First-visit baseline (design first-visit-dots): what was already there is "seen", written with the index so both or neither.
+        if (viewedMarks.isNotEmpty()) insertViewedUpdates(viewedMarks)
     }
 
     @Query("UPDATE cached_albums SET parentNodeId = :parentNodeId WHERE albumKey = :albumKey")

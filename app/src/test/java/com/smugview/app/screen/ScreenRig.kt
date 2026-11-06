@@ -42,11 +42,13 @@ class ScreenRig(
     val compose: ComposeContentTestRule,
     retrying: Boolean = false,
     repositoryDao: (com.smugview.app.data.db.CollectionDao) -> com.smugview.app.data.db.CollectionDao = { it },
-    castFactory: ((android.app.Application) -> com.smugview.app.data.cast.CastManager)? = null
+    castFactory: ((android.app.Application) -> com.smugview.app.data.cast.CastManager)? = null,
+    /** See [ScenarioRig]: false for a phone that has never opened the site (an empty cache). */
+    returningPhone: Boolean = true
 ) {
     // Dispatchers.Main is the Robolectric main looper, the real app's arrangement. Coil's AsyncImagePainter reads
     // Compose snapshot state from Dispatchers.Main and crashes on any other thread; the view model's work follows it.
-    val rig = ScenarioRig(retrying, mainDispatcher = android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher(), repositoryDao = repositoryDao, castFactory = castFactory)
+    val rig = ScenarioRig(retrying, mainDispatcher = android.os.Handler(android.os.Looper.getMainLooper()).asCoroutineDispatcher(), repositoryDao = repositoryDao, castFactory = castFactory, returningPhone = returningPhone)
     val viewModel get() = rig.viewModel
     val server get() = rig.server
 

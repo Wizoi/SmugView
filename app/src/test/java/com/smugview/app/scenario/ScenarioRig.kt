@@ -41,7 +41,13 @@ class ScenarioRig(
     /** What the repository sees as its DAO (a test wraps [dao] to hold or watch a query); `dao` itself stays the plain one. */
     repositoryDao: (CollectionDao) -> CollectionDao = { it },
     /** Builds the cast manager the view model gets (a journey passes the real one over a fake `CastIo`); null is a Mockito mock. */
-    private val castFactory: ((Application) -> CastManager)? = null
+    private val castFactory: ((Application) -> CastManager)? = null,
+    /**
+     * A phone that has opened this site before. A FIRST visit lights no dots (the baseline, tester feedback 2026-11-06), but most scenarios
+     * are about what a dot does, so by default the phone is a returning one: the public gallery is already indexed and Family's session
+     * has been seen. Pass false to test a first visit.
+     */
+    returningPhone: Boolean = true
 ) {
     val server = FakeSmugMugServer()
     private val cacheDir: java.io.File? = if (httpCache) java.nio.file.Files.createTempDirectory("smugview-http-cache").toFile() else null
@@ -80,8 +86,29 @@ class ScenarioRig(
     init {
         Dispatchers.setMain(mainThread)
         app.getSharedPreferences("smugview_prefs", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        if (returningPhone) seedReturningPhone()
         repository = newRepository(retrying)
         viewModel = newViewModel(repository, savedState)
+    }
+
+    private fun seedReturningPhone() {
+        // One old gallery that no scenario opens: the index is not empty, so the first crawl is not "the first visit". (The fixture's own
+        // public gallery is not used: some scenarios open it and expect it to be unknown to the index.)
+        val old = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).minusDays(200)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx"))
+        kotlinx.coroutines.runBlocking {
+            dao.upsertAlbums(
+                listOf(
+                    com.smugview.app.data.db.CachedAlbum(
+                        albumKey = "SeedAk", nodeId = "SeedNd", name = "Seen long ago", securityType = "None", passwordHint = null,
+                        uri = "/api/v2/album/SeedAk", webUri = null, urlPath = "/Seed/Seen-long-ago", imageCount = 3,
+                        dateModified = old, galleryStyle = null, highlightImageUrl = null, sortIndex = 0,
+                        nickname = "idzifamily", parentNodeId = null, imagesLastUpdated = old
+                    )
+                )
+            )
+        }
+        syncState.putLong("baselined.idzifamily.2sDN5x", 1L)
     }
 
     private fun newRepository(retrying: Boolean) =

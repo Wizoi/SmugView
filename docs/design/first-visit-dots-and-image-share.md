@@ -48,9 +48,10 @@ Real topology (password folder, sub-folder, gallery, depth 2 or more), real ID s
 4. A partial first crawl: nothing marked.
 5. An existing site with marks already: untouched.
 
-### Open questions for you
-a. Is "first time on this phone" the right definition? (The alternative needs accounts, which the app does not have.)
-b. Keep existing dots on phones that already have data? (Recommended: yes.)
+### Owner's answers (2026-11-06)
+- A tester (Danielle, on an iPad) saw many dots, most likely after unlocking a password folder: its galleries all arrive at once. So the unlock case is in scope (rule 2 above), not an afterthought.
+- "First time on this phone" accepted as the rule; phones that already have data keep their dots (nothing retroactive).
+- Found while reading the code: a gallery the tree walk indexed has no `ImagesLastUpdated` until the crawl fills it, so it is the crawl that first dates it. The baseline therefore applies to a row whose index date is being set for the FIRST time (`old == null` or `old.imagesLastUpdated == null`), not only to brand-new rows.
 
 ## Plan 2: share the picture, not just the link
 
@@ -93,6 +94,7 @@ The size prompt must replace both, so a picture is shared the same way from eith
 - Real device (a tester): AirDrop of both sizes to another Apple device, and Quick Share on an Android phone.
 
 ### Open questions for you
-a. Which screen was the feedback about: the photo viewer, the gallery header or the Collections tab? (The gallery header sharing a link is on purpose.)
-b. Ask every time, or add "Remember my choice" with a way to change it in settings? (Recommended: ask every time, add the setting later if testers ask.)
-c. What if the original is not a JPEG or is very large: hide Original (safe, the plan above) or offer it with a warning that camera data stays in? (Recommended: hide it.)
+### Owner's answers (2026-11-06)
+- **Ask every time**; no "remember my choice" (a remembered setting would need somewhere to be changed later).
+- **Original that is not a JPEG, or very large:** offer it, with a warning (replaces "hide Original" above). The warning says camera details and location stay in a non-JPEG original, because the app can only strip a JPEG. Very large: show the size and let the person choose.
+- **Context decides the popup** (owner, same day): a photo shares through the photo popup, a gallery or folder through the link popup, in the viewer and in Collections. Done in Collections for the existing popup; the size prompt will join the photo popup.

@@ -43,9 +43,24 @@ class DotFlowTest {
 
     @After fun tearDown() = db.close()
 
-    private fun repo() = SmugMugRepository(
-        server.api(), dao, FakePasswordStore(mapOf("2sDN5x" to "fake-pw-1")), RecordingSyncReporter(), state
-    ).also { it.treeSyncDelayMs = 0; it.unlockDelayMs = 0 }
+    private var now = System.currentTimeMillis()
+
+    private fun repo(passwords: Map<String, String> = mapOf("2sDN5x" to "fake-pw-1")) = SmugMugRepository(
+        server.api(), dao, FakePasswordStore(passwords), RecordingSyncReporter(), state
+    ).also { it.treeSyncDelayMs = 0; it.unlockDelayMs = 0; it.clock = { now } }
+
+    private fun cachedFolders() = listOf(
+        folder("2sDN5x", "4zqWw", "Family", "/Family"),
+        folder("P4BKB", "2sDN5x", "School", "/Family/School"),
+        folder("3BxbFF", "4zqWw", "Kentridge", "/Kentridge")
+    )
+
+    /** A crawl of the whole site, as a launch does: unlock what has a saved password, then list every gallery. */
+    private fun crawl(r: SmugMugRepository) = runBlocking {
+        now += 20 * 60_000L // past the 15-minute crawl gate
+        val unlock = r.unlockSavedRoots(nick, "k")
+        r.buildInMemoryGalleryCache(nick, "k", unlock, rootNodeId = "4zqWw")
+    }
 
     private fun folder(id: String, parent: String, name: String, path: String) = CachedNode(
         nodeId = id, parentNodeId = parent, type = "Folder", title = name, description = null, access = "None",
@@ -53,18 +68,19 @@ class DotFlowTest {
         webUri = "$site$path", nickname = nick
     )
 
-    /** Family, School and Kentridge cached; the crawl (with unlock) resolves each gallery's parent. */
+    /**
+     * A returning phone: the first crawl is the baseline (nothing is lit, see the first-visit tests below), then the gallery gets new photos
+     * (its ImagesLastUpdated moves to 2 days ago, newer than what this phone first saw) and the next crawl lights the chain.
+     */
     private fun crawled(): SmugMugRepository = runBlocking {
-        dao.insertNodes(
-            listOf(
-                folder("2sDN5x", "4zqWw", "Family", "/Family"),
-                folder("P4BKB", "2sDN5x", "School", "/Family/School"),
-                folder("3BxbFF", "4zqWw", "Kentridge", "/Kentridge")
-            )
-        )
+        dao.insertNodes(cachedFolders())
+        val firstSeen = server.albums
+        server.albums = server.albums.map { if (it.albumKey == "FfHCms") it.copy(imagesLastUpdated = server.daysAgo(10)) else it }
         val r = repo()
-        val unlock = r.unlockSavedRoots(nick, "k")
-        r.buildInMemoryGalleryCache(nick, "k", unlock, rootNodeId = "4zqWw")
+        crawl(r)
+        assertEquals("the first visit is the baseline", emptySet<String>(), lit(r))
+        server.albums = firstSeen
+        crawl(r)
         r
     }
 
@@ -134,4 +150,103 @@ class DotFlowTest {
         val filter = req.url.queryParameter("_filter").orEmpty()
         assertTrue(filter, filter.split(",").contains("ImagesLastUpdated"))
     }
+
+    // ---- First visit: no dot for what was already there (tester feedback, 2026-11-06) ----------------------------------------------------
+
+    @Test fun firstVisit_lightsNothing_evenThoughTheGalleryWasUpdatedTwoDaysAgo() = runBlocking {
+        dao.insertNodes(cachedFolders())
+        val r = repo()
+
+        crawl(r)
+
+        assertEquals("the gallery is in the index with its date", server.albums.first { it.albumKey == "FfHCms" }.imagesLastUpdated, dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated)
+        assertEquals("a first visit starts clear", emptySet<String>(), lit(r))
+    }
+
+    @Test fun afterTheFirstVisit_aGalleryUpdatedLater_lightsItsChain() = runBlocking {
+        dao.insertNodes(cachedFolders())
+        server.albums = server.albums.map { if (it.albumKey == "FfHCms") it.copy(imagesLastUpdated = server.daysAgo(10)) else it }
+        val r = repo()
+        crawl(r)
+        assertEquals(emptySet<String>(), lit(r))
+
+        server.albums = server.albums.map { if (it.albumKey == "FfHCms") it.copy(imagesLastUpdated = server.daysAgo(1)) else it }
+        crawl(r)
+
+        assertEquals(setOf("LCdk7F", "P4BKB", "2sDN5x", "4zqWw"), lit(r))
+    }
+
+    @Test fun afterTheFirstVisit_aBrandNewGallery_lightsItsChain() = runBlocking {
+        dao.insertNodes(cachedFolders())
+        val r = repo()
+        crawl(r)
+        assertEquals(emptySet<String>(), lit(r))
+
+        server.albums = server.albums + FakeAlbum(
+            "NwGal1", "NdNwGal1", "Fresh Gallery", "/Family/School/2026-11-05--Fresh-Gallery",
+            lastUpdated = server.daysAgo(0), imagesLastUpdated = server.daysAgo(0), needsSession = true
+        )
+        crawl(r)
+
+        assertTrue("the new gallery is lit", "NdNwGal1" in lit(r))
+        assertFalse("the one that was already there is not", "LCdk7F" in lit(r))
+    }
+
+    @Test fun firstUnlockOfAPasswordFolder_lightsNothingUnderIt_butALaterUpdateDoes() = runBlocking {
+        // Danielle on an iPad: she opened the site, then unlocked Family, and every gallery under it lit at once.
+        dao.insertNodes(cachedFolders())
+        val r = repo(passwords = emptyMap())
+        crawl(r) // the anonymous visit: only the public gallery is listed
+        assertEquals(listOf("N74KSK"), dao.getAlbumIndex(nick).map { it.albumKey })
+
+        now += 60_000L
+        assertEquals(SmugMugRepository.UnlockResult.Success, r.unlocks.reauthorize("2sDN5x", "k", "fake-pw-1"))
+        r.resyncAfterUnlock(nick, "4zqWw", "k")
+
+        assertTrue("the locked gallery is now in the index", dao.getAlbumByKey("FfHCms") != null)
+        assertEquals("what the unlock revealed was already there: nothing is lit", emptySet<String>(), lit(r))
+
+        server.albums = server.albums.map { if (it.albumKey == "FfHCms") it.copy(imagesLastUpdated = server.daysAgo(0)) else it }
+        crawl(r) // a later launch: the session is still live in this process
+
+        assertTrue("an update after that does light", "LCdk7F" in lit(r))
+    }
+
+    @Test fun aGalleryTheTreeWalkIndexedWithoutADate_isBaselinedWhenTheUnlockDatesIt() = runBlocking {
+        dao.insertNodes(cachedFolders())
+        val r = repo(passwords = emptyMap())
+        crawl(r)
+        // The walk of an unlocked folder writes the gallery with no ImagesLastUpdated; the crawl is what first dates it.
+        val f = server.albums.first { it.albumKey == "FfHCms" }
+        dao.upsertAlbums(listOf(CachedAlbumFixtures.row(f, nick, parent = "P4BKB", ilu = null)))
+
+        now += 60_000L
+        r.unlocks.reauthorize("2sDN5x", "k", "fake-pw-1")
+        r.resyncAfterUnlock(nick, "4zqWw", "k")
+
+        assertTrue(dao.getAlbumByKey("FfHCms")!!.imagesLastUpdated != null)
+        assertEquals(emptySet<String>(), lit(r))
+    }
+
+    @Test fun aPhoneThatAlreadyHasData_keepsItsDots() = runBlocking {
+        // An update before this change: the index already holds the gallery with its date and no viewed mark. Nothing is cleared.
+        dao.insertNodes(cachedFolders())
+        val f = server.albums.first { it.albumKey == "FfHCms" }
+        dao.upsertAlbums(listOf(CachedAlbumFixtures.row(f, nick, parent = "P4BKB")))
+        val r = repo()
+
+        crawl(r)
+
+        assertTrue("still lit", "LCdk7F" in lit(r))
+    }
+}
+
+/** Test rows for the index. */
+private object CachedAlbumFixtures {
+    fun row(a: FakeAlbum, nick: String, parent: String? = null, ilu: String? = a.imagesLastUpdated) = com.smugview.app.data.db.CachedAlbum(
+        albumKey = a.albumKey, nodeId = a.nodeId, name = a.name, securityType = a.security, passwordHint = null,
+        uri = "/api/v2/album/${a.albumKey}", webUri = null, urlPath = a.urlPath, imageCount = 12,
+        dateModified = a.lastUpdated, galleryStyle = null, highlightImageUrl = null, sortIndex = 0,
+        nickname = nick, parentNodeId = parent, imagesLastUpdated = ilu
+    )
 }

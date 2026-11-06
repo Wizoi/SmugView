@@ -90,13 +90,15 @@ class GalleryCrawl(
      * When [prune] is set, index rows of [nickname] the listing did not contain are deleted, unless
      * that is more than `max(20, 5%)` of the index: then the prune is skipped and reported
      * (an expired session lists only the anonymous galleries, and must not read as a mass delete).
-     * [Written.changed] is the galleries new to the index or whose ILU moved forward.
+     * [Written.changed] is the galleries new to the index or whose ILU moved forward. With [baseline], a gallery dated for the first time is
+     * marked viewed in the same transaction (see the comment in the loop).
      */
-    suspend fun write(nickname: String, crawled: List<Crawled>, prune: Boolean): Written {
+    suspend fun write(nickname: String, crawled: List<Crawled>, prune: Boolean, baseline: Boolean = false): Written {
         val existing = dao.getAlbumIndex(nickname).associateBy { it.albumKey }
         val seen = HashSet<String>(crawled.size * 2)
         val upserts = ArrayList<CachedAlbum>(crawled.size)
         val changed = ArrayList<CachedAlbum>()
+        val marks = ArrayList<com.smugview.app.data.db.ViewedGalleryUpdate>()
         for ((index, c) in crawled.withIndex()) {
             val a = c.album
             val old = existing[a.albumKey]
@@ -121,6 +123,12 @@ class GalleryCrawl(
                 imagesLastUpdated = ilu
             )
             upserts.add(row)
+            // First visit (tester feedback): a gallery whose date this phone learns for the FIRST time, during a first crawl of the site or the
+            // first crawl after a password folder was unlocked, was already there: it counts as seen, so it lights no dot. A gallery that
+            // appears, or whose date moves, in a later crawl is not marked, and lights as before.
+            if (baseline && old?.imagesLastUpdated == null && ilu != null) {
+                marks.add(com.smugview.app.data.db.ViewedGalleryUpdate(nodeId = row.nodeId, lastViewedDateModified = ilu))
+            }
             val moved = old?.imagesLastUpdated != null && isoMillis(ilu) != null && isoMillis(old.imagesLastUpdated) != null &&
                 isoMillis(ilu)!! > isoMillis(old.imagesLastUpdated)!!
             if (old == null || moved) changed.add(row)
@@ -134,7 +142,7 @@ class GalleryCrawl(
             if (unseen.size > maxOf(PRUNE_FLOOR, own.size * PRUNE_PERCENT / 100)) pruneSkipped = unseen.size
             else pruneKeys = unseen
         }
-        dao.applyCrawl(upserts, pruneKeys)
+        dao.applyCrawl(upserts, pruneKeys, marks)
         return Written(changed, pruneKeys.size, pruneSkipped)
     }
 

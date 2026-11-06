@@ -35,7 +35,7 @@ class LaunchStatesScreenTest {
     @get:Rule val compose = createComposeRule()
     private lateinit var screens: ScreenRig
 
-    @Before fun setUp() { screens = ScreenRig(compose) }
+    @Before fun setUp() { screens = ScreenRig(compose, returningPhone = false) } // these are about a site with nothing cached yet
     @After fun tearDown() = screens.close()
 
     private fun shown(text: String, substring: Boolean = false) =

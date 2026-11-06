@@ -600,7 +600,13 @@ class SmugMugRepository(
                     }
                 }
                 val sessionUnchanged = unlocks.sessionEpoch.value == startEpoch
-                val written = crawl.write(nickname, fetched.albums, prune = unlock?.allSucceeded == true && sessionUnchanged)
+                // First visit (tester feedback): a first crawl of the site, or the first crawl after a password folder's session exists on this phone,
+                // reveals galleries that were already there; they must not all light up. Recorded per root so it happens once.
+                val sessionRoots = unlocks.access.value.filterValues { it == UnlockManager.Access.Session }.keys
+                val newRoots = sessionRoots.filter { syncState.getLong("baselined.$nickname.$it") == 0L }
+                val baseline = isFirstSync || newRoots.isNotEmpty()
+                val written = crawl.write(nickname, fetched.albums, prune = unlock?.allSucceeded == true && sessionUnchanged, baseline = baseline)
+                newRoots.forEach { syncState.putLong("baselined.$nickname.$it", clock()) }
                 complete = true
                 pruned = written.pruned
                 pruneSkipped = written.pruneSkipped

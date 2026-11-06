@@ -32,7 +32,7 @@ import java.net.UnknownHostException
 class LaunchStatesScenarioTest {
     private lateinit var rig: ScenarioRig
 
-    @Before fun setUp() { rig = ScenarioRig() }
+    @Before fun setUp() { rig = ScenarioRig(returningPhone = false) } // these are about a site with nothing cached yet
     @After fun tearDown() = rig.close()
 
     private val vm get() = rig.viewModel

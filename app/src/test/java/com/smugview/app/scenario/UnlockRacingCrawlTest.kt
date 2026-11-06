@@ -23,7 +23,7 @@ import org.robolectric.annotation.Config
 class UnlockRacingCrawlTest {
     private lateinit var rig: ScenarioRig
 
-    @Before fun setUp() { rig = ScenarioRig() }
+    @Before fun setUp() { rig = ScenarioRig(returningPhone = false) } // asserts the exact index contents, so no seeded row
     @After fun tearDown() = rig.close()
 
     private val vm get() = rig.viewModel
