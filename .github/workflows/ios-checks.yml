@@ -206,6 +206,60 @@ jobs:
           echo "::$([ "$verdict" = PASS ] && echo notice || echo error) title=iOS unlock check::$msg"
           exit 0
 
+      # ---- Check 4: the video turns landscape ------------------------------------------------------------------------------------------
+      # The owner asked for the screen to turn horizontal when the device is turned. The simulator cannot be turned from the command line, so
+      # the app's DEMO_ORIENTATION hook (iosApp/DemoRotation.swift) asks the window scene to rotate at 12 s while the video plays. PASS needs
+      # the screenshot taken afterwards to be wider than tall AND the player still playing after the turn.
+      - name: "Check 4: the video turns landscape"
+        id: rotate
+        if: steps.sim.outcome == 'success'
+        continue-on-error: true
+        run: |
+          APP=build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
+          xcrun simctl uninstall "$UDID" com.smugview.app 2>/dev/null || true
+          xcrun simctl install "$UDID" "$APP" 2>&1 | tee -a checks-run.log
+          SIMCTL_CHILD_SMUGVIEW_DEBUG=1 SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=Tutorial SIMCTL_CHILD_SMUGVIEW_DEMO_ROUTE=photo_detail/wmGrZV/XqnrDcz SIMCTL_CHILD_SMUGVIEW_DEMO_CHECK=video SIMCTL_CHILD_SMUGVIEW_DEMO_ORIENTATION=landscape SIMCTL_CHILD_SMUGVIEW_DEMO_ORIENTATION_DELAY=12 xcrun simctl launch --terminate-running-process --stdout="$PWD/rotate-stdout.log" --stderr="$PWD/rotate-stderr.log" "$UDID" com.smugview.app 2>&1 | tee -a checks-run.log
+          sleep 10
+          xcrun simctl io "$UDID" screenshot rotate-before.png 2>&1 | tee -a checks-run.log || true
+          sleep 12
+          xcrun simctl io "$UDID" screenshot rotate-after.png 2>&1 | tee -a checks-run.log || true
+          sleep 14
+          xcrun simctl terminate "$UDID" com.smugview.app 2>&1 | tee -a checks-run.log || true
+          echo '--- rotate trace'; grep 'smugview-check' rotate-stdout.log | grep -v 'check video t=' || echo '(no trace lines)'
+          bw=$(sips -g pixelWidth rotate-before.png 2>/dev/null | awk '/pixelWidth/{print $2}'); bh=$(sips -g pixelHeight rotate-before.png 2>/dev/null | awk '/pixelHeight/{print $2}')
+          aw=$(sips -g pixelWidth rotate-after.png 2>/dev/null | awk '/pixelWidth/{print $2}'); ah=$(sips -g pixelHeight rotate-after.png 2>/dev/null | awk '/pixelHeight/{print $2}')
+          echo "before ${bw}x${bh}, after ${aw}x${ah}"
+          export BW="$bw" BH="$bh" AW="$aw" AH="$ah"
+          python3 - <<'PY'
+          import re, os
+          bw, bh, aw, ah = [int(os.environ.get(k) or 0) for k in ('BW', 'BH', 'AW', 'AH')]
+          samples = []
+          for line in open('rotate-stdout.log', errors='replace'):
+              m = re.search(r'smugview-check video t=(\d+) hasEngine=(\w+) isPlaying=(\w+) positionMs=(-?\d+)', line)
+              if m:
+                  samples.append((int(m.group(1)), m.group(2) == 'true', m.group(3) == 'true', int(m.group(4))))
+          after = [s for s in samples if s[0] >= 16 and s[1]]
+          pos = [s[3] for s in after]
+          playing = any(s[2] for s in after)
+          advanced = (max(pos) - min(pos)) if pos else 0
+          started_portrait = bh > bw
+          landscape = aw > ah
+          problems = []
+          if not started_portrait: problems.append('the app did not start portrait (%dx%d)' % (bw, bh))
+          if not landscape: problems.append('the screen did not turn landscape (%dx%d after)' % (aw, ah))
+          if not playing: problems.append('the video was not playing after the turn')
+          elif advanced < 1000: problems.append('the video position did not advance after the turn (advanced %d ms)' % advanced)
+          verdict = 'PASS' if not problems else 'FAIL'
+          why = ('portrait %dx%d then landscape %dx%d, video advanced %d ms after the turn' % (bw, bh, aw, ah, advanced)) if verdict == 'PASS' else '; '.join(problems)
+          msg = 'rotation check %s: %s' % (verdict, why)
+          print(msg)
+          open('rotate-verdict.txt', 'w').write(verdict + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write('### %s\n\n' % msg)
+          print('::%s title=iOS rotation check::%s' % ('notice' if verdict == 'PASS' else 'error', msg))
+          PY
+          exit 0
+
       - name: Put the first errors in the annotations
         if: always()
         run: |
@@ -224,6 +278,10 @@ jobs:
             offline-stdout.log
             offline-stderr.log
             unlock-stdout.log
+            rotate-stdout.log
+            rotate-stderr.log
+            rotate-before.png
+            rotate-after.png
             unlock-stderr.log
             checks-run.log
           if-no-files-found: ignore
@@ -238,6 +296,7 @@ jobs:
           for f in video-verdict.txt offline-verdict.txt; do
             if ! grep -q '^PASS' "$f" 2>/dev/null; then echo "$f: not PASS"; fail=1; fi
           done
+          if ! grep -q '^PASS' rotate-verdict.txt 2>/dev/null; then echo 'rotate-verdict.txt: not PASS'; fail=1; fi
           # The unlock check is optional: only a FAIL counts, not a skip (no secret).
           if grep -q '^FAIL' unlock-verdict.txt 2>/dev/null; then echo "unlock-verdict.txt: FAIL"; fail=1; fi
           if [ "$fail" = 1 ]; then
