@@ -260,6 +260,48 @@ jobs:
           PY
           exit 0
 
+      # ---- Check 5: every main screen turns landscape ---------------------------------------------------------------------------------
+      # Android's single activity has no orientation lock, so every screen rotates there. The iPhone is now allowed landscape in Info.plist; this
+      # turns each main screen with the DEMO_ORIENTATION hook and checks the screenshot is wider than tall. The pictures are uploaded to be looked at.
+      - name: "Check 5: main screens turn landscape"
+        id: land
+        if: steps.sim.outcome == 'success'
+        continue-on-error: true
+        run: |
+          APP=build/xcode/Build/Products/Debug-iphonesimulator/iosApp.app
+          xcrun simctl uninstall "$UDID" com.smugview.app 2>/dev/null || true
+          xcrun simctl install "$UDID" "$APP" 2>&1 | tee -a checks-run.log
+          # First launch: select and save the site, as the screenshot job does.
+          SIMCTL_CHILD_SMUGVIEW_DEMO_SITE=smugmugfilms xcrun simctl launch --terminate-running-process "$UDID" com.smugview.app >/dev/null 2>&1 || true
+          sleep 25
+          xcrun simctl terminate "$UDID" com.smugview.app >/dev/null 2>&1 || true
+          fails=0
+          for scene in home grid photo info hub search collections; do
+            case "$scene" in
+              home) extra="" ;;
+              grid) extra="SIMCTL_CHILD_SMUGVIEW_DEMO_ROUTE=photo_grid/nMmnCR/Norway" ;;
+              photo) extra="SIMCTL_CHILD_SMUGVIEW_DEMO_ROUTE=photo_detail/nMmnCR/fdMT7mj" ;;
+              info) extra="SIMCTL_CHILD_SMUGVIEW_DEMO_ROUTE=photo_detail/nMmnCR/fdMT7mj SIMCTL_CHILD_SMUGVIEW_DEMO_SHEET=info" ;;
+              hub) extra="SIMCTL_CHILD_SMUGVIEW_DEMO_TAB=Hub" ;;
+              search) extra="SIMCTL_CHILD_SMUGVIEW_DEMO_TAB=Search" ;;
+              collections) extra="SIMCTL_CHILD_SMUGVIEW_DEMO_TAB=Collections" ;;
+            esac
+            xcrun simctl terminate "$UDID" com.smugview.app >/dev/null 2>&1 || true
+            sleep 2
+            # Turn at 12 s; the screen is taken at 30 s (the info sheet opens 2.5 s after the viewer shows).
+            env $extra SIMCTL_CHILD_SMUGVIEW_DEMO_ORIENTATION=landscape SIMCTL_CHILD_SMUGVIEW_DEMO_ORIENTATION_DELAY=12 xcrun simctl launch "$UDID" com.smugview.app >/dev/null 2>&1 || echo "launch failed: $scene"
+            sleep 30
+            xcrun simctl io "$UDID" screenshot "landscape-$scene.png" >/dev/null 2>&1 || true
+            w=$(sips -g pixelWidth "landscape-$scene.png" 2>/dev/null | awk '/pixelWidth/{print $2}'); h=$(sips -g pixelHeight "landscape-$scene.png" 2>/dev/null | awk '/pixelHeight/{print $2}')
+            if [ -n "$w" ] && [ -n "$h" ] && [ "$w" -gt "$h" ]; then echo "landscape $scene: ${w}x${h} ok"; else echo "landscape $scene: ${w:-none}x${h:-none} NOT landscape"; fails=$((fails+1)); fi
+          done
+          xcrun simctl terminate "$UDID" com.smugview.app >/dev/null 2>&1 || true
+          if [ "$fails" = 0 ]; then echo PASS > land-verdict.txt; else echo FAIL > land-verdict.txt; fi
+          msg="landscape check $(cat land-verdict.txt): $fails of 7 screens did not turn"
+          echo "### $msg" >> "$GITHUB_STEP_SUMMARY"
+          echo "::$([ "$fails" = 0 ] && echo notice || echo error) title=iOS landscape check::$msg"
+          exit 0
+
       - name: Put the first errors in the annotations
         if: always()
         run: |
@@ -282,6 +324,7 @@ jobs:
             rotate-stderr.log
             rotate-before.png
             rotate-after.png
+            landscape-*.png
             unlock-stderr.log
             checks-run.log
           if-no-files-found: ignore
@@ -297,6 +340,7 @@ jobs:
             if ! grep -q '^PASS' "$f" 2>/dev/null; then echo "$f: not PASS"; fail=1; fi
           done
           if ! grep -q '^PASS' rotate-verdict.txt 2>/dev/null; then echo 'rotate-verdict.txt: not PASS'; fail=1; fi
+          if ! grep -q '^PASS' land-verdict.txt 2>/dev/null; then echo 'land-verdict.txt: not PASS'; fail=1; fi
           # The unlock check is optional: only a FAIL counts, not a skip (no secret).
           if grep -q '^FAIL' unlock-verdict.txt 2>/dev/null; then echo "unlock-verdict.txt: FAIL"; fail=1; fi
           if [ "$fail" = 1 ]; then
