@@ -2249,6 +2249,22 @@ open class SmugViewModel(
         return com.smugview.app.share.ShareContent.photoLink(photo.webUri, gallery, photo.imageKey)
     }
 
+    /**
+     * The link a saved gallery or folder shortcut shares (Collections): the gallery's own page from the index or the cache, else the
+     * site's address; never null on an open site. [type] is "Album" or "Folder".
+     */
+    suspend fun shareLinkForShortcut(type: String, itemKey: String, albumKey: String): String? {
+        val site = _activeNickname.value?.takeIf { it.isNotBlank() }?.let { "https://$it.smugmug.com" }
+        return try {
+            val index = if (type == "Album") repository.cachedGalleryWebUri(albumKey.ifBlank { itemKey }) else null
+            com.smugview.app.share.ShareContent.galleryLink(index, getCachedNodeById(itemKey)?.webUri, site)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            com.smugview.app.share.ShareContent.galleryLink(null, null, site)
+        }
+    }
+
     /** The saved copy of [imageKey] (a DONE file on this phone), or null. */
     suspend fun savedFileOf(imageKey: String): String? = offlineReader.localFile(imageKey)
 

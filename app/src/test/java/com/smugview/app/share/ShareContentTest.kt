@@ -50,4 +50,17 @@ class ShareContentTest {
         assertNull(ShareContent.albumKeyOf("/api/v2/node/abc"))
         assertNull(ShareContent.albumKeyOf(null))
     }
+
+    // A saved gallery or folder shortcut in Collections shares its own web page (tester feedback: context matters).
+    @Test fun `a gallery shortcut shares the index page, else the node page, else the site`() {
+        assertEquals("https://x.smugmug.com/Family/Trip", ShareContent.galleryLink("https://x.smugmug.com/Family/Trip", "https://x.smugmug.com/Other", "https://x.smugmug.com"))
+        assertEquals("https://x.smugmug.com/Other", ShareContent.galleryLink(null, "https://x.smugmug.com/Other", "https://x.smugmug.com"))
+        assertEquals("https://x.smugmug.com", ShareContent.galleryLink("", "", "https://x.smugmug.com"))
+    }
+
+    @Test fun `a gallery shortcut never shares a photo file address`() {
+        val cdn = "https://photos.smugmug.com/Family/i-abc/0/D/x-D.jpg"
+        assertEquals("https://x.smugmug.com", ShareContent.galleryLink(cdn, cdn, "https://x.smugmug.com"))
+        assertNull(ShareContent.galleryLink(null, null, null))
+    }
 }

@@ -22,6 +22,13 @@ object ShareContent {
         return galleryWebUri!!.trim().trimEnd('/') + "/i-" + imageKey
     }
 
+    /**
+     * The page a saved gallery or folder shortcut shares: the gallery index's `WebUri`, else the cached node's, else the site's address
+     * ([siteRoot]), else null. Whatever is not a real page (blank, not https, a CDN photo address) is skipped.
+     */
+    fun galleryLink(indexWebUri: String?, nodeWebUri: String?, siteRoot: String?): String? =
+        listOf(indexWebUri, nodeWebUri, siteRoot).firstOrNull { isShareable(it) }?.trim()
+
     /** `/api/v2/album/{AlbumKey}` (a photo's `Uris.Album`) to its key, or null. */
     fun albumKeyOf(albumUri: String?): String? =
         albumUri?.substringBefore('?')?.trimEnd('/')?.substringAfterLast("/album/", "")?.takeIf { it.isNotEmpty() && '/' !in it && '!' !in it }

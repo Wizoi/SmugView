@@ -121,6 +121,14 @@ fun CollectionsTabView(
         Color(0xFFD500F9)
     )
 
+    // Context matters (tester feedback): a photo shares through the photo popup (with "Share picture"), a gallery or folder through the link popup.
+    var sharePhotoItem by remember { mutableStateOf<AlbumImageData?>(null) }
+    sharePhotoItem?.let { com.smugview.app.ui.detail.PhotoShareDialog(it, viewModel) { sharePhotoItem = null } }
+    var shareShortcut by remember { mutableStateOf<com.smugview.app.data.db.CollectionBookmark?>(null) }
+    shareShortcut?.let { b ->
+        com.smugview.app.ui.detail.ShortcutShareDialog(b.type, b.itemKey, b.albumKey, b.title, viewModel) { shareShortcut = null }
+    }
+
     // Q8 (5-9): deleting a collection that holds saved photos asks first, with how many and how much will go.
     var pendingDelete by remember { mutableStateOf<Pair<Long, String>?>(null) }
     pendingDelete?.let { (id, text) ->
@@ -343,9 +351,12 @@ fun CollectionsTabView(
                                         Text("Folder Shortcut", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
                                     }
                                 }
+                                IconButton(onClick = { shareShortcut = f }, modifier = Modifier.size(48.dp)) {
+                                    Icon(imageVector = AppIcons.Share, contentDescription = "Share folder", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                                }
                                 IconButton(
                                     onClick = { viewModel.removeBookmark(col.id, "Folder", f.itemKey) },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(
                                         imageVector = AppIcons.Close,
@@ -400,9 +411,12 @@ fun CollectionsTabView(
                                         Text("Gallery Shortcut", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp)
                                     }
                                 }
+                                IconButton(onClick = { shareShortcut = a }, modifier = Modifier.size(48.dp)) {
+                                    Icon(imageVector = AppIcons.Share, contentDescription = "Share gallery", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                                }
                                 IconButton(
                                     onClick = { viewModel.removeBookmark(col.id, "Album", a.itemKey) },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(
                                         imageVector = AppIcons.Close,
@@ -632,9 +646,7 @@ fun CollectionsTabView(
                                                                     format = "JPG",
                                                                     videoUrl = null
                                                                 )
-                                                                scope.launch {
-                                                                    files?.let { com.smugview.app.ui.detail.sharePhoto(share, it, scope, viewModel, detailItem, viewModel.shareLinkFor(detailItem)) }
-                                                                }
+                                                                sharePhotoItem = detailItem
                                                             },
                                                         ) {
                                                             Icon(

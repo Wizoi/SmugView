@@ -414,6 +414,33 @@ fun PhotoActionCapsule(
 }
 
 /**
+ * The share popup of one photo, for places that have no action bar of their own (Collections): the same dialog as the viewer's, with
+ * "Share picture". Context matters (tester feedback): a photo shares as a photo.
+ */
+@Composable
+fun PhotoShareDialog(photo: AlbumImageData, viewModel: SmugViewModel, onDismiss: () -> Unit) {
+    val files = com.smugview.app.ui.LocalPhotoFileOps.current
+    val share = com.smugview.app.ui.rememberPlatformShare()
+    val scope = rememberCoroutineScope()
+    var link by remember(photo.imageKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(photo.imageKey) { link = viewModel.shareLinkFor(photo) }
+    com.smugview.app.ui.component.QrShareDialog(
+        title = photo.title?.takeIf { it.isNotBlank() } ?: (photo.fileName ?: "Photo"),
+        url = link.orEmpty(),
+        onDismissRequest = onDismiss,
+        onSharePicture = { files?.let { sharePhoto(share, it, scope, viewModel, photo, link) } }
+    )
+}
+
+/** The share popup of a saved gallery or folder shortcut: the gallery's page as a link and QR code, as on the gallery screen. */
+@Composable
+fun ShortcutShareDialog(type: String, itemKey: String, albumKey: String, title: String, viewModel: SmugViewModel, onDismiss: () -> Unit) {
+    var link by remember(itemKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(itemKey) { link = viewModel.shareLinkForShortcut(type, itemKey, albumKey) }
+    com.smugview.app.ui.component.QrShareDialog(title = title, url = link.orEmpty(), onDismissRequest = onDismiss)
+}
+
+/**
  * The EXIF / metadata bottom sheet, unified across all three screens (their labels/layouts had
  * drifted). Falls back from [detailedPhoto] to [currentPhoto] for each field.
  */
