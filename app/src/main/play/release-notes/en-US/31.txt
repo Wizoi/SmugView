@@ -1,0 +1,6 @@
+New:
+- Share a picture in Mobile or Original size. Share photos and galleries from Collections.
+- Blue dots now start clear when you first open a site or unlock a folder; only later updates light them. "Mark all as seen" in your site's tab clears the ones you have.
+
+Fixed:
+- Password prompt has a Show button; the share box fits its buttons; the new-collection box no longer cuts off its hint.

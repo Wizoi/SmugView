@@ -15,6 +15,10 @@ object ShareSizes {
 
     class Choices(val originalOffered: Boolean, val originalBytes: Long?, val note: OriginalNote)
 
+    /** The original's size in bytes: `ArchivedSize` when the API gave it, else `OriginalSize` (the photo details ask for that one); null when neither is a size. */
+    fun knownBytes(archivedSize: Long?, originalSize: Long?): Long? =
+        listOfNotNull(archivedSize, originalSize).firstOrNull { it > 0 }
+
     fun choices(isVideo: Boolean, format: String?, archivedSize: Long?, hasOriginalSource: Boolean): Choices {
         if (isVideo || !hasOriginalSource) return Choices(false, null, OriginalNote.None)
         val jpeg = format?.trim()?.lowercase().let { it == "jpg" || it == "jpeg" }

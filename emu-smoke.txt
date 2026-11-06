@@ -1,0 +1,9 @@
+
+com.smugview.app.smoke.LiveSmokeTest:...
+com.smugview.app.smoke.ThemeSweepSmokeTest:..
+
+Time: 64.915
+
+OK (5 tests)
+
+

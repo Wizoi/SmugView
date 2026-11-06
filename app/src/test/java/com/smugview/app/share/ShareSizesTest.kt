@@ -62,4 +62,12 @@ class ShareSizesTest {
     @Test fun `an unknown format counts as not a JPEG`() {
         assertEquals(ShareSizes.OriginalNote.KeepsCameraData, ShareSizes.choices(false, null, 1_000L, true).note)
     }
+
+    // The photo details ask for OriginalSize (the raw byte size of the original) but not ArchivedSize, so the prompt showed no size on Android.
+    @Test fun `the original size comes from ArchivedSize, else OriginalSize`() {
+        assertEquals(4_200_000L, ShareSizes.knownBytes(archivedSize = 4_200_000L, originalSize = 9L))
+        assertEquals(4_200_000L, ShareSizes.knownBytes(archivedSize = null, originalSize = 4_200_000L))
+        assertEquals(null, ShareSizes.knownBytes(archivedSize = null, originalSize = null))
+        assertEquals("a zero is not a size", null, ShareSizes.knownBytes(archivedSize = 0L, originalSize = null))
+    }
 }

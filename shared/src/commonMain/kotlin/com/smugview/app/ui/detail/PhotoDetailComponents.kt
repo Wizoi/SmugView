@@ -493,7 +493,7 @@ fun ShareSizeDialog(
     val choices = com.smugview.app.share.ShareSizes.choices(
         isVideo = photo.isVideo,
         format = detailed?.format ?: photo.format,
-        archivedSize = detailed?.archivedSize,
+        archivedSize = com.smugview.app.share.ShareSizes.knownBytes(detailed?.archivedSize, detailed?.originalSize),
         hasOriginalSource = saved != null || detailed?.archivedUri != null || (detailed ?: photo).thumbnailUrl != null
     )
     ShareSizePrompt(
