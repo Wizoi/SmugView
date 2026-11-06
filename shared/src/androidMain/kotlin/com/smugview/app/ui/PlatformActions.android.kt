@@ -24,10 +24,10 @@ private class AndroidPlatformShare(private val context: Context) : PlatformShare
         context.startActivity(Intent.createChooser(intent, chooserTitle))
     }
 
-    override fun shareJpeg(path: String, text: String?, subject: String, chooserTitle: String) {
+    override fun shareJpeg(path: String, text: String?, subject: String, chooserTitle: String, mimeType: String) {
         val fileUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(path))
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "image/jpeg"
+            type = mimeType
             putExtra(Intent.EXTRA_STREAM, fileUri)
             if (text != null) putExtra(Intent.EXTRA_TEXT, text)
             putExtra(Intent.EXTRA_SUBJECT, subject)

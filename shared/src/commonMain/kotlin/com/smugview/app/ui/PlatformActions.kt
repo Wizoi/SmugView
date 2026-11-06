@@ -7,8 +7,8 @@ interface PlatformShare {
     /** Opens the share sheet with plain text. */
     fun shareText(text: String, chooserTitle: String)
 
-    /** Opens the share sheet with a JPEG on disk, [text] (a link, or null) and [subject]. */
-    fun shareJpeg(path: String, text: String?, subject: String, chooserTitle: String)
+    /** Opens the share sheet with an image file on disk (a JPEG unless [mimeType] says otherwise), [text] (a link, or null) and [subject]. */
+    fun shareJpeg(path: String, text: String?, subject: String, chooserTitle: String, mimeType: String = "image/jpeg")
 }
 
 @Composable

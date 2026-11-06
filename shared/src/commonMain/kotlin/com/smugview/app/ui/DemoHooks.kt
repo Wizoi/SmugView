@@ -9,14 +9,14 @@ object DemoHooks {
     /** A navigation route to open a few seconds after start, e.g. `photo_grid/nMmnCR/Norway`. */
     var route: String? = null
 
-    /** `info` or `share`: the photo viewer shows its controls and opens that sheet/dialog once. */
+    /** `info`, `share` or `size` (the "Share picture: which size?" prompt): the photo viewer shows its controls and opens that sheet/dialog once. */
     var sheet: String? = null
         private set
 
     private var sheetPending = false
 
     fun setSheet(value: String?) {
-        sheet = value?.trim()?.lowercase()?.takeIf { it == "info" || it == "share" }
+        sheet = value?.trim()?.lowercase()?.takeIf { it == "info" || it == "share" || it == "size" }
         sheetPending = sheet != null
     }
 

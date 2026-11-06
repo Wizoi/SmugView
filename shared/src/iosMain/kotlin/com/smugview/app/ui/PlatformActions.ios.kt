@@ -26,7 +26,7 @@ import platform.UIKit.popoverPresentationController
 private object IosShare : PlatformShare {
     override fun shareText(text: String, chooserTitle: String) = present(listOf(text), null)
 
-    override fun shareJpeg(path: String, text: String?, subject: String, chooserTitle: String) {
+    override fun shareJpeg(path: String, text: String?, subject: String, chooserTitle: String, mimeType: String) {
         val items = mutableListOf<Any>(NSURL.fileURLWithPath(path))
         if (!text.isNullOrBlank()) items += text
         present(items, subject)

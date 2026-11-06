@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 
 private object NoShare : PlatformShare {
     override fun shareText(text: String, chooserTitle: String) {}
-    override fun shareJpeg(path: String, text: String?, subject: String, chooserTitle: String) {}
+    override fun shareJpeg(path: String, text: String?, subject: String, chooserTitle: String, mimeType: String) {}
 }
 
 @Composable

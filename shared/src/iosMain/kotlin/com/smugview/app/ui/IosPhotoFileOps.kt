@@ -54,6 +54,24 @@ class IosPhotoFileOps(private val client: HttpClient = HttpClient(platformEngine
         return path
     }
 
+    override suspend fun prepareOriginalShareFile(
+        imageKey: String,
+        fileName: String?,
+        savedPath: String?,
+        sourceUrl: String?,
+        smaller: List<String>
+    ): PreparedShare {
+        val dir = NSTemporaryDirectory() + PhotoFileLogic.SHARE_DIR
+        withContext(ioDispatcher) { makeDir(dir); sweep(dir) }
+        val shared = logic.originalShare(savedPath, sourceUrl, smaller)
+        // The file keeps the photo's own name, so the person who receives it (AirDrop, Messages) sees a real file name.
+        val path = "$dir/${PhotoFileLogic.photoName(imageKey, fileName)}.${shared.extension}"
+        withContext(ioDispatcher) {
+            if (!shared.bytes.toNSData().writeToFile(path, atomically = true)) throw IOException("could not write the shared picture")
+        }
+        return PreparedShare(path, shared.original, shared.stripped, shared.mimeType)
+    }
+
     override suspend fun saveToPhotoLibrary(
         imageKey: String,
         fileName: String?,

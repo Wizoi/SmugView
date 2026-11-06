@@ -30,6 +30,7 @@ scene_env() { # prints "KEY=VALUE" lines
     photo) echo "SMUGVIEW_DEMO_ROUTE=photo_detail/${ALBUM_KEY}/${IMAGE_KEY}" ;;
     info) echo "SMUGVIEW_DEMO_ROUTE=photo_detail/${ALBUM_KEY}/${IMAGE_KEY}"; echo "SMUGVIEW_DEMO_SHEET=info" ;;
     share) echo "SMUGVIEW_DEMO_ROUTE=photo_detail/${ALBUM_KEY}/${IMAGE_KEY}"; echo "SMUGVIEW_DEMO_SHEET=share" ;;
+    size) echo "SMUGVIEW_DEMO_ROUTE=photo_detail/${ALBUM_KEY}/${IMAGE_KEY}"; echo "SMUGVIEW_DEMO_SHEET=size" ;;
     hub) echo "SMUGVIEW_DEMO_TAB=Hub" ;;
     search) echo "SMUGVIEW_DEMO_TAB=Search" ;;
     collections) echo "SMUGVIEW_DEMO_TAB=Collections" ;;

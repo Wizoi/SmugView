@@ -42,6 +42,7 @@ import com.smugview.app.data.api.ImageSizeDetailsPayload
 import com.smugview.app.data.db.OfflineCollection
 import com.smugview.app.data.api.isVideo
 import com.smugview.app.ui.theme.NeonBlue
+import kotlinx.coroutines.flow.first
 import com.smugview.app.ui.theme.SurfaceDark
 import com.smugview.app.ui.viewmodel.SmugViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -339,6 +340,7 @@ fun PhotoActionCapsule(
     val share = com.smugview.app.ui.rememberPlatformShare()
     val downloadPhoto = rememberPhotoDownloadAction(viewModel)
     var showShareDialog by remember { mutableStateOf(false) }
+    var showSizePrompt by remember { mutableStateOf(false) }
     // The web page of this photo (6-14): its own, or its gallery's from the index. Null once resolved = no link to share.
     var shareLink by remember(photo.imageKey, photo.webUri) { mutableStateOf<String?>(null) }
     var linkResolved by remember(photo.imageKey, photo.webUri) { mutableStateOf(false) }
@@ -351,6 +353,12 @@ fun PhotoActionCapsule(
         if (com.smugview.app.ui.DemoHooks.takeSheet("info")) {
             kotlinx.coroutines.delay(2500)
             onShowExif()
+        }
+    }
+    LaunchedEffect(photo.imageKey) {
+        if (com.smugview.app.ui.DemoHooks.takeSheet("size")) {
+            kotlinx.coroutines.delay(2500)
+            showSizePrompt = true
         }
     }
     LaunchedEffect(linkResolved, shareLink) {
@@ -408,7 +416,19 @@ fun PhotoActionCapsule(
             title = photo.title?.takeIf { it.isNotBlank() } ?: (photo.fileName ?: "Photo"),
             url = shareLink.orEmpty(),
             onDismissRequest = { showShareDialog = false },
-            onSharePicture = { files?.let { sharePhoto(share, it, scope, viewModel, photo, shareLink) } }
+            onSharePicture = { if (files != null) showSizePrompt = true }
+        )
+    }
+
+    if (showSizePrompt) {
+        ShareSizeDialog(
+            photo = photo,
+            viewModel = viewModel,
+            onDismiss = { showSizePrompt = false },
+            onChoose = { choice ->
+                showSizePrompt = false
+                files?.let { sharePhoto(share, it, scope, viewModel, photo, shareLink, choice) }
+            }
         )
     }
 }
@@ -423,12 +443,114 @@ fun PhotoShareDialog(photo: AlbumImageData, viewModel: SmugViewModel, onDismiss:
     val share = com.smugview.app.ui.rememberPlatformShare()
     val scope = rememberCoroutineScope()
     var link by remember(photo.imageKey) { mutableStateOf<String?>(null) }
+    var showSizePrompt by remember { mutableStateOf(false) }
     LaunchedEffect(photo.imageKey) { link = viewModel.shareLinkFor(photo) }
     com.smugview.app.ui.component.QrShareDialog(
         title = photo.title?.takeIf { it.isNotBlank() } ?: (photo.fileName ?: "Photo"),
         url = link.orEmpty(),
         onDismissRequest = onDismiss,
-        onSharePicture = { files?.let { sharePhoto(share, it, scope, viewModel, photo, link) } }
+        onSharePicture = { if (files != null) showSizePrompt = true }
+    )
+    if (showSizePrompt) {
+        ShareSizeDialog(
+            photo = photo,
+            viewModel = viewModel,
+            onDismiss = { showSizePrompt = false },
+            onChoose = { choice ->
+                showSizePrompt = false
+                files?.let { sharePhoto(share, it, scope, viewModel, photo, link, choice) }
+            }
+        )
+    }
+}
+
+/**
+ * "Share picture: which size?" (owner, 2026-11-06): Mobile size or Original size, asked every time, no remembered answer. The original's
+ * size and type come from the photo's details (fetched here); a non-JPEG or very large original is still offered, with a plain warning.
+ */
+@Composable
+fun ShareSizeDialog(
+    photo: AlbumImageData,
+    viewModel: SmugViewModel,
+    onDismiss: () -> Unit,
+    onChoose: (ShareSizeChoice) -> Unit
+) {
+    val m = com.smugview.app.ui.text.UserMessages
+    var details by remember(photo.imageKey) { mutableStateOf<Result<AlbumImageData>?>(null) }
+    var saved by remember(photo.imageKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(photo.imageKey) {
+        saved = viewModel.savedFileOf(photo.imageKey)
+        details = try {
+            viewModel.getImageDetails(photo.imageKey).first { it != null }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    val detailed = details?.getOrNull()
+    val loading = details == null
+    val choices = com.smugview.app.share.ShareSizes.choices(
+        isVideo = photo.isVideo,
+        format = detailed?.format ?: photo.format,
+        archivedSize = detailed?.archivedSize,
+        hasOriginalSource = saved != null || detailed?.archivedUri != null || (detailed ?: photo).thumbnailUrl != null
+    )
+    ShareSizePrompt(
+        loading = loading,
+        choices = choices,
+        onMobile = { onChoose(ShareSizeChoice.Mobile) },
+        onOriginal = { onChoose(ShareSizeChoice.Original(detailed)) },
+        onDismiss = onDismiss
+    )
+}
+
+/** The look of the size prompt, apart from where its facts come from (so it can be tested without a view model). */
+@Composable
+fun ShareSizePrompt(
+    loading: Boolean,
+    choices: com.smugview.app.share.ShareSizes.Choices,
+    onMobile: () -> Unit,
+    onOriginal: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val m = com.smugview.app.ui.text.UserMessages
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(m.SHARE_SIZE_TITLE, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Button(
+                    onClick = onMobile,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonBlue, contentColor = Color.Black)
+                ) { Text(m.SHARE_SIZE_MOBILE, fontWeight = FontWeight.Bold) }
+                Text(m.SHARE_SIZE_MOBILE_HINT, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+
+                OutlinedButton(
+                    enabled = !loading && choices.originalOffered,
+                    onClick = onOriginal,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                ) {
+                    val size = com.smugview.app.share.ShareSizes.sizeText(choices.originalBytes)
+                    Text(if (size.isEmpty()) m.SHARE_SIZE_ORIGINAL else "${m.SHARE_SIZE_ORIGINAL} · $size")
+                }
+                val note = when {
+                    loading -> m.SHARE_SIZE_CHECKING
+                    !choices.originalOffered -> m.SHARE_SIZE_ORIGINAL_UNAVAILABLE
+                    choices.note == com.smugview.app.share.ShareSizes.OriginalNote.KeepsCameraData -> m.SHARE_SIZE_ORIGINAL_KEEPS
+                    choices.note == com.smugview.app.share.ShareSizes.OriginalNote.Large -> m.SHARE_SIZE_ORIGINAL_LARGE
+                    else -> m.SHARE_SIZE_ORIGINAL_CLEAN
+                }
+                val warn = !loading && choices.originalOffered && choices.note != com.smugview.app.share.ShareSizes.OriginalNote.None
+                Text(note, color = if (warn) Color(0xFFFFB800) else Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(m.SHARE_SIZE_CANCEL, color = Color.White.copy(alpha = 0.7f)) } },
+        containerColor = SurfaceDark,
+        shape = RoundedCornerShape(16.dp)
     )
 }
 

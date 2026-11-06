@@ -241,6 +241,21 @@ object UserMessages {
     /** `SHARE_STRIPPED`: small print under "Share picture". */
     const val SHARE_STRIPPED = "Camera details and location are removed from shared pictures."
 
+    /** The size prompt of "Share picture" (owner: Mobile or Original, asked every time). */
+    const val SHARE_SIZE_TITLE = "Share picture: which size?"
+    const val SHARE_SIZE_MOBILE = "Mobile size"
+    const val SHARE_SIZE_MOBILE_HINT = "Smaller and quick to send. Camera details and location are removed."
+    const val SHARE_SIZE_ORIGINAL = "Original size"
+    const val SHARE_SIZE_CHECKING = "Checking the original…"
+    const val SHARE_SIZE_ORIGINAL_UNAVAILABLE = "The original isn't available right now."
+    const val SHARE_SIZE_ORIGINAL_CLEAN = "Camera details and location are removed."
+    const val SHARE_SIZE_ORIGINAL_KEEPS = "Not a JPEG, so camera details and location stay in the file."
+    const val SHARE_SIZE_ORIGINAL_LARGE = "A large file: it can take a while to prepare and send. Camera details and location are removed."
+    const val SHARE_SIZE_CANCEL = "Cancel"
+
+    /** `SHARE_SENT_SMALLER`: the original answered 404 and the largest smaller size was shared (toast). */
+    const val SHARE_SENT_SMALLER = "SmugMug couldn't provide the original, so the largest size it has was shared."
+
     /** `SHARE_FAILED`: the picture could not be made ready (toast). */
     fun shareFailed(cause: Problem): String = "Couldn't prepare the picture. ${shortCause(cause)}"
 

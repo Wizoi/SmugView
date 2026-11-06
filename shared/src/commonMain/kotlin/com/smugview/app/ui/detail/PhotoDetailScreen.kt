@@ -628,10 +628,17 @@ fun ExifCardItem(
     }
 }
 
+/** What the person chose in the size prompt. [Original] carries the photo's details (its original address and format). */
+sealed interface ShareSizeChoice {
+    data object Mobile : ShareSizeChoice
+    class Original(val details: AlbumImageData?) : ShareSizeChoice
+}
+
 /**
  * "Share picture" (design 3.10): the saved copy, else the X3 rendition, stripped of camera data and location
- * ([com.smugview.app.share.ShareFiles]), handed to the share sheet with the photo's web page as the text. [link] is null
- * when the photo has no page (the picture is still shared, with no text).
+ * ([com.smugview.app.share.ShareFiles]), handed to the share sheet with the photo's web page as the text. With [ShareSizeChoice.Original]
+ * (owner: asked every time) the original goes instead, falling back to the largest smaller size when the original answers 404, and a
+ * file that is not a JPEG is shared as it is. [link] is null when the photo has no page (the picture is still shared, with no text).
  */
 fun sharePhoto(
     share: com.smugview.app.ui.PlatformShare,
@@ -639,18 +646,29 @@ fun sharePhoto(
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     viewModel: SmugViewModel,
     photo: AlbumImageData,
-    link: String?
+    link: String?,
+    choice: ShareSizeChoice = ShareSizeChoice.Mobile
 ) {
     Toaster.show(com.smugview.app.ui.text.UserMessages.SHARE_PREPARING)
 
     coroutineScope.launch {
         try {
-            val path = files.prepareShareFile(photo.imageKey, viewModel.savedFileOf(photo.imageKey), photo.thumbnailUrl)
             val description = photo.fileName?.takeIf { it.isNotBlank() }
                 ?: photo.title?.takeIf { it.isNotBlank() }
                 ?: "Photo ${photo.imageKey}"
-
-            share.shareJpeg(path, link, description, com.smugview.app.ui.text.UserMessages.SHARE_PICTURE)
+            val saved = viewModel.savedFileOf(photo.imageKey)
+            if (choice is ShareSizeChoice.Original) {
+                val detailed = choice.details ?: photo
+                val sourceUrl = detailed.archivedUri ?: detailed.thumbnailUrl?.replace("/Th/", "/L/")?.replace("/th/", "/l/")
+                val smaller = com.smugview.app.download.Renditions.fromThumbnail(detailed.thumbnailUrl)
+                    .ifEmpty { com.smugview.app.download.Renditions.fromOriginal(detailed.archivedUri) }
+                val prepared = files.prepareOriginalShareFile(photo.imageKey, detailed.fileName ?: photo.fileName, saved, sourceUrl, smaller)
+                if (!prepared.original) Toaster.show(com.smugview.app.ui.text.UserMessages.SHARE_SENT_SMALLER, long = true)
+                share.shareJpeg(prepared.path, link, description, com.smugview.app.ui.text.UserMessages.SHARE_PICTURE, prepared.mimeType)
+            } else {
+                val path = files.prepareShareFile(photo.imageKey, saved, photo.thumbnailUrl)
+                share.shareJpeg(path, link, description, com.smugview.app.ui.text.UserMessages.SHARE_PICTURE)
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {

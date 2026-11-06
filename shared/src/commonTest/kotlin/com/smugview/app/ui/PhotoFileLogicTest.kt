@@ -76,6 +76,63 @@ class PhotoFileLogicTest {
         }
     }
 
+    // ---- Original size (owner, 2026-11-06) ------------------------------------------------------------------------------------------
+
+    private val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4, 5, 6)
+
+    @Test fun originalShareOfAJpegIsStrippedAndFlaggedOriginal() = runTest {
+        val net = Net(mapOf(orig to FetchedImage(200, dirtyJpeg)))
+        val out = logic(net).originalShare(null, orig, listOf(x5))
+        assertTrue(out.original)
+        assertTrue(out.stripped)
+        assertEquals("jpg", out.extension)
+        assertEquals("image/jpeg", out.mimeType)
+        assertTrue(out.bytes.size < dirtyJpeg.size)
+        assertEquals(0xDA.toByte(), out.bytes[3]) // Exif and COM are gone
+    }
+
+    @Test fun originalShareOfANonJpegIsSharedAsItIsAndSaysItWasNotStripped() = runTest {
+        val net = Net(mapOf(orig to FetchedImage(200, pngBytes)))
+        val out = logic(net).originalShare(null, orig, emptyList())
+        assertTrue(out.original)
+        assertFalse(out.stripped, "a PNG cannot be stripped by this app")
+        assertEquals("png", out.extension)
+        assertEquals("image/png", out.mimeType)
+        assertContentEquals(pngBytes, out.bytes)
+    }
+
+    @Test fun originalShareUsesTheSavedCopyWithoutTheNetwork() = runTest {
+        val net = Net(emptyMap())
+        val out = logic(net, mapOf("/p/a.orig.jpg" to dirtyJpeg)).originalShare("/p/a.orig.jpg", orig, listOf(x5))
+        assertTrue(out.original)
+        assertTrue(out.stripped)
+        assertTrue(net.asked.isEmpty())
+    }
+
+    @Test fun originalShareFallsBackToASmallerSizeOnlyOn404AndSaysItIsNotTheOriginal() = runTest {
+        val net = Net(mapOf(x5 to FetchedImage(200, plainJpeg)))
+        val out = logic(net).originalShare(null, orig, listOf(x5, x4))
+        assertFalse(out.original, "the original answered 404: this is the largest rendition")
+        assertTrue(out.stripped)
+        assertEquals(listOf(orig, x5), net.asked)
+    }
+
+    @Test fun originalShareDoesNotFallBackOnBusy() = runTest {
+        val net = Net(mapOf(orig to FetchedImage(429, null)))
+        val e = assertFailsWith<HttpFailure> { logic(net).originalShare(null, orig, listOf(x5)) }
+        assertEquals(429, e.code)
+    }
+
+    @Test fun originalShareWithNoAddressIsNoSource() = runTest {
+        assertFailsWith<NoSourceException> { logic(Net(emptyMap())).originalShare(null, null, emptyList()) }
+    }
+
+    @Test fun originalShareOfAMalformedJpegIsRefusedRatherThanSentUnstripped() = runTest {
+        val broken = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE1.toByte(), 0x7F, 0x7F, 1, 2)
+        val net = Net(mapOf(orig to FetchedImage(200, broken)))
+        assertFailsWith<NotAPictureException> { logic(net).originalShare(null, orig, emptyList()) }
+    }
+
     @Test fun saveUsesTheSavedCopyFirst() = runTest {
         val net = Net(emptyMap())
         val s = logic(net, mapOf("/p/o.jpg" to plainJpeg)).saveSource("/p/o.jpg", orig, listOf(x5))

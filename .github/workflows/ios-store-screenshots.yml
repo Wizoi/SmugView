@@ -23,7 +23,7 @@ on:
         description: 'Image key of a photo in that album (first photo)'
         default: 'fdMT7mj'
       scenes:
-        description: 'Space separated, in order. Known: home album-grid photo info share hub search collections'
+        description: 'Space separated, in order. Known: home album-grid photo info share size hub search collections'
         default: 'home album-grid photo info share hub search collections'
       iphone_name:
         description: 'Simulator name for the 6.3-inch iPhone set (1206x2622)'

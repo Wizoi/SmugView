@@ -13,6 +13,14 @@ class FetchedImage(val code: Int, val bytes: ByteArray?)
 class SaveSource(val bytes: ByteArray, val original: Boolean)
 
 /**
+ * The bytes of "Original size" to share: whether they are the original (false: the largest rendition, because the original answered 404),
+ * whether camera data and location were removed (only a JPEG can be), and the file type.
+ */
+class OriginalShare(val bytes: ByteArray, val original: Boolean, val stripped: Boolean, val extension: String) {
+    val mimeType: String get() = PhotoFileLogic.mimeTypeOf(extension)
+}
+
+/**
  * The decisions behind "Share picture" and "Download photo" that do not depend on the device (mirrors Android's `ShareFiles`
  * and `PhotoDownloader`): which bytes to use, when a 404 moves on to a smaller size, what a 429 or 5xx means, what the
  * file is called. The device parts (HTTP, disk, photo library) arrive as functions so this runs in plain unit tests.
@@ -26,6 +34,18 @@ class PhotoFileLogic(
         val source = savedPath?.let { readSaved(it) }?.takeIf { it.isNotEmpty() && isJpeg(it) }
             ?: fetchRendition(thumbnailUrl)
         return JpegStrip.strip(source, ExifOrientation.read(source)) ?: throw NotAPictureException()
+    }
+
+    /**
+     * "Original size": the saved copy, else [sourceUrl], else each of [smaller] when the one before answered 404 ([saveSource]). A JPEG is
+     * stripped of camera data and location; a malformed one is refused ([NotAPictureException]) rather than sent unstripped; any other
+     * type is returned as it is with `stripped = false`, so the caller can say that its camera data stays in.
+     */
+    suspend fun originalShare(savedPath: String?, sourceUrl: String?, smaller: List<String>): OriginalShare {
+        val source = saveSource(savedPath, sourceUrl, smaller)
+        if (!isJpeg(source.bytes)) return OriginalShare(source.bytes, source.original, stripped = false, extension = extensionOf(source.bytes))
+        val clean = JpegStrip.strip(source.bytes, ExifOrientation.read(source.bytes)) ?: throw NotAPictureException()
+        return OriginalShare(clean, source.original, stripped = true, extension = "jpg")
     }
 
     private suspend fun fetchRendition(thumbnailUrl: String?): ByteArray {
@@ -71,6 +91,15 @@ class PhotoFileLogic(
             val base = fileName?.trim()?.takeIf { it.isNotEmpty() }?.substringBeforeLast('.')?.takeIf { it.isNotEmpty() } ?: imageKey
             val bad = "/\\:*?\"<>|"
             return base.map { if (it in bad || it.code < 32) '_' else it }.joinToString("").trim().take(120).ifEmpty { imageKey }
+        }
+
+        /** The type a share sheet needs for a file extension. */
+        fun mimeTypeOf(extension: String): String = when (extension.lowercase()) {
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "heic" -> "image/heic"
+            else -> "image/jpeg"
         }
 
         /** The file extension for these bytes, from their magic numbers (JPEG when unsure). */
