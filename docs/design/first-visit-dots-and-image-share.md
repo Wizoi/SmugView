@@ -72,6 +72,11 @@ Which screen was the feedback about: the photo viewer, the gallery header, or th
 - Mobile size exists: the X3 rendition, stripped (`ShareFiles.prepare` on Android, `prepareShareFile` in `PhotoFileOps`, handed to `IosShare.shareJpeg` which passes the file URL to `UIActivityViewController`; on iPad it is anchored so it does not crash).
 - Original size does not exist for sharing. The download path already knows how to get an original (`ArchivedUri`) and, when its address answers 404 (107 of 850 in one gallery, findings #24), to fall back to the largest rendition. Share reuses that, and says which size was actually sent.
 
+### Two places share a picture today, differently (found 2026-11-06)
+- **Photo viewer:** share button, a dialog (QR code, Copy, Share link, then Share picture).
+- **Collections, a saved photo's row:** a 14 dp faded share icon that opens the system share sheet with the picture and link at once. No dialog, no size choice.
+The size prompt must replace both, so a picture is shared the same way from either place; the link and QR stay a separate entry.
+
 ### Things the plan has to handle (from the code and CLAUDE.md)
 - **Memory:** `ShareFiles` reads the whole picture into a byte array and strips it in memory. Fine for a 0.4 MB rendition, risky for a 20 to 50 MB original. The original path streams to a file in the cache directory and strips from the file; above a size cap (to decide, for example 60 MB) Original is not offered and the prompt says why.
 - **Not a JPEG:** `JpegStrip` only knows JPEG. If the original is another type, Original is not offered for that photo (an unstripped copy would leak the camera's serial number). Mobile size is always a JPEG.

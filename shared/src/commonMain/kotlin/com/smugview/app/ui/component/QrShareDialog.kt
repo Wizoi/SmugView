@@ -62,6 +62,10 @@ fun QrShareDialog(
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
+        // The platform's default dialog width is about 80% of an iPhone, which made "Share link" wrap onto two lines (iOS screenshot, run
+        // 41222732947) and pushed "Share picture" down. Use almost the whole width, up to a tablet-friendly limit.
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 440.dp),
         title = {
             Text(
                 text = title,
@@ -145,7 +149,7 @@ fun QrShareDialog(
                     ) {
                         Icon(AppIcons.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Copy", fontSize = 13.sp)
+                        Text("Copy", fontSize = 13.sp, maxLines = 1)
                     }
 
                     Button(
@@ -158,7 +162,7 @@ fun QrShareDialog(
                     ) {
                         Icon(AppIcons.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(UserMessages.SHARE_LINK, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(UserMessages.SHARE_LINK, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
 

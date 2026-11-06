@@ -191,50 +191,17 @@ fun AddToCollectionsDialog(
                 Divider(color = Color.White.copy(alpha = 0.1f))
 
                 // Create new collection inline input
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    TextField(
-                        value = newCollectionName,
-                        onValueChange = { newCollectionName = it },
-                        placeholder = { Text("New Collection Name...", color = Color.White.copy(alpha = 0.3f), fontSize = 13.sp) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = TextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedContainerColor = Color.White.copy(alpha = 0.05f),
-                            unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
-                    )
-
-                    IconButton(
-                        onClick = {
-                            if (newCollectionName.trim().isNotEmpty()) {
-                                viewModel.createCollection(newCollectionName.trim())
-                                Toaster.show("Collection created!")
-                                newCollectionName = ""
-                            }
-                        },
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(NeonBlue, RoundedCornerShape(8.dp))
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Add,
-                            contentDescription = "Create",
-                            tint = Color.Black
-                        )
+                NewCollectionRow(
+                    name = newCollectionName,
+                    onNameChange = { newCollectionName = it },
+                    onCreate = {
+                        if (newCollectionName.trim().isNotEmpty()) {
+                            viewModel.createCollection(newCollectionName.trim())
+                            Toaster.show("Collection created!")
+                            newCollectionName = ""
+                        }
                     }
-                }
+                )
             }
         },
         confirmButton = {
@@ -256,4 +223,48 @@ fun AddToCollectionsDialog(
         containerColor = SurfaceDark,
         shape = RoundedCornerShape(16.dp)
     )
+}
+
+/** The "New Collection Name..." field and its create button. */
+@Composable
+fun NewCollectionRow(name: String, onNameChange: (String) -> Unit, onCreate: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TextField(
+            value = name,
+            onValueChange = onNameChange,
+            placeholder = { Text("New Collection Name...", color = Color.White.copy(alpha = 0.3f), fontSize = 13.sp) },
+            // A Material text field is at least 56 dp tall; forced to 48 dp its placeholder sat low and was cut off (tester feedback).
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 56.dp),
+            shape = RoundedCornerShape(8.dp),
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedContainerColor = Color.White.copy(alpha = 0.05f),
+                unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent
+            ),
+            singleLine = true,
+            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
+        )
+
+        IconButton(
+            onClick = onCreate,
+            modifier = Modifier
+                .size(56.dp)
+                .background(NeonBlue, RoundedCornerShape(8.dp))
+        ) {
+            Icon(
+                imageVector = AppIcons.Add,
+                contentDescription = "Create",
+                tint = Color.Black
+            )
+        }
+    }
 }
