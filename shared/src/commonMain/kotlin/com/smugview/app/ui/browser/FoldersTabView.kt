@@ -94,6 +94,7 @@ fun FoldersTabView(
     val nickname by viewModel.activeNickname.collectAsState()
     val activeUserProfile by viewModel.activeUserProfile.collectAsState()
     val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
+    var showMarkAllSeenDialog by remember { mutableStateOf(false) }
     val siteHeaderImageUrl by viewModel.siteHeaderImageUrl.collectAsState()
 
     when (uiState) {
@@ -401,6 +402,20 @@ fun FoldersTabView(
                             )
                         }
 
+                        // Mark all as seen: only while something is lit; asks first because the marks cannot be taken back.
+                        if (activeUpdates.isNotEmpty()) {
+                            IconButton(
+                                onClick = { showMarkAllSeenDialog = true },
+                                modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = AppIcons.Check,
+                                    contentDescription = "Mark all as seen",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+
                         // Refresh
                         IconButton(
                             onClick = {
@@ -420,6 +435,29 @@ fun FoldersTabView(
                         }
                     }
                 }
+            }
+
+            if (showMarkAllSeenDialog) {
+                AlertDialog(
+                    onDismissRequest = { showMarkAllSeenDialog = false },
+                    title = { Text("Mark all as seen?", color = Color.White) },
+                    text = {
+                        Text(
+                            "Every blue dot on this site clears. Dots come back for galleries that are updated after this.",
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.markAllSeen()
+                            showMarkAllSeenDialog = false
+                        }) { Text("Mark all as seen", color = NeonBlue) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showMarkAllSeenDialog = false }) { Text("Cancel", color = Color.White.copy(alpha = 0.7f)) }
+                    },
+                    containerColor = SurfaceDark
+                )
             }
 
             if (showShareDialog) {

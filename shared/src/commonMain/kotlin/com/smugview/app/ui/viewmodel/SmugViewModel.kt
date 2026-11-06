@@ -1004,6 +1004,20 @@ open class SmugViewModel(
         navigator.navigate(NavIntent.Child(node))
     }
 
+    /** "Mark all as seen" on the active site: every blue dot clears; only later updates light again. */
+    fun markAllSeen() {
+        val nickname = _activeNickname.value ?: return
+        session.scope.launch {
+            try {
+                repository.markSiteViewed(nickname)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SmugLog.debugErr("SmugViewModel", e) { "Failed to mark the site as seen: $nickname" }
+            }
+        }
+    }
+
     fun markNodeAsViewed(nodeId: String) {
         session.scope.launch {
             try {

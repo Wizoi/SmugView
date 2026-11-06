@@ -1473,6 +1473,9 @@ class SmugMugRepository(
 
     // --- Offline Local Collections Room Interface ---
 
+    /** "Mark all as seen" (owner, 2026-11-06): clears every dot of [nickname]'s site; a later update lights again. Returns how many galleries. */
+    suspend fun markSiteViewed(nickname: String): Int = dao.markSiteViewed(nickname)
+
     override suspend fun getNodeById(nodeId: String): CachedNode? = dao.getNodeById(nodeId)
     override suspend fun getNodeByIdOrKey(idOrKey: String): CachedNode? = dao.getNodeByIdOrKey(idOrKey)
 

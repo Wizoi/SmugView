@@ -239,6 +239,23 @@ class DotFlowTest {
 
         assertTrue("still lit", "LCdk7F" in lit(r))
     }
+
+    // ---- "Mark all as seen" (owner, 2026-11-06): for phones that already hold many dots --------------------------------------------------
+
+    @Test fun markAllAsSeen_clearsEveryDotOfTheSite_andALaterUpdateLightsAgain() = runBlocking {
+        val r = crawled()
+        assertEquals("a returning phone with a lit chain", setOf("LCdk7F", "P4BKB", "2sDN5x", "4zqWw"), lit(r))
+
+        val marked = r.markSiteViewed(nick)
+
+        assertTrue("it marked the galleries that carry a date", marked >= 1)
+        assertEquals(emptySet<String>(), lit(r))
+
+        server.albums = server.albums.map { if (it.albumKey == "FfHCms") it.copy(imagesLastUpdated = server.daysAgo(0)) else it }
+        crawl(r)
+
+        assertEquals("a newer update after that lights again", setOf("LCdk7F", "P4BKB", "2sDN5x", "4zqWw"), lit(r))
+    }
 }
 
 /** Test rows for the index. */

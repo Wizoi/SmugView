@@ -377,6 +377,18 @@ interface CollectionDao {
     """)
     suspend fun getGalleryIlusAtOrBelow(nodeId: String): List<GalleryIlu>
 
+    /** Every index gallery of one site with a known ImagesLastUpdated ("Mark all as seen"). */
+    @Query("SELECT nodeId AS nodeId, imagesLastUpdated AS imagesLastUpdated FROM cached_albums WHERE nickname = :nickname AND imagesLastUpdated IS NOT NULL")
+    suspend fun getSiteGalleryIlus(nickname: String): List<GalleryIlu>
+
+    /** "Mark all as seen": viewed = the index ImagesLastUpdated, for every gallery of the site, in one transaction. Returns how many. */
+    @androidx.room.Transaction
+    suspend fun markSiteViewed(nickname: String): Int {
+        val rows = getSiteGalleryIlus(nickname)
+        if (rows.isNotEmpty()) insertViewedUpdates(rows.map { ViewedGalleryUpdate(it.nodeId, it.imagesLastUpdated) })
+        return rows.size
+    }
+
     /** "Viewed" for a gallery, or for every gallery below a folder: viewed = the index ImagesLastUpdated. */
     @androidx.room.Transaction
     suspend fun markViewedAtOrBelow(nodeId: String): Int {
