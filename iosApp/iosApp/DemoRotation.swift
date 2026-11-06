@@ -21,6 +21,12 @@ enum DemoRotation {
             }
             print("smugview-check rotate requested \(value)")
             fflush(stdout)
+            // `simctl io screenshot` always saves the unrotated portrait frame, so the picture's size says nothing: ask the scene instead.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                let size = scene.coordinateSpace.bounds.size
+                print("smugview-check rotate scene landscape=\(scene.interfaceOrientation.isLandscape) size=\(Int(size.width))x\(Int(size.height))")
+                fflush(stdout)
+            }
         }
     }
 }

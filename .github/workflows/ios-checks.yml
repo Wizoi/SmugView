@@ -226,13 +226,10 @@ jobs:
           sleep 14
           xcrun simctl terminate "$UDID" com.smugview.app 2>&1 | tee -a checks-run.log || true
           echo '--- rotate trace'; grep 'smugview-check' rotate-stdout.log | grep -v 'check video t=' || echo '(no trace lines)'
-          bw=$(sips -g pixelWidth rotate-before.png 2>/dev/null | awk '/pixelWidth/{print $2}'); bh=$(sips -g pixelHeight rotate-before.png 2>/dev/null | awk '/pixelHeight/{print $2}')
-          aw=$(sips -g pixelWidth rotate-after.png 2>/dev/null | awk '/pixelWidth/{print $2}'); ah=$(sips -g pixelHeight rotate-after.png 2>/dev/null | awk '/pixelHeight/{print $2}')
-          echo "before ${bw}x${bh}, after ${aw}x${ah}"
-          export BW="$bw" BH="$bh" AW="$aw" AH="$ah"
+          # The screenshot is always the portrait frame, so turn the "after" one upright for looking at; the verdict comes from the app's own report.
+          sips -r 270 rotate-after.png --out rotate-after-upright.png >/dev/null 2>&1 || true
           python3 - <<'PY'
           import re, os
-          bw, bh, aw, ah = [int(os.environ.get(k) or 0) for k in ('BW', 'BH', 'AW', 'AH')]
           samples = []
           for line in open('rotate-stdout.log', errors='replace'):
               m = re.search(r'smugview-check video t=(\d+) hasEngine=(\w+) isPlaying=(\w+) positionMs=(-?\d+)', line)
@@ -242,15 +239,15 @@ jobs:
           pos = [s[3] for s in after]
           playing = any(s[2] for s in after)
           advanced = (max(pos) - min(pos)) if pos else 0
-          started_portrait = bh > bw
-          landscape = aw > ah
+          scene = [l for l in open('rotate-stdout.log', errors='replace') if 'smugview-check rotate scene' in l]
+          landscape = bool(scene) and 'landscape=true' in scene[-1]
+          scene_text = scene[-1].strip().split('rotate scene ')[-1] if scene else 'no report'
           problems = []
-          if not started_portrait: problems.append('the app did not start portrait (%dx%d)' % (bw, bh))
-          if not landscape: problems.append('the screen did not turn landscape (%dx%d after)' % (aw, ah))
+          if not landscape: problems.append('the scene did not turn landscape (%s)' % scene_text)
           if not playing: problems.append('the video was not playing after the turn')
           elif advanced < 1000: problems.append('the video position did not advance after the turn (advanced %d ms)' % advanced)
           verdict = 'PASS' if not problems else 'FAIL'
-          why = ('portrait %dx%d then landscape %dx%d, video advanced %d ms after the turn' % (bw, bh, aw, ah, advanced)) if verdict == 'PASS' else '; '.join(problems)
+          why = ('scene turned (%s), video advanced %d ms after the turn' % (scene_text, advanced)) if verdict == 'PASS' else '; '.join(problems)
           msg = 'rotation check %s: %s' % (verdict, why)
           print(msg)
           open('rotate-verdict.txt', 'w').write(verdict + '\n')
@@ -289,11 +286,13 @@ jobs:
             xcrun simctl terminate "$UDID" com.smugview.app >/dev/null 2>&1 || true
             sleep 2
             # Turn at 12 s; the screen is taken at 30 s (the info sheet opens 2.5 s after the viewer shows).
-            env $extra SIMCTL_CHILD_SMUGVIEW_DEMO_ORIENTATION=landscape SIMCTL_CHILD_SMUGVIEW_DEMO_ORIENTATION_DELAY=12 xcrun simctl launch "$UDID" com.smugview.app >/dev/null 2>&1 || echo "launch failed: $scene"
+            env $extra SIMCTL_CHILD_SMUGVIEW_DEMO_ORIENTATION=landscape SIMCTL_CHILD_SMUGVIEW_DEMO_ORIENTATION_DELAY=12 xcrun simctl launch --stdout="$PWD/land-$scene.out" "$UDID" com.smugview.app >/dev/null 2>&1 || echo "launch failed: $scene"
             sleep 30
             xcrun simctl io "$UDID" screenshot "landscape-$scene.png" >/dev/null 2>&1 || true
-            w=$(sips -g pixelWidth "landscape-$scene.png" 2>/dev/null | awk '/pixelWidth/{print $2}'); h=$(sips -g pixelHeight "landscape-$scene.png" 2>/dev/null | awk '/pixelHeight/{print $2}')
-            if [ -n "$w" ] && [ -n "$h" ] && [ "$w" -gt "$h" ]; then echo "landscape $scene: ${w}x${h} ok"; else echo "landscape $scene: ${w:-none}x${h:-none} NOT landscape"; fails=$((fails+1)); fi
+            # The screenshot is the unrotated portrait frame: keep an upright copy to look at, and judge by the app's own report of its scene.
+            sips -r 270 "landscape-$scene.png" --out "landscape-$scene-upright.png" >/dev/null 2>&1 || true
+            report=$(grep 'smugview-check rotate scene' "land-$scene.out" | tail -n 1)
+            if echo "$report" | grep -q 'landscape=true'; then echo "landscape $scene: ${report##*rotate scene } ok"; else echo "landscape $scene: NOT landscape (${report:-no report})"; fails=$((fails+1)); fi
           done
           xcrun simctl terminate "$UDID" com.smugview.app >/dev/null 2>&1 || true
           if [ "$fails" = 0 ]; then echo PASS > land-verdict.txt; else echo FAIL > land-verdict.txt; fi
@@ -324,7 +323,9 @@ jobs:
             rotate-stderr.log
             rotate-before.png
             rotate-after.png
+            rotate-after-upright.png
             landscape-*.png
+            land-*.out
             unlock-stderr.log
             checks-run.log
           if-no-files-found: ignore
