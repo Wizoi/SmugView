@@ -1,0 +1,3 @@
+Fixed:
+- Search and tag search now sort photos by when they were taken, not when they were uploaded, so the earliest picture comes first in Ascending order.
+- Search results saved before this update keep their old order until you tap refresh.
