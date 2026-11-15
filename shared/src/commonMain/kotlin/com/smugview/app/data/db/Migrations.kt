@@ -196,5 +196,12 @@ object Migrations {
             }
         }
 
-    val all = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+        /** v18 -> v19: the time a photo was taken, on cached search results (the sort follows it; `date` is the upload time). Additive. */
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `search_results` ADD COLUMN `dateTimeOriginal` TEXT")
+            }
+        }
+
+    val all = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
 }

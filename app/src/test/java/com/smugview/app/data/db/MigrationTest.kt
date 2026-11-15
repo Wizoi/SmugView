@@ -39,6 +39,27 @@ class MigrationTest {
     )
 
     @Test
+    fun migrate18To19_addsTheCaptureTimeColumn_andKeepsTheCachedSearchResults() {
+        helper.createDatabase(TEST_DB, 18).apply {
+            execSQL(
+                "INSERT INTO search_results (searchQuery, searchScope, itemKey, itemType, title, description, thumbnailUrl, date, sortIndex) VALUES " +
+                    "('danielle dancing', 'site', 'ImgKey1', 'Photo', 'IMG_1.jpg', NULL, 'https://photos.smugmug.com/x/Th/x-Th.jpg', '2014-07-15T14:35:34+00:00', 0)"
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 19, true, AppDatabase.MIGRATION_18_19)
+
+        db.query("SELECT itemKey, date, dateTimeOriginal FROM search_results").use { c ->
+            assertEquals(1, c.count)
+            c.moveToFirst()
+            assertEquals("ImgKey1", c.getString(0))
+            assertEquals("the upload time stays", "2014-07-15T14:35:34+00:00", c.getString(1))
+            assertTrue("a result cached before the change has no capture time yet", c.isNull(2))
+        }
+    }
+
+    @Test
     fun migrate14To15() {
         helper.createDatabase(TEST_DB, 14).apply {
             // Real shape: AlbumKey (FfHCms) != NodeID (LCdk7F), as in the live API.
@@ -113,7 +134,7 @@ class MigrationTest {
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
-            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18)
+            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19)
             .allowMainThreadQueries()
             .build()
         try {
@@ -231,7 +252,7 @@ class MigrationTest {
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
             .addMigrations(
                 AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14,
-                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18
+                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19
             )
             .allowMainThreadQueries()
             .build()
@@ -264,7 +285,7 @@ class MigrationTest {
             dumpUserTables().also { close() }
         }
 
-        val db = helper.runMigrationsAndValidate(TEST_DB, 17, true, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18)
+        val db = helper.runMigrationsAndValidate(TEST_DB, 17, true, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19)
 
         assertEquals(before, db.dumpUserTables())
 
@@ -316,7 +337,7 @@ class MigrationTest {
 
         val db = helper.runMigrationsAndValidate(
             TEST_DB, 17, true,
-            AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18
+            AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19
         )
 
         assertV13UserDataSurvived(db)
@@ -337,7 +358,7 @@ class MigrationTest {
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
             .addMigrations(
                 AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14,
-                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18
+                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19
             )
             .allowMainThreadQueries()
             .build()

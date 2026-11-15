@@ -19,6 +19,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.filter
 import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.data.api.sortedByCapture
 import com.smugview.app.data.api.ExifData
 import com.smugview.app.data.api.ImageSizeDetailsPayload
 import com.smugview.app.data.api.Pager
@@ -1407,8 +1408,8 @@ open class SmugViewModel(
 
         // 3. Sort by method (only Date Taken)
         val sorted = when (sort) {
-            "date_asc" -> filtered.sortedBy { it.date ?: "" }
-            "date_desc" -> filtered.sortedByDescending { it.date ?: "" }
+            "date_asc" -> filtered.sortedByCapture(ascending = true)
+            "date_desc" -> filtered.sortedByCapture(ascending = false)
             else -> filtered
         }
 

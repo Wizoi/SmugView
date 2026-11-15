@@ -2078,6 +2078,7 @@ fun AlbumImageData.toSearchResult(query: String, scope: String, index: Int): Sea
         thumbnailUrl = thumbnailUrl,
         archivedUri = archivedUri,
         date = date,
+        dateTimeOriginal = dateTimeOriginal,
         format = format,
         originalWidth = originalWidth,
         originalHeight = originalHeight,

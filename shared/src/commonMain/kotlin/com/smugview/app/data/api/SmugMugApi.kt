@@ -66,7 +66,7 @@ interface SmugMugApi {
         // Every page is this same call with `start`; Pages.NextPage drops _expand (R-27), so it is never followed.
         start: Int? = null,
         expand: String = "LargestVideo",
-        filter: String = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,ArchivedUri,Date,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,ArchivedSize,ArchivedMD5,Keywords,KeywordArray,Uris",
+        filter: String = "ImageKey,Title,Caption,ThumbnailUrl,WebUri,ArchivedUri,Date,DateTimeOriginal,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,ArchivedSize,ArchivedMD5,Keywords,KeywordArray,Uris",
         // ImageSizeDetails is only present when listed here (P4, R-29): the zoom reads its real tiers from it.
         filterUri: String = "LargestVideo,Album,ImageSizeDetails",
         verbosity: Int = 1,
@@ -87,7 +87,7 @@ interface SmugMugApi {
         sortDirection: String? = null,
         count: Int = 500,
         start: Int = 1,
-        filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,FileName,Format,Keywords,KeywordArray,Uris",
+        filter: String = "ImageKey,Title,Caption,ThumbnailUrl,Date,DateTimeOriginal,FileName,Format,Keywords,KeywordArray,Uris",
         // WebUri, DateTime and ImageAlbum are never present on search results (P4): not requested.
         // A video's `ArchivedUri` is a JPEG still: without `LargestVideo` (expanded AND listed in `_filteruri`) a search result cannot play.
         filterUri: String = "ImageSizeDetails,LargestVideo",
@@ -127,7 +127,7 @@ interface SmugMugApi {
         imageKey: String,
         apiKey: String,
         expand: String = "LargestVideo",
-        filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris",
+        filter: String = "ImageKey,Title,Caption,ThumbnailUrl,ArchivedUri,Date,DateTimeOriginal,FileName,Format,OriginalWidth,OriginalHeight,OriginalSize,Keywords,KeywordArray,Uris",
         filterUri: String = "LargestVideo,ImageSizeDetails",
         verbosity: Int = 1
     ): ImageResponse

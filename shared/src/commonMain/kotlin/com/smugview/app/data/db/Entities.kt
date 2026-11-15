@@ -192,6 +192,8 @@ data class SearchResult(
     // Extra Photo fields (AlbumImageData)
     val archivedUri: String? = null,
     val date: String? = null,
+    /** When the photo was taken (v19); null for a result cached before then. */
+    val dateTimeOriginal: String? = null,
     val format: String? = null,
     val videoUrl: String? = null,
     val originalWidth: Int? = null,
@@ -212,6 +214,7 @@ fun SearchResult.toAlbumImageData(): com.smugview.app.data.api.AlbumImageData {
         archivedUri = this.archivedUri,
         date = this.date,
         dateTime = this.date,
+        dateTimeOriginal = this.dateTimeOriginal,
         fileName = this.fileName,
         keywords = this.keywords,
         webUri = this.webUri,

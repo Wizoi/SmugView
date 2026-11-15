@@ -11,6 +11,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
 import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.data.api.sortedByCapture
 import com.smugview.app.data.db.CachedNode
 import com.smugview.app.data.db.SearchHistory
 import com.smugview.app.data.db.toAlbumImageData
@@ -143,11 +144,8 @@ class SearchController(
     }
 
     fun sortPhotos(photos: List<AlbumImageData>, order: String): List<AlbumImageData> {
-        return if (order == "Descending") {
-            photos.sortedByDescending { it.date ?: "" }
-        } else {
-            photos.sortedBy { it.date ?: "" }
-        }
+        // When the photo was taken, not when it was uploaded (tester feedback 2026-11-14).
+        return photos.sortedByCapture(ascending = order != "Descending")
     }
 
     private var searchJob: Job? = null

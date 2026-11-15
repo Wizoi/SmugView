@@ -295,10 +295,10 @@ interface CollectionDao {
 
     @Query("DELETE FROM search_results WHERE searchQuery = :query AND searchScope = :scope AND itemType = :type")
     suspend fun deleteSearchResultsForQueryAndType(query: String, scope: String, type: String)
-    @Query("SELECT * FROM search_results WHERE searchQuery = :query AND searchScope = :scope AND itemType = :type ORDER BY date DESC")
+    @Query("SELECT * FROM search_results WHERE searchQuery = :query AND searchScope = :scope AND itemType = :type ORDER BY COALESCE(dateTimeOriginal, date) DESC")
     fun getPagedSearchResultsDesc(query: String, scope: String, type: String): androidx.paging.PagingSource<Int, SearchResult>
 
-    @Query("SELECT * FROM search_results WHERE searchQuery = :query AND searchScope = :scope AND itemType = :type ORDER BY date ASC")
+    @Query("SELECT * FROM search_results WHERE searchQuery = :query AND searchScope = :scope AND itemType = :type ORDER BY COALESCE(dateTimeOriginal, date) ASC")
     fun getPagedSearchResultsAsc(query: String, scope: String, type: String): androidx.paging.PagingSource<Int, SearchResult>
 
     // Viewed Gallery Updates Operations

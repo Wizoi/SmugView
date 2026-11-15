@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.smugview.app.data.api.AlbumImageData
+import com.smugview.app.data.api.sortedByCapture
 import com.smugview.app.data.api.Pager
 import com.smugview.app.data.api.toPage
 import com.smugview.app.data.db.CachedNode
@@ -150,11 +151,8 @@ class TagSearchController(
                 hasAllIncluded && hasNoExcluded
             }.distinctBy { it.imageKey }
 
-            if (sortOrder == "Ascending") {
-                filtered.sortedWith(compareBy<AlbumImageData> { it.dateTime ?: it.date ?: "" })
-            } else {
-                filtered.sortedWith(compareByDescending<AlbumImageData> { it.dateTime ?: it.date ?: "" })
-            }
+            // When the photo was taken, not when it was uploaded (tester feedback 2026-11-14).
+            filtered.sortedByCapture(ascending = sortOrder == "Ascending")
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

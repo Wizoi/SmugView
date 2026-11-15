@@ -150,6 +150,8 @@ data class AlbumImageData(
     @SerialName("ArchivedUri") val archivedUri: String? = null,
     @SerialName("Date") val date: String? = null,
     @SerialName("DateTime") val dateTime: String? = null,
+    /** When the camera says the photo was taken. `Date` is the UPLOAD time (equal to `DateTimeUploaded`, checked on the live API), so sorting by it is not sorting by when a photo was shot. */
+    @SerialName("DateTimeOriginal") val dateTimeOriginal: String? = null,
     @SerialName("FileName") val fileName: String? = null,
     @SerialName("Keywords") val keywords: String? = null,
     @SerialName("KeywordArray") val keywordArray: List<String>? = null,
@@ -302,6 +304,26 @@ data class UserAlbumsPayload(
     @SerialName("Album") val albums: List<AlbumDetails>? = emptyList(),
     @SerialName("Pages") val pages: PagesData? = null
 )
+
+/**
+ * When the photo was taken (the camera's `DateTimeOriginal`), else when it was uploaded, as epoch milliseconds; null when it has neither
+ * (or neither is a timestamp). Compared as instants, so a photo with a `-08:00` offset sorts correctly next to a `+00:00` one.
+ */
+val AlbumImageData.captureMillis: Long?
+    get() = timeMillis(dateTimeOriginal) ?: timeMillis(date ?: dateTime)
+
+/** A timestamp as epoch milliseconds; a plain date (`2026-07-01`) counts as midnight UTC; anything else is null. */
+private fun timeMillis(text: String?): Long? {
+    val t = text?.trim() ?: return null
+    return com.smugview.app.util.Iso8601.epochMillisOrNull(t)
+        ?: if (Regex("""\d{4}-\d{2}-\d{2}""").matches(t)) com.smugview.app.util.Iso8601.epochMillisOrNull(t + "T00:00:00+00:00") else null
+}
+
+/** Oldest first ([ascending]) or newest first by [captureMillis]; a photo with no time sorts first ascending and last descending; ties keep their order. */
+fun List<AlbumImageData>.sortedByCapture(ascending: Boolean): List<AlbumImageData> {
+    val byTime = compareBy<AlbumImageData> { it.captureMillis ?: Long.MIN_VALUE }
+    return sortedWith(if (ascending) byTime else byTime.reversed())
+}
 
 val AlbumImageData.isVideo: Boolean
     get() = (format?.lowercase()?.let { it == "mp4" || it == "mov" || it == "avi" || it == "3gp" || it == "mkv" || it == "video" } ?: false) ||

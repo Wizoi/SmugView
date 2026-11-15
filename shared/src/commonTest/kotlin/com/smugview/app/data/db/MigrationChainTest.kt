@@ -24,7 +24,7 @@ expect fun openDatabaseAt(path: String): AppDatabase
 
 /**
  * iOS spike, Stage 0 step 3 (b): a version-13 database, rebuilt from the app's real exported `13.json`, with realistic user data in it, is
- * opened by Room KMP with the shared migrations and ends as a valid version-18 database with the user's rows intact.
+ * opened by Room KMP with the shared migrations and ends as a valid version-19 database with the user's rows intact.
  * Schema 12 was never exported (the app's MigrationTest says the same), so 12 -> 13 is compiled but not exercised here.
  */
 class MigrationChainTest {
@@ -87,7 +87,7 @@ class MigrationChainTest {
         val path = tempDbPath()
         createOldDatabase(path, 13)
 
-        // Opening runs the chain 13 -> 18 and Room validates the result against the entities (it throws on any difference).
+        // Opening runs the chain 13 -> 19 and Room validates the result against the entities (it throws on any difference).
         val db = openDatabaseAt(path)
         // The three rows (Family, School, Class photos) survived the chain.
         listOf("2sDN5x", "P4BKB", "LCdk7F").forEach { assertNotNull(db.collectionDao().getNodeById(it), "node $it") }
@@ -95,7 +95,7 @@ class MigrationChainTest {
 
         val c = driver.open(path)
         try {
-            assertEquals(18, count(c, "PRAGMA user_version"))
+            assertEquals(19, count(c, "PRAGMA user_version"))
             assertEquals(1, count(c, "SELECT COUNT(*) FROM offline_collections WHERE id = 7 AND name = 'Trip'"))
             assertEquals(2, count(c, "SELECT COUNT(*) FROM collection_photos WHERE collectionId = 7"))
             assertEquals(1, count(c, "SELECT COUNT(*) FROM collection_photos WHERE imageKey = 'i-AbCd' AND isDownloaded = 1"))
@@ -116,7 +116,7 @@ class MigrationChainTest {
     }
 
     @Test fun theSchemaJsonOfEveryVersionIsReadable() {
-        for (v in 13..18) {
+        for (v in 13..19) {
             val schema: JsonObject = Json.parseToJsonElement(readSchema(v)).jsonObject["database"]!!.jsonObject
             assertEquals(v, schema["version"]!!.jsonPrimitive.content.toInt())
         }
