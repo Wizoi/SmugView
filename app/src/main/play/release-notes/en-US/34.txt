@@ -1,0 +1,2 @@
+Changed:
+- The "?" Help button now sits on the Hub screen only, so the Home banner stays clean.
