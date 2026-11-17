@@ -1,0 +1,5 @@
+New:
+- A "?" Help button on every screen, plus a short welcome card for new users, with a link to send feedback.
+
+Fixed:
+- "Mark all as seen" is at the top of Home (the last note said your site's tab).
