@@ -95,7 +95,6 @@ fun FoldersTabView(
     val activeUserProfile by viewModel.activeUserProfile.collectAsState()
     val activeUpdates by viewModel.activeUpdateNodeIds.collectAsState()
     var showMarkAllSeenDialog by remember { mutableStateOf(false) }
-    var showHelpDialog by remember { mutableStateOf(false) }
     val siteHeaderImageUrl by viewModel.siteHeaderImageUrl.collectAsState()
 
     when (uiState) {
@@ -403,14 +402,6 @@ fun FoldersTabView(
                             )
                         }
 
-                        // Help: the same short tips as the welcome card, with the feedback link.
-                        IconButton(
-                            onClick = { showHelpDialog = true },
-                            modifier = Modifier.background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                        ) {
-                            Text("?", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        }
-
                         // Mark all as seen: only while something is lit; asks first because the marks cannot be taken back.
                         if (activeUpdates.isNotEmpty()) {
                             IconButton(
@@ -445,8 +436,6 @@ fun FoldersTabView(
                     }
                 }
             }
-
-            if (showHelpDialog) com.smugview.app.ui.component.HelpDialog(onDismiss = { showHelpDialog = false })
 
             if (showMarkAllSeenDialog) {
                 AlertDialog(

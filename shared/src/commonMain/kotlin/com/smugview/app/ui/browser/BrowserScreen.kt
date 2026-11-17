@@ -134,9 +134,11 @@ fun BrowserScreen(
                         }
                     },
                     actions = {
-                        // Help: on every screen with this bar (the Home tab has its own "?" in its banner).
-                        IconButton(onClick = { showHelp = true }) {
-                            Text("?", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        // Help lives on the Hub only (owner, 2026-11-17: the "?" looked odd on the Home banner).
+                        if (activeTab == BrowserTab.Hub) {
+                            IconButton(onClick = { showHelp = true }) {
+                                Text("?", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                         if (activeTab == BrowserTab.Collections) NetworkSettingsAction { showNetworkSetting = true }
                         val nickname by viewModel.activeNickname.collectAsState()
