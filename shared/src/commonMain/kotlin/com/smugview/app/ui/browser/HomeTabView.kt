@@ -164,6 +164,15 @@ fun HomeTabView(
         val globalSearchState by viewModel.globalSearchState.collectAsState()
         
         var nicknameQuery by remember { mutableStateOf("") }
+        var showHelp by remember { mutableStateOf(false) }
+        // New here: the short help card, once. Marked as soon as it is on screen, so quitting with it open still counts.
+        LaunchedEffect(Unit) {
+            if (viewModel.welcomeHelp.shouldShow()) {
+                viewModel.welcomeHelp.markShown()
+                showHelp = true
+            }
+        }
+        if (showHelp) com.smugview.app.ui.component.HelpDialog(onDismiss = { showHelp = false })
         var isFocused by remember { mutableStateOf(false) }
 
         // Debounce live validation for direct matching (500ms delay)
@@ -227,6 +236,10 @@ fun HomeTabView(
                             color = Color.White.copy(alpha = 0.5f),
                             textAlign = TextAlign.Center
                         )
+
+                        TextButton(onClick = { showHelp = true }) {
+                            Text("How to use SmugView", color = NeonBlue, fontSize = 14.sp)
+                        }
                     }
                 }
 

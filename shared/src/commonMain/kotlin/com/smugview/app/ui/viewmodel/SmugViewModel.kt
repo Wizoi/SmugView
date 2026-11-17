@@ -1005,6 +1005,9 @@ open class SmugViewModel(
         navigator.navigate(NavIntent.Child(node))
     }
 
+    /** The once-only welcome help (see [com.smugview.app.ui.WelcomeHelp]). */
+    val welcomeHelp: com.smugview.app.ui.WelcomeHelp by lazy { com.smugview.app.ui.WelcomeHelp(sharedPrefs) }
+
     /** "Mark all as seen" on the active site: every blue dot clears; only later updates light again. */
     fun markAllSeen() {
         val nickname = _activeNickname.value ?: return
