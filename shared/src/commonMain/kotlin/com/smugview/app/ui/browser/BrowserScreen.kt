@@ -102,6 +102,8 @@ fun BrowserScreen(
     var selectedImageForDetail by remember { mutableStateOf<AlbumImageData?>(null) }
     var showNetworkSetting by remember { mutableStateOf(false) }
     if (showNetworkSetting) NetworkSettingHost(viewModel, onClose = { showNetworkSetting = false })
+    var showHelp by remember { mutableStateOf(false) }
+    if (showHelp) com.smugview.app.ui.component.HelpDialog(onDismiss = { showHelp = false })
 
     // System back (R-14, owner Q2): on the Folders tab it pops the folder stack or returns to Search;
     // on every other tab the Android default applies. An open collection is closed by
@@ -132,6 +134,10 @@ fun BrowserScreen(
                         }
                     },
                     actions = {
+                        // Help: on every screen with this bar (the Home tab has its own "?" in its banner).
+                        IconButton(onClick = { showHelp = true }) {
+                            Text("?", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        }
                         if (activeTab == BrowserTab.Collections) NetworkSettingsAction { showNetworkSetting = true }
                         val nickname by viewModel.activeNickname.collectAsState()
                         if (activeTab == BrowserTab.Hub && !nickname.isNullOrEmpty()) {

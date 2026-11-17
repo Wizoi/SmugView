@@ -62,5 +62,5 @@ private val TIPS = listOf(
     "Search and Tags find photos across the whole site. Tags can include or leave out words.",
     "Share sends a link, a QR code, or the picture at the size you choose. The bookmark keeps a photo in your own collection, and the download button saves it to this device.",
     "A lock marks a password folder. Enter its password once and this device remembers it.",
-    "Blue dots mark galleries that changed since you last looked. The check mark in your site's tab clears them all."
+    "Blue dots mark galleries that changed since you last looked. The check mark at the top of Home clears them all."
 )

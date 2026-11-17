@@ -22,7 +22,8 @@ import org.robolectric.annotation.Config
 class HomeRecentPrivacyTest {
     private lateinit var rig: ScenarioRig
 
-    @Before fun setUp() { rig = ScenarioRig() }
+    // These are about what the cache holds (only Family, or nothing): the shared rig's seeded old gallery is not part of that premise.
+    @Before fun setUp() { rig = ScenarioRig(returningPhone = false) }
     @After fun tearDown() = rig.close()
 
     private val vm get() = rig.viewModel
@@ -77,6 +78,7 @@ class HomeRecentPrivacyTest {
         vm.selectSite("idzifamily")
         awaitHubLoaded()
 
-        assertEquals(setOf("XVRvVTM", "ttDKqjt"), recent().toSet())
+        // The recent photos arrive after the Hub listing (a second request), so wait for them like the test above does.
+        awaitUntil("both photos show, the one the cache cannot place included") { recent().toSet() == setOf("XVRvVTM", "ttDKqjt") }
     }
 }
