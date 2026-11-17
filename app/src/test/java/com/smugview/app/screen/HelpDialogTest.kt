@@ -42,7 +42,7 @@ class HelpDialogTest {
 
     @Test fun `send feedback opens the support page`() {
         show()
-        compose.onNodeWithText("Send feedback or get help").performScrollTo().performClick()
+        compose.onNodeWithText("Send feedback").performClick()
         assertEquals(listOf(WelcomeHelp.SUPPORT_URL), opened)
     }
 

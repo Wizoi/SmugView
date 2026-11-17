@@ -26,7 +26,7 @@ import com.smugview.app.ui.theme.NeonBlue
 import com.smugview.app.ui.theme.SurfaceDark
 
 /**
- * "How to use SmugView": a few short tips, the way to send feedback (the support page, which has the email address and the issue tracker),
+ * "How to use SmugView": a few short tips, the way to send feedback in the bottom row (the support page, which has the email address and the issue tracker),
  * and the privacy policy. Shown once to a new user and from the Help button after that. Two taps at most to leave: Done, or tap outside.
  */
 @Composable
@@ -41,11 +41,6 @@ fun HelpDialog(onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TIPS.forEach { Text(it, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp) }
-                Button(
-                    onClick = { links.openUri(WelcomeHelp.SUPPORT_URL) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonBlue, contentColor = Color.Black)
-                ) { Text("Send feedback or get help", fontWeight = FontWeight.Bold) }
                 OutlinedButton(
                     onClick = { links.openUri(WelcomeHelp.PRIVACY_URL) },
                     modifier = Modifier.fillMaxWidth(),
@@ -54,6 +49,8 @@ fun HelpDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done", color = NeonBlue, fontWeight = FontWeight.Bold) } },
+        // Always visible, not below the tips: the feedback link is the point of the Help entry (the support page has the email and the issue tracker).
+        dismissButton = { TextButton(onClick = { links.openUri(WelcomeHelp.SUPPORT_URL) }) { Text("Send feedback", color = Color.White.copy(alpha = 0.85f)) } },
         containerColor = SurfaceDark,
         shape = RoundedCornerShape(16.dp)
     )
