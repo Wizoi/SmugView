@@ -6,7 +6,7 @@ Limits: promotional text 170, description 4000, keywords 100, subtitle 30. Paste
 Photo gallery browser
 
 ## Promotional text (170, changeable without a review)
-Browse any public photo site by name. Search, filter by tag, view full screen, share at the size you choose, keep galleries offline, and cast to your TV with Google Cast or AirPlay.
+Browse any public photo site by name. Search, filter by tag, view full screen, share at the size you choose, keep galleries offline, and cast to your TV.
 
 ## Keywords (100, comma separated, no spaces; 92 characters)
 photo,gallery,viewer,photographer,portfolio,album,slideshow,tags,search,offline,cast,airplay
