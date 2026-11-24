@@ -60,6 +60,8 @@ fun CastControllerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(deepDarkBackground)
+            // Edge-to-edge: the dark background runs behind the bars, the content stays clear of them.
+            .systemBarsPadding()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

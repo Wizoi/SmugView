@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableDarkEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         val prefs = getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
