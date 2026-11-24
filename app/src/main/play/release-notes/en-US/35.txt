@@ -1,0 +1,3 @@
+Fixed:
+- Home, Search, Tags and Collections no longer look dimmed and dead before you choose a site. Tapping one now tells you to search for a SmugMug site or pick a featured photographer.
+- The app now draws edge to edge on every Android version, with the status and navigation bars blending into the dark screens. The Now Casting screen keeps its controls clear of the bars.
