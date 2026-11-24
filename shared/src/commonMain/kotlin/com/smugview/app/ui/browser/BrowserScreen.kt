@@ -113,7 +113,25 @@ fun BrowserScreen(
         viewModel.navigateBack()
     }
 
+    // Without a site the four site tabs have nothing to show. They used to be disabled, which read as "unresponsive" (App Store review
+    // 2026-11-20, guideline 2.1(a)); now a tap says what to do and stays on the Hub.
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
+    val activeNicknameNow by viewModel.activeNickname.collectAsState()
+    fun siteTabClick(whenSiteLoaded: () -> Unit): () -> Unit = {
+        if (!activeNicknameNow.isNullOrEmpty()) {
+            whenSiteLoaded()
+        } else {
+            if (activeTab != BrowserTab.Hub) viewModel.setActiveTab(BrowserTab.Hub)
+            snackbarScope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar("Search for a SmugMug site first, or pick a featured photographer.")
+            }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (activeTab != BrowserTab.Folders) {
                 TopAppBar(
@@ -186,7 +204,6 @@ fun BrowserScreen(
                     icon = { Icon(AppIcons.Home, contentDescription = "Home", modifier = Modifier.size(20.dp)) },
                     label = { Text("Home", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Folders,
-                    enabled = isSiteLoaded,
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = NeonBlue,
                         selectedTextColor = NeonBlue,
@@ -194,7 +211,7 @@ fun BrowserScreen(
                         unselectedTextColor = Color.White.copy(alpha = 0.6f),
                         indicatorColor = NeonBlue.copy(alpha = 0.1f)
                     ),
-                    onClick = {
+                    onClick = siteTabClick {
                         if (activeTab == BrowserTab.Folders) {
                             viewModel.navigateToHome()
                         } else {
@@ -206,7 +223,6 @@ fun BrowserScreen(
                     icon = { Icon(AppIcons.Search, contentDescription = "Search", modifier = Modifier.size(20.dp)) },
                     label = { Text("Search", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Search,
-                    enabled = isSiteLoaded,
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = NeonBlue,
                         selectedTextColor = NeonBlue,
@@ -214,13 +230,12 @@ fun BrowserScreen(
                         unselectedTextColor = Color.White.copy(alpha = 0.6f),
                         indicatorColor = NeonBlue.copy(alpha = 0.1f)
                     ),
-                    onClick = { viewModel.setActiveTab(BrowserTab.Search) }
+                    onClick = siteTabClick { viewModel.setActiveTab(BrowserTab.Search) }
                 )
                 NavigationBarItem(
                     icon = { Icon(AppIcons.LocalOffer, contentDescription = "Tag Search", modifier = Modifier.size(20.dp)) },
                     label = { Text("Tags", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.TagSearch,
-                    enabled = isSiteLoaded,
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = NeonBlue,
                         selectedTextColor = NeonBlue,
@@ -228,13 +243,12 @@ fun BrowserScreen(
                         unselectedTextColor = Color.White.copy(alpha = 0.6f),
                         indicatorColor = NeonBlue.copy(alpha = 0.1f)
                     ),
-                    onClick = { viewModel.setActiveTab(BrowserTab.TagSearch) }
+                    onClick = siteTabClick { viewModel.setActiveTab(BrowserTab.TagSearch) }
                 )
                 NavigationBarItem(
                     icon = { Icon(AppIcons.PhotoAlbum, contentDescription = "Collections", modifier = Modifier.size(20.dp)) },
                     label = { Text("Collections", fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = activeTab == BrowserTab.Collections,
-                    enabled = isSiteLoaded,
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = NeonBlue,
                         selectedTextColor = NeonBlue,
@@ -242,7 +256,7 @@ fun BrowserScreen(
                         unselectedTextColor = Color.White.copy(alpha = 0.6f),
                         indicatorColor = NeonBlue.copy(alpha = 0.1f)
                     ),
-                    onClick = { viewModel.setActiveTab(BrowserTab.Collections) }
+                    onClick = siteTabClick { viewModel.setActiveTab(BrowserTab.Collections) }
                 )
                 NavigationBarItem(
                     icon = {
