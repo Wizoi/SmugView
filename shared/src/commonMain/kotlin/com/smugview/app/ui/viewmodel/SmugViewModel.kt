@@ -2156,27 +2156,7 @@ open class SmugViewModel(
         collections.removePhotoFromCollection(imageKey, collectionId)
 
     suspend fun getAlbumKeyFromWebUri(webUri: String?): String? {
-        val targetUri = webUri ?: return null
-        if (targetUri.isEmpty()) return null
-
-        val path = try {
-            val cleanedUriStr = targetUri.substringBefore("?")
-            val pathStr = if (cleanedUriStr.contains("://")) {
-                cleanedUriStr.substringAfter("://").substringAfter("/")
-            } else {
-                cleanedUriStr
-            }
-            val pathBeforeImage = if (pathStr.contains("/i-")) {
-                pathStr.substringBefore("/i-")
-            } else {
-                pathStr
-            }
-            pathBeforeImage.decodeURLQueryComponent(plusIsSpace = true)
-        } catch (e: Exception) {
-            null
-        } ?: return null
-
-        val normalizedPath = path.trim('/').lowercase()
+        val normalizedPath = PhotoUrlPath.normalized(webUri) ?: return null
 
         // The gallery index has every gallery of the site (design 3.6); `user!albums` page 1 has 100 at most,
         // so a photo in gallery 101+ is only found here.
@@ -2204,38 +2184,7 @@ open class SmugViewModel(
 
     suspend fun getNearestCachedAncestorNode(photoUrl: String?): com.smugview.app.data.db.CachedNode? {
         if (photoUrl.isNullOrEmpty()) return null
-        
-        val path = try {
-            val cleanedUriStr = photoUrl.substringBefore("?")
-            val pathStr = if (cleanedUriStr.contains("://")) {
-                cleanedUriStr.substringAfter("://").substringAfter("/")
-            } else {
-                cleanedUriStr
-            }
-            val pathBeforeImage = if (pathStr.contains("/i-")) {
-                pathStr.substringBefore("/i-")
-            } else {
-                pathStr
-            }
-            pathBeforeImage.decodeURLQueryComponent(plusIsSpace = true)
-        } catch (e: Exception) {
-            null
-        } ?: return null
-
-        val segments = path.trim('/').split('/')
-        val allNodes = repository.getCachedNodesForSite(_activeNickname.value.orEmpty())
-        
-        for (i in segments.indices.reversed()) {
-            val parentPath = segments.subList(0, i + 1).joinToString("/").lowercase()
-            val matchedNode = allNodes.find { node ->
-                val nodePath = node.webUri?.substringAfter("://")?.substringAfter("/")?.trim('/')?.lowercase() ?: ""
-                nodePath == parentPath
-            }
-            if (matchedNode != null) {
-                return matchedNode
-            }
-        }
-        return null
+        return PhotoUrlPath.nearestAncestor(photoUrl, repository.getCachedNodesForSite(_activeNickname.value.orEmpty()))
     }
 
     suspend fun getCachedNodeById(nodeId: String): com.smugview.app.data.db.CachedNode? {

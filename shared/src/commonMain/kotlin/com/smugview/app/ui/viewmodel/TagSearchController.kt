@@ -133,23 +133,9 @@ class TagSearchController(
         } else {
             val included = selected.filter { it.value == TagFilterState.INCLUDED }.keys
             val excluded = selected.filter { it.value == TagFilterState.EXCLUDED }.keys
-            val filtered = photos.filter { photo ->
-                val titleTokens = photo.title?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
-                val captionTokens = photo.caption?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
-                val fileNameTokens = photo.fileName?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
-                val keywordTokens = photo.keywordsString?.lowercase()?.split(Regex("[^a-zA-Z0-9]+"))?.filter { it.isNotEmpty() } ?: emptyList()
-                val allTokens = (titleTokens + captionTokens + fileNameTokens + keywordTokens).toSet()
-
-                val hasAllIncluded = included.all { tag ->
-                    val tagTokens = tag.lowercase().split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotEmpty() }
-                    tagTokens.isEmpty() || tagTokens.all { allTokens.contains(it) }
-                }
-                val hasNoExcluded = excluded.none { tag ->
-                    val tagTokens = tag.lowercase().split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotEmpty() }
-                    tagTokens.isNotEmpty() && tagTokens.all { allTokens.contains(it) }
-                }
-                hasAllIncluded && hasNoExcluded
-            }.distinctBy { it.imageKey }
+            // R-60: the regex and the tag tokens are built once, not once per photo and per tag.
+            val matcher = TagMatcher(included, excluded)
+            val filtered = photos.filter { photo -> matcher.matches(photo) }.distinctBy { it.imageKey }
 
             // When the photo was taken, not when it was uploaded (tester feedback 2026-11-14).
             filtered.sortedByCapture(ascending = sortOrder == "Ascending")
@@ -509,5 +495,23 @@ class TagSearchController(
                 _isScanningTags.value = false
             }
         }
+    }
+}
+
+private val TOKEN_SPLIT = Regex("[^a-zA-Z0-9]+")
+
+/** Lower-cased alphanumeric words of a title, caption, file name, keyword list or tag. */
+private fun tokensOf(text: String): List<String> = text.lowercase().split(TOKEN_SPLIT).filter { it.isNotEmpty() }
+
+/** A photo matches when every included tag's words and none of the excluded tags' words are all among its title, caption, file name and keyword words. */
+class TagMatcher(included: Collection<String>, excluded: Collection<String>) {
+    private val includedTokens = included.map { tokensOf(it) }
+    private val excludedTokens = excluded.map { tokensOf(it) }
+
+    fun matches(photo: AlbumImageData): Boolean {
+        val allTokens = listOfNotNull(photo.title, photo.caption, photo.fileName, photo.keywordsString).flatMap { tokensOf(it) }.toSet()
+        val hasAllIncluded = includedTokens.all { tagTokens -> tagTokens.isEmpty() || tagTokens.all { allTokens.contains(it) } }
+        val hasNoExcluded = excludedTokens.none { tagTokens -> tagTokens.isNotEmpty() && tagTokens.all { allTokens.contains(it) } }
+        return hasAllIncluded && hasNoExcluded
     }
 }
