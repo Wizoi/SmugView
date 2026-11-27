@@ -24,7 +24,7 @@ expect fun openDatabaseAt(path: String): AppDatabase
 
 /**
  * iOS spike, Stage 0 step 3 (b): a version-13 database, rebuilt from the app's real exported `13.json`, with realistic user data in it, is
- * opened by Room KMP with the shared migrations and ends as a valid version-19 database with the user's rows intact.
+ * opened by Room KMP with the shared migrations and ends as a valid version-20 database with the user's rows intact.
  * Schema 12 was never exported (the app's MigrationTest says the same), so 12 -> 13 is compiled but not exercised here.
  */
 class MigrationChainTest {
@@ -87,7 +87,7 @@ class MigrationChainTest {
         val path = tempDbPath()
         createOldDatabase(path, 13)
 
-        // Opening runs the chain 13 -> 19 and Room validates the result against the entities (it throws on any difference).
+        // Opening runs the chain 13 -> 20 and Room validates the result against the entities (it throws on any difference).
         val db = openDatabaseAt(path)
         // The three rows (Family, School, Class photos) survived the chain.
         listOf("2sDN5x", "P4BKB", "LCdk7F").forEach { assertNotNull(db.collectionDao().getNodeById(it), "node $it") }
@@ -95,7 +95,7 @@ class MigrationChainTest {
 
         val c = driver.open(path)
         try {
-            assertEquals(19, count(c, "PRAGMA user_version"))
+            assertEquals(20, count(c, "PRAGMA user_version"))
             assertEquals(1, count(c, "SELECT COUNT(*) FROM offline_collections WHERE id = 7 AND name = 'Trip'"))
             assertEquals(2, count(c, "SELECT COUNT(*) FROM collection_photos WHERE collectionId = 7"))
             assertEquals(1, count(c, "SELECT COUNT(*) FROM collection_photos WHERE imageKey = 'i-AbCd' AND isDownloaded = 1"))
@@ -104,19 +104,21 @@ class MigrationChainTest {
             assertEquals(1, count(c, "SELECT COUNT(*) FROM search_history WHERE query = 'school'"))
             assertEquals(1, count(c, "SELECT COUNT(*) FROM cached_nodes WHERE nodeId = 'LCdk7F' AND parentNodeId = 'P4BKB'"))
             // the tables the later versions added exist and are usable
-            for (t in listOf("cached_albums", "offline_files", "offline_galleries", "offline_gallery_items", "notify_sites", "notify_known_albums")) {
+            for (t in listOf("cached_albums", "offline_files", "offline_galleries", "offline_gallery_items", "notify_sites", "notify_known_albums", "node_listings")) {
                 count(c, "SELECT COUNT(*) FROM $t")
             }
             // the 16 -> 17 backfill gave each saved photo a file row (one per image key) and the album bookmark a kept-gallery row
             assertEquals(2, count(c, "SELECT COUNT(*) FROM offline_files"))
             assertEquals(1, count(c, "SELECT COUNT(*) FROM offline_galleries"))
+            // 19 -> 20 (R-06) is not backfilled: no parent is marked complete, so each folder is listed once on its next open
+            assertEquals(0, count(c, "SELECT COUNT(*) FROM node_listings"))
         } finally {
             c.close()
         }
     }
 
     @Test fun theSchemaJsonOfEveryVersionIsReadable() {
-        for (v in 13..19) {
+        for (v in 13..20) {
             val schema: JsonObject = Json.parseToJsonElement(readSchema(v)).jsonObject["database"]!!.jsonObject
             assertEquals(v, schema["version"]!!.jsonPrimitive.content.toInt())
         }

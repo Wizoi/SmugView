@@ -1,0 +1,4 @@
+Fixed:
+- A folder could show only one gallery instead of its full list. The app now loads each folder's full list once after this update, then keeps it.
+- When a cast screen can't show a photo, the Now Casting screen now says so, with a code.
+- Failure details from casting and saved passwords are now recorded in the diagnostics log.

@@ -21,7 +21,15 @@ interface CollectionDao {
     suspend fun replaceChildren(parentNodeId: String, rows: List<CachedNode>) {
         deleteRealChildren(parentNodeId)
         insertNodes(rows)
+        upsertListing(NodeListing(parentNodeId, nowMillis()))
     }
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertListing(listing: NodeListing)
+
+    /** R-06: 1 when [parentNodeId]'s children were written by a full listing, else 0. */
+    @Query("SELECT COUNT(*) FROM node_listings WHERE parentNodeId = :parentNodeId")
+    suspend fun listingCount(parentNodeId: String): Int
 
     @Query("DELETE FROM cached_nodes WHERE parentNodeId = :parentNodeId AND nodeId NOT LIKE 'virtual:%'")
     suspend fun deleteRealChildren(parentNodeId: String)

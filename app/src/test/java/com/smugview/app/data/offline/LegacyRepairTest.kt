@@ -118,10 +118,7 @@ class LegacyRepairTest {
             close()
         }
         db = Room.databaseBuilder(app, AppDatabase::class.java, "legacy-repair")
-            .addMigrations(
-                AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15,
-                AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19
-            )
+            .addMigrations(*com.smugview.app.data.db.Migrations.all)
             .allowMainThreadQueries()
             .build()
         prefs.edit().apply {

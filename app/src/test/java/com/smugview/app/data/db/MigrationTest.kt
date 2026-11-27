@@ -60,6 +60,33 @@ class MigrationTest {
     }
 
     @Test
+    fun migrate19To20_addsTheListingMarkerTable_withoutBackfill_andKeepsTheCachedNodes() {
+        helper.createDatabase(TEST_DB, 19).apply {
+            // Real shape: Family (2sDN5x) under the site root (4zqWw), listed earlier by an old version that had no marker.
+            execSQL(
+                "INSERT INTO cached_nodes (nodeId, parentNodeId, type, title, description, access, passwordHint, uri, childNodesUri, albumUri, " +
+                    "highlightImageUrl, childCount, sortIndex, webUri, dateModified, nickname) VALUES " +
+                    "('P4BKB', '2sDN5x', 'Folder', 'School', NULL, 'Password', NULL, '/api/v2/node/P4BKB', '/api/v2/node/P4BKB!children', NULL, " +
+                    "NULL, 12, 0, 'https://gallery.idzifamily.com/Family/School', '2026-09-28T12:00:00+00:00', 'idzifamily')"
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 20, true, AppDatabase.MIGRATION_19_20)
+
+        db.query("SELECT COUNT(*) FROM node_listings").use { c ->
+            c.moveToFirst()
+            assertEquals("not backfilled: the first open after the upgrade lists the folder once and marks it", 0, c.getInt(0))
+        }
+        db.query("SELECT nodeId, parentNodeId, title FROM cached_nodes").use { c ->
+            assertEquals("the cached rows are kept, so offline still shows them", 1, c.count)
+            c.moveToFirst()
+            assertEquals("P4BKB", c.getString(0))
+            assertEquals("2sDN5x", c.getString(1))
+        }
+    }
+
+    @Test
     fun migrate14To15() {
         helper.createDatabase(TEST_DB, 14).apply {
             // Real shape: AlbumKey (FfHCms) != NodeID (LCdk7F), as in the live API.
@@ -134,7 +161,7 @@ class MigrationTest {
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
-            .addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19)
+            .addMigrations(*Migrations.all)
             .allowMainThreadQueries()
             .build()
         try {
@@ -250,10 +277,7 @@ class MigrationTest {
         }
         val context = ApplicationProvider.getApplicationContext<Context>()
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
-            .addMigrations(
-                AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14,
-                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19
-            )
+            .addMigrations(*Migrations.all)
             .allowMainThreadQueries()
             .build()
         try {
@@ -356,10 +380,7 @@ class MigrationTest {
         }
         val context = ApplicationProvider.getApplicationContext<Context>()
         val room = Room.databaseBuilder(context, AppDatabase::class.java, TEST_DB)
-            .addMigrations(
-                AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14,
-                AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19
-            )
+            .addMigrations(*Migrations.all)
             .allowMainThreadQueries()
             .build()
         try {

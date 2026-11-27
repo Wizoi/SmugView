@@ -1,6 +1,6 @@
 package com.smugview.app.data.cast
 
-import android.util.Log
+import com.smugview.app.util.SmugLog
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -65,7 +65,7 @@ class WebCompanionServer(
                 break
             } catch (e: Exception) {
                 lastError = e
-                Log.w(TAG, "Web Companion server could not bind port $candidate", e)
+                SmugLog.w(TAG, "Web Companion server could not bind port $candidate", e)
             }
         }
         val socket = bound
@@ -80,7 +80,7 @@ class WebCompanionServer(
                 } catch (e: SocketException) {
                     break // server stopped
                 } catch (e: Exception) {
-                    Log.w(TAG, "accept() failed", e)
+                    SmugLog.w(TAG, "accept() failed", e)
                     break
                 }
                 try {
@@ -100,7 +100,7 @@ class WebCompanionServer(
         try {
             serverSocket?.close()
         } catch (e: Exception) {
-            Log.w(TAG, "Error closing server socket", e)
+            SmugLog.w(TAG, "Error closing server socket", e)
         }
         serverSocket = null
         workers.shutdownNow()
@@ -140,7 +140,7 @@ class WebCompanionServer(
                 else -> serveNotFound(writer)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Error handling companion connection", e)
+            SmugLog.w(TAG, "Error handling companion connection", e)
         } finally {
             closeQuietly(socket)
         }

@@ -26,14 +26,15 @@ class SchemaGuardTest {
     }
 
     @Test
-    fun everyMigrationDefinedInAppDatabase_isRegisteredInAppModule() {
+    fun everyMigrationDefinedInAppDatabase_isInTheOneListTheAppRegisters() {
         val db = File(sharedDb, "Migrations.kt").readText()
         val module = File(main, "di/AppModule.kt").readText()
         val defined = Regex("""val (MIGRATION_\d+_\d+)\s*=""").findAll(db).map { it.groupValues[1] }.toList()
         assertTrue("no migrations found, the regex is stale", defined.isNotEmpty())
-        for (m in defined) {
-            assertTrue("$m is not passed to addMigrations in AppModule", module.contains("AppDatabase.$m"))
-        }
+        // One list (`Migrations.all`) serves Android, iOS and the tests; a hand-copied list is how a migration gets forgotten.
+        val all = Regex("""val all = arrayOf\(([^)]*)\)""").find(db)!!.groupValues[1]
+        for (m in defined) assertTrue("$m is not in Migrations.all", all.contains(m))
+        assertTrue("AppModule must register Migrations.all, not its own list", module.contains("addMigrations(*com.smugview.app.data.db.Migrations.all)"))
     }
 
     @Test

@@ -24,8 +24,8 @@ android {
         applicationId = "com.smugview.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 35
-        versionName = "0.9.7"
+        versionCode = 36
+        versionName = "0.9.8"
         if (project.hasProperty("localBuild")) versionNameSuffix = "-local"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -203,5 +203,16 @@ object Migrations {
             }
         }
 
-    val all = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+        /**
+         * v19 -> v20 (R-06): which parents hold a full listing. Additive, and deliberately NOT backfilled: a folder opened after the upgrade
+         * is listed once and then marked, so a stray row cannot stay the "listing" for good. If that one request fails, the cached rows
+         * are still shown (the repository falls back to them), so an offline user sees what they saw before.
+         */
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS `node_listings` (`parentNodeId` TEXT NOT NULL, `listedAt` INTEGER NOT NULL, PRIMARY KEY(`parentNodeId`))")
+            }
+        }
+
+    val all = arrayOf(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
 }

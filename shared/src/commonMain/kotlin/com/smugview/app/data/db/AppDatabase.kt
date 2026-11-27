@@ -19,9 +19,10 @@ import androidx.room.RoomDatabaseConstructor
         OfflineGallery::class,
         OfflineGalleryItem::class,
         NotifySite::class,
-        NotifyKnownAlbum::class
+        NotifyKnownAlbum::class,
+        NodeListing::class
     ],
-    version = 19,
+    version = 20,
     // Schemas are exported to app/schemas (see the KSP room.schemaLocation arg in
     // build.gradle.kts) so migrations can be validated with MigrationTestHelper.
     exportSchema = true
@@ -42,6 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_16_17 = Migrations.MIGRATION_16_17
         val MIGRATION_17_18 = Migrations.MIGRATION_17_18
         val MIGRATION_18_19 = Migrations.MIGRATION_18_19
+        val MIGRATION_19_20 = Migrations.MIGRATION_19_20
     }
 }
 

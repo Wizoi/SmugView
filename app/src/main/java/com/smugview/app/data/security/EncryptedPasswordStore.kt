@@ -3,7 +3,6 @@ import com.smugview.app.util.SmugLog
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -98,7 +97,7 @@ class EncryptedPasswordStore internal constructor(
             prefsFactory(context)
         } catch (e: Exception) {
             // The Keystore-backed store can't be created (device or Keystore trouble). Nothing is written in plain text instead.
-            Log.e(TAG, "Secure password storage unavailable; passwords are kept in memory for this session only", e)
+            SmugLog.e(TAG, "Secure password storage unavailable; passwords are kept in memory for this session only", e)
             null
         }
         val plain = readPlaintextFiles()
@@ -156,7 +155,7 @@ class EncryptedPasswordStore internal constructor(
                 for ((k, v) in plain.entries) if (!target.contains(k)) editor.putString(k, v)
                 editor.commit()
             } catch (e: Exception) {
-                Log.e(TAG, "Could not move saved passwords into secure storage; they stay where they are for now", e)
+                SmugLog.e(TAG, "Could not move saved passwords into secure storage; they stay where they are for now", e)
                 false
             }
             if (!written) return false

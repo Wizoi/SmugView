@@ -190,7 +190,7 @@ class SmugMugRepository(
         SmugLog.d("SmugMugRepository") { "getNodeChildren started: nodeId=$nodeId, forceRefresh=$forceRefresh, hasPassword=${!password.isNullOrEmpty()}" }
         // First emit Room cached value
         val cached = dao.getCachedNodesByParent(nodeId).first()
-        if (cached.isNotEmpty() && !forceRefresh) {
+        if (cached.isNotEmpty() && !forceRefresh && isCompleteListing(nodeId)) {
             SmugLog.d("SmugMugRepository") { "getNodeChildren cached hit: found ${cached.size} children for nodeId=$nodeId" }
             emit(Result.success(cached))
             return@flow
@@ -200,7 +200,7 @@ class SmugMugRepository(
         lock.withLock {
             // Re-check cache after acquiring the lock in case another coroutine populated it
             val cachedPostLock = dao.getCachedNodesByParent(nodeId).first()
-            if (cachedPostLock.isNotEmpty() && !forceRefresh) {
+            if (cachedPostLock.isNotEmpty() && !forceRefresh && isCompleteListing(nodeId)) {
                 SmugLog.d("SmugMugRepository") { "getNodeChildren cached hit post-lock: found ${cachedPostLock.size} children for nodeId=$nodeId" }
                 emit(Result.success(cachedPostLock))
                 return@withLock
@@ -223,6 +223,9 @@ class SmugMugRepository(
             }
         }
     }.flowOn(ioDispatcher)
+
+    /** R-06: rows under a parent are the listing only when a full listing wrote them (`node_listings`); `virtual:` parents are built locally. */
+    private suspend fun isCompleteListing(nodeId: String): Boolean = nodeId.startsWith("virtual:") || dao.listingCount(nodeId) > 0
 
     /**
      * Fetches every page of [nodeId]'s children from the API and writes them (replacing the parent's
