@@ -38,6 +38,7 @@ fun CastControllerScreen(
     isWebCompanionActive: Boolean = false,
     webCompanionUrl: String? = null,
     webCompanionFailure: WebCompanionFailure? = null,
+    castFailure: String? = null,
     onPlayPauseToggle: () -> Unit,
     onNextClick: () -> Unit,
     onPrevClick: () -> Unit,
@@ -115,6 +116,15 @@ fun CastControllerScreen(
                     fontWeight = FontWeight.Black
                 )
             }
+        }
+
+        if (castFailure != null) {
+            Text(
+                text = castFailure,
+                color = softRed,
+                fontSize = 14.sp,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("castFailure")
+            )
         }
 
         Column(

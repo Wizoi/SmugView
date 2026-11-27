@@ -229,6 +229,7 @@ open class SmugViewModel(
     val isWebCompanionActive = cast.isWebCompanionActive
     val webCompanionUrl = cast.webCompanionUrl
     val webCompanionFailure = cast.webCompanionFailure
+    val castFailure = cast.castFailure
     val castedAlbumKeyFlow: StateFlow<String?> = cast.castedAlbumKeyFlow
 
     var castedAlbumKey: String?

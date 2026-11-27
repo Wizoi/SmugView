@@ -1,4 +1,5 @@
 package com.smugview.app.data.cast
+import com.smugview.app.ui.text.UserMessages
 import com.smugview.app.util.SmugLog
 
 import android.content.Context
@@ -74,6 +75,8 @@ class DefaultCastManager @Inject constructor(
 
     private val _isWebCompanionActive = MutableStateFlow(false)
     override val isWebCompanionActive: StateFlow<Boolean> = _isWebCompanionActive.asStateFlow()
+    private val _castFailure = MutableStateFlow<String?>(null)
+    override val castFailure: StateFlow<String?> = _castFailure.asStateFlow()
     private val _webCompanionUrl = MutableStateFlow<String?>(null)
     override val webCompanionUrl: StateFlow<String?> = _webCompanionUrl.asStateFlow()
     private val _webCompanionFailure = MutableStateFlow<WebCompanionFailure?>(null)
@@ -524,6 +527,7 @@ class DefaultCastManager @Inject constructor(
             }
             pendingCastImage = null
             pendingCastSlideshow = null
+            _castFailure.value = null
             val currentActive = _activeDevice.value
             if (currentActive != null) {
                 _discoveredDevices.value = _discoveredDevices.value.map {
@@ -548,6 +552,7 @@ class DefaultCastManager @Inject constructor(
     }
 
     override fun castImage(url: String, title: String) {
+        _castFailure.value = null
         _currentImageUri.value = url
         val active = _activeDevice.value
         if (active == null || active.state != ConnectionState.CONNECTED) {
@@ -1080,6 +1085,28 @@ class DefaultCastManager @Inject constructor(
         }
     }
 
+    /** Finding #29: the result of `RemoteMediaClient.load`. A refusal is shown with its Cast status code; a success clears an older report. */
+    internal fun onGoogleLoadResult(isSuccess: Boolean, statusCode: Int) {
+        SmugLog.d("CastManager") { "Google load result: success=$isSuccess, status code $statusCode" }
+        _castFailure.value = if (isSuccess) null else UserMessages.castLoadFailed(statusCode)
+    }
+
+    /** Finding #29: the receiver went idle. Idle with an error reason is a photo it accepted and then could not show. */
+    internal fun onGoogleReceiverIdle(isError: Boolean, idleReason: Int) {
+        SmugLog.d("CastManager") { "Google receiver idle: error=$isError, idle reason $idleReason" }
+        if (isError) _castFailure.value = UserMessages.castLoadFailed(idleReason)
+    }
+
+    private var statusClient: com.google.android.gms.cast.framework.media.RemoteMediaClient? = null
+    private val receiverStatusCallback = object : com.google.android.gms.cast.framework.media.RemoteMediaClient.Callback() {
+        override fun onStatusUpdated() {
+            val status = statusClient?.mediaStatus ?: return
+            if (status.playerState == com.google.android.gms.cast.MediaStatus.PLAYER_STATE_IDLE) {
+                onGoogleReceiverIdle(status.idleReason == com.google.android.gms.cast.MediaStatus.IDLE_REASON_ERROR, status.idleReason)
+            }
+        }
+    }
+
     private fun castToGoogle(imageUrl: String, title: String) {
         try {
             val session = castContext?.sessionManager?.currentCastSession
@@ -1102,7 +1129,14 @@ class DefaultCastManager @Inject constructor(
                     .setMetadata(metadata)
                     .build()
 
-                client.load(mediaInfo)
+                if (statusClient !== client) {
+                    statusClient?.unregisterCallback(receiverStatusCallback)
+                    client.registerCallback(receiverStatusCallback)
+                    statusClient = client
+                }
+                client.load(mediaInfo).setResultCallback { result ->
+                    onGoogleLoadResult(result.status.isSuccess, result.status.statusCode)
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()

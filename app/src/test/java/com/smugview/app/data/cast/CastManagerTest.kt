@@ -426,4 +426,24 @@ class CastManagerTest {
         val c = CastDevice("c", "C", "3", CastType.AMAZON, support = CastSupport.Supported)
         assertEquals(listOf("b", "c", "a"), listOf(a, b, c).unsupportedLast().map { it.id })
     }
+
+    // Finding #29 (Nest Hub showed the music card, no picture): the result of the load call was never looked at, so a refusal was silent.
+    @Test
+    fun aRefusedGoogleLoadIsReportedWithItsCodeAndASuccessClearsIt() {
+        assertNull("nothing reported yet", castManager.castFailure.value)
+        castManager.onGoogleLoadResult(isSuccess = false, statusCode = 2100)
+        val message = castManager.castFailure.value
+        assertNotNull("a refused load must be reported", message)
+        assertTrue("the code is the diagnostic: $message", message!!.contains("2100"))
+        castManager.onGoogleLoadResult(isSuccess = true, statusCode = 0)
+        assertNull("a load that worked clears the report", castManager.castFailure.value)
+    }
+
+    @Test
+    fun aReceiverThatEndsInAnErrorIsReportedAndAnotherPhotoStartsClean() {
+        castManager.onGoogleReceiverIdle(isError = true, idleReason = 4)
+        assertNotNull(castManager.castFailure.value)
+        castManager.castImage("https://photos.example.com/i-x/0/h/X3/i-x-X3.jpg", "Photo")
+        assertNull("casting another photo starts without the old report", castManager.castFailure.value)
+    }
 }

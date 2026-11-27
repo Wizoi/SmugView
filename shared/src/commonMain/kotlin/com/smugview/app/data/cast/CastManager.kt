@@ -1,5 +1,6 @@
 package com.smugview.app.data.cast
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 interface CastManager {
@@ -21,6 +22,12 @@ interface CastManager {
     /** Why [webCompanionUrl] is null while [isWebCompanionActive]: ports in use, or no Wi-Fi address. Null when there is a URL or no link. */
     val webCompanionFailure: StateFlow<WebCompanionFailure?>
 
+    /**
+     * Why the last photo did not show on the screen, in words a person can read out, or null when nothing is wrong (finding #29: a Nest Hub
+     * showed its music card and the app said nothing). Only the Android manager reports it so far.
+     */
+    val castFailure: StateFlow<String?> get() = NoCastFailure
+
     fun startDiscovery()
     fun stopDiscovery()
     fun connectToDevice(device: CastDevice)
@@ -35,3 +42,5 @@ interface CastManager {
     fun toggleMute()
     fun getLocalIpAddress(): String?
 }
+
+private val NoCastFailure: StateFlow<String?> = MutableStateFlow(null)

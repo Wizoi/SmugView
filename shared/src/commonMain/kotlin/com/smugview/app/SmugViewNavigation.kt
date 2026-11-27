@@ -260,6 +260,7 @@ fun SmugViewNavigation(
                 val isMuted by viewModel.isCastMuted.collectAsState()
                 val isWebCompanionActive by viewModel.isWebCompanionActive.collectAsState()
                 val webCompanionUrl by viewModel.webCompanionUrl.collectAsState()
+                val castFailure by viewModel.castFailure.collectAsState()
                 val webCompanionFailure by viewModel.webCompanionFailure.collectAsState()
 
                 activeDevice?.let { device ->
@@ -274,6 +275,7 @@ fun SmugViewNavigation(
                         isWebCompanionActive = isWebCompanionActive,
                         webCompanionUrl = webCompanionUrl,
                         webCompanionFailure = webCompanionFailure,
+                        castFailure = castFailure,
                         onPlayPauseToggle = { viewModel.toggleCastSlideshowPlay() },
                         onNextClick = { viewModel.castNextPhoto() },
                         onPrevClick = { viewModel.castPreviousPhoto() },

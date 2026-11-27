@@ -42,6 +42,7 @@ class CastController(
     /** The address to type on the screen once the screen link is really bound; null otherwise (design 3.12). */
     val webCompanionUrl = castManager.webCompanionUrl
     val webCompanionFailure = castManager.webCompanionFailure
+    val castFailure = castManager.castFailure
 
     private val _castedAlbumKey = MutableStateFlow<String?>(null)
     val castedAlbumKeyFlow: StateFlow<String?> = _castedAlbumKey.asStateFlow()

@@ -191,6 +191,10 @@ object UserMessages {
         else -> CAST_COMPANION_FAILED
     }
 
+    /** Finding #29: the receiver refused the photo or ended in an error. The code is what lets the owner (or a developer) tell why. */
+    fun castLoadFailed(code: Int?): String =
+        "This screen did not show the photo" + (if (code != null) " (Cast code $code)" else "") + ". Try another photo or another screen."
+
     /** `HOME_FAILED`: the featured-galleries row when the request failed and nothing saved could stand in. */
     fun homeFailed(problem: Problem): String = "Couldn't load the galleries. ${shortCause(problem)}"
 
