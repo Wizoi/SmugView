@@ -20,7 +20,11 @@ class SmugMugApiTest {
 
     companion object {
         private const val RECORD_MODE = false // Toggle to true to record, false for playback
-        private val snapshotsDir = File("c:/src/kidzi/GitHub/SmugView/app/src/test/resources/snapshots")
+        // Gradle runs :app tests with the app module as the working directory; the repo root is the folder that holds settings.gradle.kts (R-65).
+        private val repoRoot: File = File(System.getProperty("user.dir")).let { dir ->
+            generateSequence(dir) { it.parentFile }.firstOrNull { File(it, "settings.gradle.kts").exists() } ?: dir
+        }
+        private val snapshotsDir = File(repoRoot, "app/src/test/resources/snapshots")
 
         private val results = mutableListOf<TestRow>()
 
@@ -130,7 +134,7 @@ class SmugMugApiTest {
 
             // Write Details to Scratch Directory
             try {
-                val scratchDir = File("c:/src/kidzi/GitHub/SmugView/scratch")
+                val scratchDir = File(repoRoot, "scratch")
                 if (!scratchDir.exists()) {
                     scratchDir.mkdirs()
                 }
@@ -142,7 +146,7 @@ class SmugMugApiTest {
             // Write Summary to Scratch Directory
             try {
                 val summaryRelative = generateSummary()
-                val scratchDir = File("c:/src/kidzi/GitHub/SmugView/scratch")
+                val scratchDir = File(repoRoot, "scratch")
                 if (!scratchDir.exists()) {
                     scratchDir.mkdirs()
                 }
@@ -153,7 +157,7 @@ class SmugMugApiTest {
 
             // Write both to build directory
             try {
-                val buildDir = File("c:/src/kidzi/GitHub/SmugView/app/build/test-results/testDebugUnitTest")
+                val buildDir = File(repoRoot, "app/build/test-results/testDebugUnitTest")
                 if (!buildDir.exists()) {
                     buildDir.mkdirs()
                 }
@@ -161,25 +165,6 @@ class SmugMugApiTest {
                 File(buildDir, "test_result.md").writeText(generateSummary())
             } catch (e: Exception) {
                 println("Failed to write results to build folder: ${e.message}")
-            }
-
-            // Write both to Antigravity Artifacts directory dynamically
-            try {
-                val brainDir = File("C:/Users/kidzi/.gemini/antigravity-ide/brain")
-                val artifactsDir = if (brainDir.exists() && brainDir.isDirectory) {
-                    brainDir.listFiles()
-                        ?.filter { it.isDirectory && it.name != "tempmediaStorage" }
-                        ?.maxByOrNull { it.lastModified() }
-                } else {
-                    null
-                }
-                if (artifactsDir != null && artifactsDir.exists()) {
-                    File(artifactsDir, "test_details.md").writeText(detailContent)
-                    File(artifactsDir, "test_summary.md").writeText(generateSummary())
-                    println("Successfully published test artifacts to Antigravity workspace.")
-                }
-            } catch (e: Exception) {
-                println("Failed to publish artifacts: ${e.message}")
             }
         }
 
@@ -277,7 +262,7 @@ class SmugMugApiTest {
         }
 
         val properties = Properties()
-        val file = File("c:/src/kidzi/GitHub/SmugView/local.properties")
+        val file = File(repoRoot, "local.properties")
         assertTrue("local.properties file must exist at " + file.absolutePath, file.exists())
         file.inputStream().use { properties.load(it) }
         val nickname = properties.getProperty("smugmug.nickname") ?: ""
@@ -346,7 +331,7 @@ class SmugMugApiTest {
     private fun setupApi(): Pair<SmugMugApi, String> {
         val apiKey = if (RECORD_MODE) {
             val properties = Properties()
-            val file = File("c:/src/kidzi/GitHub/SmugView/local.properties")
+            val file = File(repoRoot, "local.properties")
             assertTrue("local.properties file must exist at " + file.absolutePath, file.exists())
             file.inputStream().use { properties.load(it) }
             val key = properties.getProperty("smugmug.api.key") ?: ""
