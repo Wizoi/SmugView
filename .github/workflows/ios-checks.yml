@@ -18,14 +18,14 @@ permissions:
 
 jobs:
   checks:
-    runs-on: macos-15
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       # The Cast SDK's static library needs the iOS 26 SDK (same reason as the ios-screen job in ios-spike.yml).
-      - name: Select Xcode 26
+      - name: Select Xcode 27
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.2.app
+          sudo xcode-select -s /Applications/Xcode_27.1.app
           xcodebuild -version
       # The first boot of a simulator spends about 40 s on "data migration". Start it now so that happens while Gradle builds.
       - name: Start booting a simulator
