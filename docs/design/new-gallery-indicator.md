@@ -1,6 +1,6 @@
 # Design: the "new gallery" dot
 
-Status: **NEEDS REVISION before any code**. The whole-app review
+Status: **DONE (2026-11-27).** Implemented in Phase 2 (steps 2-7 to 2-14) and accepted on the emulator against the real Family -> School topology (findings #1, #14, #15, #16 fixed; see the Phase 2 exit entry in findings.md). The text below is the design history; its "needs revision" status was superseded by `docs/design/phase-2-tree-and-dot.md`. Earlier status: **NEEDS REVISION before any code**. The whole-app review
 ([§3](../review/2026-09-29-whole-app-review.md)) disproved two premises: `user!albums` has no
 `ParentNode` (R-05), and going back to deleting a folder's listing triggers self-parented rows
 (R-01, R-04). Previously: **approved** — §5 choices 1, 2, 3 accepted as recommended *(owner, 2026-09-29)*: "new" = ImagesLastUpdated with migration 15→16; crawl once per launch, at most every 15 min per site; saved password folders re-unlocked at launch.
