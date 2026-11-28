@@ -65,6 +65,7 @@ For deeper details on design, mechanics, and integration details, consult the fo
 *   **[DESIGN.md](DESIGN.md)**: Details the UX/UI layout specifications, custom client-side tag exclusion/inclusion formulas, and the Room database schema for custom offline collections.
 *   **[SMUGMUG.md](SMUGMUG.md)**: Documents API endpoints, expansion parameters (to prevent N+1 queries), password-unlock logic via POST requests, and Retrofit/OkHttp cookie persistence implementations.
 *   **[PUBLISH.md](PUBLISH.md)**: Google Play store listing content (title/descriptions/graphics/screenshots), the Play Console steps that can't be scripted (data safety, content rating, closed-testing gate), and the publish commands themselves.
+*   **[STORE-PLAYBOOK.md](STORE-PLAYBOOK.md)**: what we learned shipping to Google Play and the App Store (commands, rollout, signing in CI, Xcode and SDK deadlines, App Store Connect rejections, icons, Google Cast, process), written to start the next project from.
 *   **[PRIVACY_POLICY.md](PRIVACY_POLICY.md)**: The public-facing privacy policy required by Play Console's App Content section. Keep this in sync if data handling (storage, permissions, third-party SDKs) ever changes.
 *   **[.gitignore](.gitignore)**: Standard Android ignore file ensuring cache files, IDE outputs, and credentials stay off public repositories.
 
